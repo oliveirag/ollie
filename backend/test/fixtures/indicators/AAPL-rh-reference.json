@@ -1,0 +1,25 @@
+{
+  "_comment": "Robinhood's own get_equity_technical_indicators output for AAPL daily bars over the same range as ohlcv/AAPL-daily-2026.json, captured 2026-08-04. This is the independent check on our indicator math — if our RSI and MACD track the broker's to within tolerance on the same bars, the implementation is right. Tolerance rather than equality is deliberate: the broker seeds its smoothing from bars before the requested range, so early values differ and converge. Only the last bars are compared.",
+  "symbol": "AAPL",
+  "interval": "day",
+  "rsi": {
+    "params": { "period": 14 },
+    "series": [
+      { "begins_at": "2026-07-28T00:00:00Z", "value": 68.91124015023948 },
+      { "begins_at": "2026-07-29T00:00:00Z", "value": 66.80083498960838 },
+      { "begins_at": "2026-07-30T00:00:00Z", "value": 61.67772202976307 },
+      { "begins_at": "2026-07-31T00:00:00Z", "value": 43.26889724631769 },
+      { "begins_at": "2026-08-03T00:00:00Z", "value": 40.36401420570958 }
+    ]
+  },
+  "macd": {
+    "params": { "fast_period": 12, "slow_period": 26, "signal_period": 9 },
+    "series": [
+      { "begins_at": "2026-07-28T00:00:00Z", "macd": 9.47499639575625, "signal": 8.17453247983203, "histogram": 1.3004639159242206 },
+      { "begins_at": "2026-07-29T00:00:00Z", "macd": 9.628107057920715, "signal": 8.465247395449767, "histogram": 1.1628596624709484 },
+      { "begins_at": "2026-07-30T00:00:00Z", "macd": 9.258628436449328, "signal": 8.62392360364968, "histogram": 0.634704832799649 },
+      { "begins_at": "2026-07-31T00:00:00Z", "macd": 6.907628052829864, "signal": 8.280664493485716, "histogram": -1.3730364406558522 },
+      { "begins_at": "2026-08-03T00:00:00Z", "macd": 4.549008059363587, "signal": 7.534333206661291, "histogram": -2.9853251472977043 }
+    ]
+  }
+}

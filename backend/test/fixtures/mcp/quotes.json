@@ -1,0 +1,71 @@
+{
+  "_comment": "get_equity_quotes for the default allowlist, captured 2026-08-04 during regular hours. Each result pairs a live quote with the prior session's official settled close.",
+  "results": [
+    {
+      "quote": {
+        "symbol": "AAPL",
+        "last_trade_price": "308.320000",
+        "venue_last_trade_time": "2026-08-04T16:51:02.915836325Z",
+        "last_non_reg_trade_price": null,
+        "adjusted_previous_close": "303.420000",
+        "previous_close": "303.420000",
+        "previous_close_date": "2026-08-03",
+        "bid_price": "308.310000",
+        "ask_price": "308.330000",
+        "has_traded": true,
+        "state": "active"
+      },
+      "close": {
+        "symbol": "AAPL",
+        "date": "2026-08-03",
+        "price": "303.42",
+        "interpolated": false,
+        "source": "sip-list-exchange-close"
+      }
+    },
+    {
+      "quote": {
+        "symbol": "MSFT",
+        "last_trade_price": "494.770000",
+        "venue_last_trade_time": "2026-08-04T16:51:02.227779327Z",
+        "last_non_reg_trade_price": null,
+        "adjusted_previous_close": "487.650000",
+        "previous_close": "487.650000",
+        "previous_close_date": "2026-08-03",
+        "bid_price": "494.740000",
+        "ask_price": "494.800000",
+        "has_traded": true,
+        "state": "active"
+      },
+      "close": {
+        "symbol": "MSFT",
+        "date": "2026-08-03",
+        "price": "487.65",
+        "interpolated": false,
+        "source": "sip-list-exchange-close"
+      }
+    },
+    {
+      "quote": {
+        "symbol": "SPY",
+        "last_trade_price": "770.225000",
+        "venue_last_trade_time": "2026-08-04T16:51:03.080212105Z",
+        "last_non_reg_trade_price": null,
+        "adjusted_previous_close": "757.670000",
+        "previous_close": "757.670000",
+        "previous_close_date": "2026-08-03",
+        "bid_price": "770.220000",
+        "ask_price": "770.230000",
+        "has_traded": true,
+        "state": "active"
+      },
+      "close": {
+        "symbol": "SPY",
+        "date": "2026-08-03",
+        "price": "757.67",
+        "interpolated": false,
+        "source": "sip-list-exchange-close"
+      }
+    }
+  ]
+}

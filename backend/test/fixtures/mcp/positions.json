@@ -1,0 +1,4 @@
+{
+  "_comment": "get_equity_positions for the agentic account, captured 2026-08-04. The account held nothing, so this pins the empty shape only. The populated shape in types.ts comes from the tool's documentation and is marked as unverified there — treat a first non-empty response as a reason to re-check those fields.",
+  "positions": []
+}

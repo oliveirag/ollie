@@ -1,0 +1,31 @@
+{
+  "_comment": "review_equity_order for a 1-share AAPL market buy, captured 2026-08-04 during regular hours. Note the two surprises this fixture exists to pin down: order_checks is an OBJECT keyed by alertType (not an array), and there is no estimated-price field anywhere — the fill estimate has to be derived from quote_data.",
+  "symbol": "AAPL",
+  "side": "buy",
+  "type": "market",
+  "quantity": "1",
+  "order_checks": {
+    "alertType": "EQUITY_NOT_ENOUGH_BP",
+    "equityNotEnoughBpAlertDetails": {
+      "depositAmount": { "amount": "308.5700", "currency": "USD" },
+      "brokerageAccountType": "INDIVIDUAL"
+    }
+  },
+  "quote_data": {
+    "symbol": "AAPL",
+    "last_trade_price": "308.555000",
+    "venue_last_trade_time": "2026-08-04T16:52:04.838605538Z",
+    "last_non_reg_trade_price": null,
+    "venue_last_non_reg_trade_time": null,
+    "adjusted_previous_close": "303.420000",
+    "previous_close": "303.420000",
+    "previous_close_date": "2026-08-03",
+    "bid_price": "308.550000",
+    "venue_bid_time": "2026-08-04T16:52:04.505126169Z",
+    "ask_price": "308.570000",
+    "venue_ask_time": "2026-08-04T16:52:04.505126169Z",
+    "has_traded": true,
+    "state": "active"
+  },
+  "market_data_disclosure": "Bid $308.55 × 240 P · Ask $308.57 × 80 Q · Last $308.55 × 100 P. Updated 12:52 PM ET."
+}
