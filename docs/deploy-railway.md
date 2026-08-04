@@ -25,13 +25,35 @@ is observed through logs and the database.
 
    ```
    ANTHROPIC_API_KEY=…
-   RH_MCP_AUTH_TOKEN=…
+   RH_OAUTH_CLIENT_ID=…
+   RH_OAUTH_REFRESH_TOKEN=…
    SYMBOL_ALLOWLIST=AAPL,MSFT,SPY
    PIPELINE_CRON=35 9 * * 1-5
    KILL_SWITCH=false
    LIVE_TRADING_ENABLED=false
    NODE_ENV=production
    ```
+
+   The Robinhood credential is **not** a token you can paste from anywhere. The
+   MCP speaks OAuth 2.1 + PKCE, and the first token requires a human at
+   `robinhood.com/oauth` — which Railway has no way to do. Get the pair locally:
+
+   ```bash
+   cd backend && npm run rh:authorize
+   ```
+
+   That prints a `client_id` and a refresh token; those two are what the deploy
+   carries. The service exchanges the refresh token for an access token on boot
+   and whenever one expires. `RH_MCP_AUTH_TOKEN` still works for a one-off manual
+   run with a pasted access token, but it expires and cannot renew itself, so it
+   is not a deploy credential.
+
+   > **Unresolved:** whether Robinhood rotates refresh tokens on use. If it does,
+   > the value in this variable goes stale after the first refresh and the
+   > credential has to move to Postgres — an environment variable cannot hold
+   > something that changes at runtime. `OAuthStateStore` exists to make that
+   > swap a new implementation rather than a rewrite. Watch the first redeploy
+   > after a token refresh for an unexpected `401`.
 
    `PORT` is injected by Railway; do not set it. Leave `LIVE_TRADING_ENABLED`
    false — it is the second of the two gates in front of real money and has no

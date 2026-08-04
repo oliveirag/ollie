@@ -257,7 +257,7 @@ opened, one rejected and left on the record with its reason. Flipping
 call. `grep` confirms `placeEquityOrder` has no call site — only the interface
 declaration and two implementations that both throw.
 
-### Three findings that changed the plan
+### Four findings that changed the plan
 
 1. **`review_equity_order` returns no estimated price.** It returns a
    `quote_data` block. The fill estimate is derived — ask for a buy, bid for a
@@ -271,6 +271,24 @@ declaration and two implementations that both throw.
    the planned 500-token thesis budget would have truncated every answer. It is
    4096, with length bounded by the prompt. `temperature` is rejected with a
    400 on this model family, not merely discouraged.
+4. **The trading MCP speaks OAuth 2.1 + PKCE, not static bearer tokens.** An
+   anonymous `initialize` returns `401` with
+   `www-authenticate: Bearer resource_metadata=…`, and the discovery documents
+   give: authorize `https://robinhood.com/oauth`, token
+   `https://api.robinhood.com/oauth2/token/`, register
+   `https://agent.robinhood.com/oauth/trading/register` (Dynamic Client
+   Registration supported), `grant_types: authorization_code, refresh_token`,
+   `code_challenge_methods: S256`, `token_endpoint_auth_methods: none` (public
+   client, no secret), `scopes: internal`.
+
+   Consequences: the `Authorization: Bearer` header in `mcpClient.ts` was
+   already the right seam — an access token *is* a bearer token — but nothing
+   acquires or refreshes one. Authorization requires a human in a browser, so
+   **Railway can never perform the initial leg**; the refresh token is what
+   ships to the deploy. Whether refresh tokens rotate on use is still unknown,
+   and if they do, the credential cannot live in an env var at all — it has to
+   move to Postgres, since an env var cannot store something that changes at
+   runtime. Design for rotation.
 
 Indicator math was cross-checked against Robinhood's own
 `get_equity_technical_indicators` on the same AAPL bars: RSI agrees to 0.10 and
@@ -280,24 +298,43 @@ published worked example to 0.07.
 
 ### Open items
 
-- **Headless auth for the Robinhood MCP is still unverified (risk #1 below).**
-  The 1.1 spike ran through the claude.ai connector, not a token, so whether
-  `RH_MCP_AUTH_TOKEN` is a static bearer token or OAuth-with-refresh is unknown.
-  It is isolated behind the auth seam in `mcpClient.ts`. This blocks the real-
-  broker half of 1.7.
-- **Railway was never deployed.** `backend/railway.json` and
-  `docs/deploy-railway.md` are written; the project, the managed Postgres, and
-  the first scheduled run are outstanding (0.5 and 1.7).
+- **Robinhood MCP auth is OAuth 2.1 + PKCE — resolved 2026-08-04, see below.**
+  No longer an unknown, but now a known piece of unbuilt work: there is an
+  interactive browser leg, and nothing headless can perform it. Blocks the
+  real-broker half of 1.7 until the authorize script exists.
+- **Railway: project created by the owner 2026-08-04**, service hostname
+  `ollie.railway.internal`. Managed Postgres, service variables, and the first
+  scheduled run are still outstanding (0.5 and 1.7). `DATABASE_URL` is set as the
+  reference `${{Postgres.DATABASE_URL}}`, never pasted, so no database
+  credential needs to leave the platform.
+- **`ANTHROPIC_API_KEY` is deliberately deferred** until the strategy is shown to
+  work (owner decision, 2026-08-04). This is safe and needs no code change:
+  `thesis.ts` checks for the missing key before constructing the client and takes
+  the deterministic template path, so every signal generated in the meantime is
+  recorded with `thesis_source='fallback_template'`. Signals are unaffected —
+  the LLM never decides anything — but the real LLM path stays unexercised, so
+  1.7 should be repeated once against a funded key before Phase 2 relies on it.
 - **The Agentic account (`••••3844`, the only `agentic_allowed=true` account) is
   unfunded** — zero buying power, no positions. Every real `review_equity_order`
   will therefore carry an `EQUITY_NOT_ENOUGH_BP` alert. That is harmless in
   paper mode (alerts are recorded, not treated as a reason to drop a candidate),
   but a live run would have nothing to trade with.
-- **The cap values have not been reviewed by the owner.** $500 per order,
-  $1,000 max position, 3 trades/day, $5,000 total exposure, 15-minute expiry,
-  10 bps slippage — all in `backend/.env.example`, all adopted from this plan's
-  defaults rather than chosen. Worth a look before the first real paper run
-  (open decision #10 below).
+- **Cap values reviewed and kept as-is by the owner (2026-08-04).** $500 per
+  order, $1,000 max position, 3 trades/day, $5,000 total exposure, 15-minute
+  expiry, 10 bps slippage, allowlist `AAPL,MSFT,SPY`. These are *paper* caps and
+  deliberately exceed the account's funded balance, which is correct: paper fills
+  are simulated from the review snapshot and never spend money, so sizing the
+  caps to the balance would only stop the strategy from being exercised on liquid
+  names.
+
+  **The owner has funded the Agentic account with $10 and wants that to be the
+  live ceiling.** That is a Phase 5 constraint, not a Phase 1 one, and it does
+  not translate into these caps — at today's prices $10 cannot buy a single whole
+  share of any allowlist symbol, so applying it here would make
+  `evaluateTechnical` return `quantity_rounds_to_zero` for every symbol on every
+  bar and the pipeline would go permanently, silently quiet. Phase 5 must
+  therefore either size to sub-$10 symbols, adopt fractional shares, or raise the
+  funded balance — and must not simply inherit these numbers.
 - The dev database holds a handful of smoke-test signals from these runs. They
   cannot be deleted — that is the point of the triggers — so `TRUNCATE` the
   tables or use a fresh database before the first real run if you want a clean
@@ -341,7 +378,7 @@ LOG_LEVEL=info
 
 ## Risks / open questions for the implementer
 
-1. **RH MCP headless auth is the #1 unknown — do 1.1 before anything else touching the adapter.** Owner says credentials are available; whether that's a static token or OAuth-with-refresh determines the auth layer. Keep it behind a `getAuthHeaders()` seam; decide on re-auth after the spike.
+1. ~~**RH MCP headless auth is the #1 unknown**~~ — **resolved 2026-08-04: OAuth 2.1 + PKCE with refresh tokens** (finding 4 above). The remaining work is a `scripts/authorize-rh.ts` doing DCR + PKCE + a loopback callback, plus refresh-on-401 in the adapter. There is no fully headless path: someone authorizes in a browser once.
 2. **Output shapes unknown** until first call (esp. where `review_equity_order` puts estimated price + alerts). Mitigation: zod `.passthrough()`, persist raw JSON, freeze schemas from introspect output.
 3. Tool names on the direct server may differ from connector-prefixed names — verify via `tools/list`.
 4. `review_equity_order` needs the **Agentic** account (`agentic_allowed=true`); market reviews are regular-hours-only — inspect alerts if scheduler runs near open.

@@ -1,9 +1,11 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import type { OAuthClientProvider } from '@modelcontextprotocol/sdk/client/auth.js';
 import type { ZodType } from 'zod';
 import type { Logger } from 'pino';
-import { getConfig } from '../../config/index.js';
+import { getConfig, type Config } from '../../config/index.js';
 import { logger as rootLogger } from '../../logger.js';
+import { MemoryOAuthStateStore, RhOAuthProvider } from './oauth.js';
 import {
   BrokerError,
   NoAgenticAccountError,
@@ -36,9 +38,42 @@ const MAX_ATTEMPTS = 3;
 export interface McpBrokerOptions {
   url?: string;
   authToken?: string;
+  /**
+   * Supplies and refreshes OAuth tokens. When present the transport renews an
+   * expired access token itself, so `authToken` is only a fallback for a manual
+   * run with a token pasted into the environment.
+   */
+  authProvider?: OAuthClientProvider;
   /** Pins the account instead of discovering it. Still checked for agentic access. */
   accountNumber?: string | null;
   logger?: Logger;
+}
+
+/**
+ * Builds an auth provider from a stored refresh token, or returns null when none
+ * is configured so the static-token path still works.
+ *
+ * Note what is *not* here: any way to obtain a first token. That requires a
+ * browser (see scripts/authorize-rh.ts), and a server process that could block
+ * on one would be a worse failure than a clear error.
+ */
+function buildConfiguredAuthProvider(config: Config): OAuthClientProvider | null {
+  const { oauthClientId, oauthRefreshToken } = config.robinhood;
+  if (!oauthClientId || !oauthRefreshToken) return null;
+
+  return new RhOAuthProvider({
+    store: new MemoryOAuthStateStore({
+      clientId: oauthClientId,
+      tokens: {
+        access_token: '',
+        token_type: 'Bearer',
+        refresh_token: oauthRefreshToken,
+        // Zero lifetime forces a refresh on the first call rather than sending
+        // the empty access token above and taking a guaranteed 401.
+        expires_in: 0,
+      },
+    }),
+  });
 }
 
 /**
@@ -51,6 +86,7 @@ export interface McpBrokerOptions {
 export class McpBrokerAdapter implements BrokerAdapter {
   private readonly url: string;
   private readonly authToken: string;
+  private readonly authProvider: OAuthClientProvider | null;
   private readonly pinnedAccount: string | null;
   private readonly log: Logger;
 
@@ -64,6 +100,7 @@ export class McpBrokerAdapter implements BrokerAdapter {
     const config = getConfig();
     this.url = options.url ?? config.robinhood.mcpUrl;
     this.authToken = options.authToken ?? config.robinhood.authToken;
+    this.authProvider = options.authProvider ?? buildConfiguredAuthProvider(config);
     this.pinnedAccount = options.accountNumber ?? config.robinhood.accountNumber;
     this.log = (options.logger ?? rootLogger).child({ component: 'rh-mcp' });
   }
@@ -82,17 +119,26 @@ export class McpBrokerAdapter implements BrokerAdapter {
   }
 
   private async openConnection(): Promise<Client> {
-    if (!this.authToken) {
-      throw new BrokerError('RH_MCP_AUTH_TOKEN is not set; cannot reach the trading MCP');
+    if (!this.authProvider && !this.authToken) {
+      throw new BrokerError(
+        'no Robinhood credential configured; set RH_OAUTH_CLIENT_ID and ' +
+          'RH_OAUTH_REFRESH_TOKEN (run `npm run rh:authorize` to obtain them), ' +
+          'or RH_MCP_AUTH_TOKEN for a one-off manual run',
+      );
     }
 
     const client = new Client(
       { name: 'ollie-orchestrator', version: '0.1.0' },
       { capabilities: {} },
     );
-    const transport = new StreamableHTTPClientTransport(new URL(this.url), {
-      requestInit: { headers: { Authorization: `Bearer ${this.authToken}` } },
-    });
+    // With an authProvider the SDK owns the Authorization header and refreshes
+    // the token on expiry; the static header is only for the fallback path.
+    const transport = new StreamableHTTPClientTransport(
+      new URL(this.url),
+      this.authProvider
+        ? { authProvider: this.authProvider }
+        : { requestInit: { headers: { Authorization: `Bearer ${this.authToken}` } } },
+    );
 
     try {
       // The SDK's Transport interface declares `sessionId?: string` while the
@@ -429,7 +475,16 @@ export function toAlerts(orderChecks: Record<string, unknown>): ReviewAlert[] {
 
 function isRetryable(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
-  if (/unexpected shape|does not expose a tool|RH_MCP_AUTH_TOKEN/i.test(message)) return false;
+  // A missing or unrenewable credential will not fix itself; retrying only
+  // delays the error. `npm run rh:authorize` names the expired-authorization
+  // case raised by RhOAuthProvider.
+  if (
+    /unexpected shape|does not expose a tool|no Robinhood credential configured|RH_MCP_AUTH_TOKEN|rh:authorize/i.test(
+      message,
+    )
+  ) {
+    return false;
+  }
   return /429|rate.?limit|timeout|ETIMEDOUT|ECONNRESET|EAI_AGAIN|socket hang up|5\d\d/i.test(
     message,
   );

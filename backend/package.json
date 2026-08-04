@@ -21,6 +21,7 @@
     "db:deploy": "prisma migrate deploy",
     "db:studio": "prisma studio",
     "introspect:mcp": "tsx scripts/introspect-mcp.ts",
+    "rh:authorize": "tsx scripts/authorize-rh.ts",
     "signal:write-test": "tsx scripts/write-test-signal.ts",
     "pipeline:once": "tsx scripts/run-pipeline-once.ts",
     "signal:decide": "tsx scripts/decide-signal.ts"

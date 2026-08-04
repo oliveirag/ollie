@@ -27,6 +27,10 @@ const EnvSchema = z.object({
 
   RH_MCP_URL: z.string().url().default('https://agent.robinhood.com/mcp/trading'),
   RH_MCP_AUTH_TOKEN: z.string().default(''),
+  // The durable half of the OAuth credential. Obtained by scripts/authorize-rh.ts,
+  // which needs a browser; these two are what a deploy actually carries.
+  RH_OAUTH_CLIENT_ID: z.string().default(''),
+  RH_OAUTH_REFRESH_TOKEN: z.string().default(''),
   RH_ACCOUNT_NUMBER: z.string().default(''),
 
   SYMBOL_ALLOWLIST: z.string().default('AAPL,MSFT,SPY'),
@@ -92,7 +96,13 @@ export interface Config {
   killSwitchEnv: boolean;
   liveTradingEnabled: boolean;
   anthropic: { apiKey: string; model: string };
-  robinhood: { mcpUrl: string; authToken: string; accountNumber: string | null };
+  robinhood: {
+    mcpUrl: string;
+    authToken: string;
+    oauthClientId: string;
+    oauthRefreshToken: string;
+    accountNumber: string | null;
+  };
 }
 
 export const TIMEZONE = 'America/New_York';
@@ -171,6 +181,8 @@ export function buildConfig(source: NodeJS.ProcessEnv = process.env): Config {
     robinhood: {
       mcpUrl: env.RH_MCP_URL,
       authToken: env.RH_MCP_AUTH_TOKEN,
+      oauthClientId: env.RH_OAUTH_CLIENT_ID,
+      oauthRefreshToken: env.RH_OAUTH_REFRESH_TOKEN,
       accountNumber: env.RH_ACCOUNT_NUMBER || null,
     },
   };
