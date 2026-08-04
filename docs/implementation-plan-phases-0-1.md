@@ -228,20 +228,80 @@ Run sequence (each stage logged with `run_id`):
 ## Milestones
 
 **Phase 0 — exit: a signal can be written and read from the DB**
-- [ ] 0.1 First commit of `Ollie.md`; scaffold tree, package.json, strict tsconfig, vitest, pino, zod config, `.env.example`, `docker-compose.yml` (postgres:16).
-- [ ] 0.2 Prisma schema + migration 1; migration 2 (`--create-only`, hand-written triggers); `npm run db:migrate`.
-- [ ] 0.3 Repo layer + `db.signals.test.ts`: round-trip; pending→approved writes `signal_events`; **immutability asserted** (UPDATE symbol throws, DELETE throws, double-decide throws, executions/track_record UPDATE throws).
-- [ ] 0.4 `scripts/write-test-signal.ts` — fabricated signal in, read back, printed. **← Phase 0 exit.**
-- [ ] 0.5 Railway: service (build from `backend/`) + managed Postgres; `prisma migrate deploy` on release; `/healthz` via `node:http`; run write-test-signal against Railway PG (`railway run`) for parity.
+
+- [x] 0.1 First commit of `Ollie.md`; scaffold tree, package.json, strict tsconfig, vitest, pino, zod config, `.env.example`, `docker-compose.yml` (postgres:16).
+- [x] 0.2 Prisma schema + migration 1; migration 2 (`--create-only`, hand-written triggers); `npm run db:migrate`.
+- [x] 0.3 Repo layer + `db.signals.test.ts`: round-trip; pending→approved writes `signal_events`; **immutability asserted** (UPDATE symbol throws, DELETE throws, double-decide throws, executions/track_record UPDATE throws).
+- [x] 0.4 `scripts/write-test-signal.ts` — fabricated signal in, read back, printed. **← Phase 0 exit, met.**
+- [~] 0.5 Railway: service (build from `backend/`) + managed Postgres; `prisma migrate deploy` on release; `/healthz` via `node:http`; run write-test-signal against Railway PG (`railway run`) for parity. — *`/healthz`, `railway.json` and the runbook are written and the built service boots; the Railway project itself has not been created. See Open items.*
 
 **Phase 1 — exit: signals generate on schedule, land in DB with review snapshots**
-- [ ] 1.1 **MCP connectivity spike FIRST** — `scripts/introspect-mcp.ts`: connect with headless credentials, `tools/list`, dump input schemas, call `get_accounts` / `get_portfolio` / `get_equity_quotes(['AAPL'])` / `get_equity_historicals` / one 1-share `review_equity_order`; freeze observed **output** shapes into `robinhood/types.ts` zod schemas; then `mcpClient.ts` + `mockClient.ts` (fixtures from dumped responses).
-- [ ] 1.2 `indicators.ts` + `technical.ts` + fixtures + determinism/reference-value tests.
-- [ ] 1.3 `risk.ts` + per-cap boundary tests.
-- [ ] 1.4 `anthropic/thesis.ts` + fallback tests (mock SDK throw).
-- [ ] 1.5 `pipeline.ts` + `executor.ts` + expiry; integration test (mock broker + local PG): pending signals w/ snapshots; kill-switch run → nothing; duplicate run → nothing new; cap violations rejected; approve → execution + open track_record with slippage fill.
-- [ ] 1.6 `scheduler.ts` + wire into `index.ts`; `run-pipeline-once.ts --broker=mock|real`.
+
+- [x] 1.1 **MCP connectivity spike FIRST** — `scripts/introspect-mcp.ts`: connect with headless credentials, `tools/list`, dump input schemas, call `get_accounts` / `get_portfolio` / `get_equity_quotes(['AAPL'])` / `get_equity_historicals` / one 1-share `review_equity_order`; freeze observed **output** shapes into `robinhood/types.ts` zod schemas; then `mcpClient.ts` + `mockClient.ts` (fixtures from dumped responses). — *Output shapes were captured through the claude.ai connector rather than a headless token; see Open items.*
+- [x] 1.2 `indicators.ts` + `technical.ts` + fixtures + determinism/reference-value tests.
+- [x] 1.3 `risk.ts` + per-cap boundary tests.
+- [x] 1.4 `anthropic/thesis.ts` + fallback tests (mock SDK throw).
+- [x] 1.5 `pipeline.ts` + `executor.ts` + expiry; integration test (mock broker + local PG): pending signals w/ snapshots; kill-switch run → nothing; duplicate run → nothing new; cap violations rejected; approve → execution + open track_record with slippage fill.
+- [x] 1.6 `scheduler.ts` + wire into `index.ts`; `run-pipeline-once.ts --broker=mock|real`.
 - [ ] 1.7 Manual E2E vs real RH MCP (paper intent), then Railway deploy with `PIPELINE_CRON` live; watch first scheduled run. **← Phase 1 exit.**
+
+## Where this left off (2026-08-04)
+
+Milestones 0.1–1.6 are complete and pushed. 161 tests pass; typecheck and build
+are clean. The pipeline was verified end to end against the mock broker: three
+candidates, one rejected by the exposure cap, two persisted as pending signals
+with review snapshots, one approved into a paper fill at 308.94864 (the 308.64
+review estimate plus 10 bps against the trader) with a track-record position
+opened, one rejected and left on the record with its reason. Flipping
+`app_settings.kill_switch` in psql halted the next run before its first broker
+call. `grep` confirms `placeEquityOrder` has no call site — only the interface
+declaration and two implementations that both throw.
+
+### Three findings that changed the plan
+
+1. **`review_equity_order` returns no estimated price.** It returns a
+   `quote_data` block. The fill estimate is derived — ask for a buy, bid for a
+   sell, last trade when a side of the book is missing — and that derivation
+   lives in `robinhood/client.ts` so the mock and real adapters cannot drift on
+   the number that becomes the paper fill. Both the derived value and the raw
+   response are persisted; see `docs/signal-schema.md`.
+2. **`order_checks` is an object keyed by `alertType`**, `{}` when clean — not
+   the array its name suggests.
+3. **`max_tokens` covers thinking plus response text on `claude-opus-5`**, so
+   the planned 500-token thesis budget would have truncated every answer. It is
+   4096, with length bounded by the prompt. `temperature` is rejected with a
+   400 on this model family, not merely discouraged.
+
+Indicator math was cross-checked against Robinhood's own
+`get_equity_technical_indicators` on the same AAPL bars: RSI agrees to 0.10 and
+MACD to 0.09, both differences shrinking toward the present — the signature of a
+warm-up seeding difference, not a formula error. RSI also matches Wilder's
+published worked example to 0.07.
+
+### Open items
+
+- **Headless auth for the Robinhood MCP is still unverified (risk #1 below).**
+  The 1.1 spike ran through the claude.ai connector, not a token, so whether
+  `RH_MCP_AUTH_TOKEN` is a static bearer token or OAuth-with-refresh is unknown.
+  It is isolated behind the auth seam in `mcpClient.ts`. This blocks the real-
+  broker half of 1.7.
+- **Railway was never deployed.** `backend/railway.json` and
+  `docs/deploy-railway.md` are written; the project, the managed Postgres, and
+  the first scheduled run are outstanding (0.5 and 1.7).
+- **The Agentic account (`••••3844`, the only `agentic_allowed=true` account) is
+  unfunded** — zero buying power, no positions. Every real `review_equity_order`
+  will therefore carry an `EQUITY_NOT_ENOUGH_BP` alert. That is harmless in
+  paper mode (alerts are recorded, not treated as a reason to drop a candidate),
+  but a live run would have nothing to trade with.
+- **The cap values have not been reviewed by the owner.** $500 per order,
+  $1,000 max position, 3 trades/day, $5,000 total exposure, 15-minute expiry,
+  10 bps slippage — all in `backend/.env.example`, all adopted from this plan's
+  defaults rather than chosen. Worth a look before the first real paper run
+  (open decision #10 below).
+- The dev database holds a handful of smoke-test signals from these runs. They
+  cannot be deleted — that is the point of the triggers — so `TRUNCATE` the
+  tables or use a fresh database before the first real run if you want a clean
+  track record.
 
 **`.env.example`:**
 
