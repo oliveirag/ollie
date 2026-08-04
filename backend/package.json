@@ -26,7 +26,7 @@
     "signal:decide": "tsx scripts/decide-signal.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.65.0",
+    "@anthropic-ai/sdk": "^0.115.0",
     "@modelcontextprotocol/sdk": "^1.20.0",
     "@prisma/client": "^6.16.2",
     "croner": "^9.1.0",
