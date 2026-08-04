@@ -1,0 +1,85 @@
+openapi: 3.1.0
+
+# Stub. The orchestrator is headless in Phases 0-1 and /healthz is its entire
+# HTTP surface, so this file documents only that.
+#
+# In Phase 2 this becomes the contract between the Node backend and the SwiftUI
+# app (PRD §5): Swift and TypeScript cannot share types, so the schema here is
+# the single source of truth, the Swift client is generated from it, and the
+# Node handlers are validated against it. Adding a route to the backend without
+# adding it here is how the two sides drift.
+
+info:
+  title: Ollie Orchestrator API
+  version: 0.1.0
+  description: |
+    Owner-facing API for the Ollie trading-signal orchestrator.
+
+    Phases 0-1 expose only a health check. The approval, dashboard, and kill
+    switch endpoints arrive with the iOS app in Phase 2; the subscriber-facing
+    signal feed is a separate read-only MCP server in Phase 4 and will not be
+    described by this document.
+
+servers:
+  - url: http://localhost:3000
+    description: Local development
+  - url: https://ollie.up.railway.app
+    description: Railway
+
+paths:
+  /healthz:
+    get:
+      summary: Liveness and configuration check
+      description: |
+        Reports database reachability and the runtime safety flags as the
+        service currently sees them. The flags are included deliberately: the
+        fastest way to answer "what mode is production actually in" should not
+        be reading deploy variables and hoping they match.
+
+        Returns 503 when the database is unreachable, which is what the
+        platform health check keys on.
+      operationId: getHealth
+      responses:
+        '200':
+          description: Service healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthReport'
+        '503':
+          description: Service degraded — the database is unreachable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthReport'
+
+components:
+  schemas:
+    HealthReport:
+      type: object
+      required: [status, database, uptimeSeconds, checkedAt]
+      properties:
+        status:
+          type: string
+          enum: [ok, degraded]
+        database:
+          type: string
+          enum: [up, down]
+        killSwitch:
+          type: [boolean, 'null']
+          description: Runtime kill switch from app_settings; null when the database is unreachable.
+        executionMode:
+          type: [string, 'null']
+          enum: [paper, live, null]
+        uptimeSeconds:
+          type: integer
+        checkedAt:
+          type: string
+          format: date-time
+      example:
+        status: ok
+        database: up
+        killSwitch: false
+        executionMode: paper
+        uptimeSeconds: 42
+        checkedAt: '2026-08-04T17:39:01.034Z'

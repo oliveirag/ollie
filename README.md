@@ -18,8 +18,8 @@ Current build plan: [docs/implementation-plan-phases-0-1.md](docs/implementation
 
 | Phase | Scope | State |
 | --- | --- | --- |
-| 0 | Repo, Postgres, data model, immutable signal logging | in progress |
-| 1 | Headless orchestrator: strategy, review snapshot, thesis, paper execute seam | not started |
+| 0 | Repo, Postgres, data model, immutable signal logging | complete |
+| 1 | Headless orchestrator: strategy, review snapshot, thesis, paper execute seam | complete (pending live E2E) |
 | 2 | iOS owner app (approve/reject, dashboard, kill switch) | not started |
 | 3 | Track record accrual | not started |
 | 4 | Subscriber Signal MCP server | not started |
@@ -29,11 +29,25 @@ Phases 0–1 are backend-only and verified through logs, tests, and the database
 
 ## Repo layout
 
-```
-backend/     Node.js + TypeScript orchestrator
-docs/        PRD-adjacent specs: API contract, published signal schema, build plans
+```text
+backend/     Node.js + TypeScript orchestrator — see backend/README.md
+docs/        API contract, published signal schema, deploy runbook, build plans
 Ollie.md     Product requirements document
 ```
+
+## Getting started
+
+Everything runs locally against a Docker Postgres:
+
+```bash
+docker compose up -d
+cd backend && cp .env.example .env && npm install && npm run db:migrate
+npm test
+npm run pipeline:once -- --broker=mock   # a full run against checked-in fixtures
+```
+
+[backend/README.md](backend/README.md) has the full command list and the
+constraints worth knowing before changing anything.
 
 ## Non-negotiables
 
