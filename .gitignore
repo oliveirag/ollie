@@ -60,3 +60,19 @@ fastlane/report.xml
 fastlane/Preview.html
 fastlane/screenshots/**/*.png
 fastlane/test_output
+
+# Node / backend
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+# Secrets — .env.example documents the shape, real values never land in git
+.env
+.env.*
+!.env.example
+
+# Local tooling
+.DS_Store
+*.log
+backend/scripts/out/
