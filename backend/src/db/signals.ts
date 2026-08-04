@@ -23,9 +23,14 @@ export interface InsertSignalInput {
   quantity: string;
   thesis: string | null;
   thesisSource: 'llm' | 'fallback_template';
-  indicators: Prisma.InputJsonValue;
-  /** Raw review_equity_order response, stored verbatim. */
-  reviewSnapshot: Prisma.InputJsonValue;
+  /**
+   * These land in jsonb columns. They are typed `unknown` rather than
+   * `Prisma.InputJsonValue` because the review snapshot wraps a broker response
+   * whose shape is not ours to declare — narrowing it here would force a cast
+   * at every call site instead of the single documented one below.
+   */
+  indicators: unknown;
+  reviewSnapshot: unknown;
   executionMode: ExecMode;
   dedupeKey: string;
 }
@@ -65,8 +70,9 @@ export async function insertSignal(
         quantity: new Prisma.Decimal(input.quantity),
         thesis: input.thesis,
         thesisSource: input.thesisSource,
-        indicators: input.indicators,
-        reviewSnapshot: input.reviewSnapshot,
+        // The one place jsonb payloads cross into Prisma's JSON types.
+        indicators: input.indicators as Prisma.InputJsonValue,
+        reviewSnapshot: input.reviewSnapshot as Prisma.InputJsonValue,
         executionMode: input.executionMode,
         dedupeKey: input.dedupeKey,
       },
