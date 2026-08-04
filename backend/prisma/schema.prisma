@@ -1,0 +1,164 @@
+// Ollie data model, Phase 0.
+//
+// `users` and `subscriptions` from the PRD are deliberately absent: nothing in
+// Phases 0-1 reads them, and an unused table with an auth story attached is a
+// liability. They arrive with the iOS app in Phase 2.
+//
+// Immutability is not expressed here. Prisma has no DDL for "this row may only
+// change along a state machine", so it lives in hand-written plpgsql triggers
+// (migration 20260804_immutability_triggers). Treat this file as the shape and
+// that migration as the law.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum SignalSide {
+  buy
+  sell
+
+  @@map("signal_side")
+}
+
+enum SignalType {
+  technical
+  rebalance
+
+  @@map("signal_type")
+}
+
+enum SignalStatus {
+  pending
+  approved
+  rejected
+  expired
+
+  @@map("signal_status")
+}
+
+enum ExecMode {
+  paper
+  live
+
+  @@map("exec_mode")
+}
+
+enum PositionStatus {
+  open
+  closed
+
+  @@map("position_status")
+}
+
+model Signal {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  symbol     String     @db.Text
+  side       SignalSide
+  signalType SignalType @map("signal_type")
+  quantity   Decimal    @db.Decimal(18, 6)
+
+  /// Nullable on purpose: the LLM is allowed to fail, and a signal without a
+  /// thesis is still a signal. thesisSource records which path produced it.
+  thesis       String? @db.Text
+  thesisSource String  @default("llm") @map("thesis_source") @db.Text
+
+  /// Computed strategy inputs (rsi14, macd line/signal/hist, previous bar values).
+  indicators Json @db.JsonB
+
+  /// Raw review_equity_order response. NOT NULL is the structural guarantee
+  /// behind "no signal exists without a pre-trade review snapshot".
+  reviewSnapshot Json @map("review_snapshot") @db.JsonB
+
+  status        SignalStatus @default(pending)
+  executionMode ExecMode     @map("execution_mode")
+
+  decidedAt    DateTime? @map("decided_at") @db.Timestamptz(6)
+  decideReason String?   @map("decide_reason") @db.Text
+
+  published   Boolean   @default(false)
+  publishedAt DateTime? @map("published_at") @db.Timestamptz(6)
+
+  /// '{rule}:{symbol}:{side}:{barTime}'. The unique constraint is the
+  /// race-proof backstop behind the pipeline's in-process dedupe check.
+  dedupeKey String @unique @map("dedupe_key") @db.Text
+
+  /// Broker idempotency key, allocated now so that when live mode lands in
+  /// Phase 5 a retried place_equity_order cannot double-fill.
+  refId String @default(dbgenerated("gen_random_uuid()")) @map("ref_id") @db.Uuid
+
+  events      SignalEvent[]
+  executions  Execution[]
+  trackRecord TrackRecord[]
+
+  @@index([status, createdAt])
+  @@index([symbol, createdAt])
+  @@map("signals")
+}
+
+/// Append-only audit of every status transition, including the reason.
+model SignalEvent {
+  id         String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  signalId   String       @map("signal_id") @db.Uuid
+  fromStatus SignalStatus @map("from_status")
+  toStatus   SignalStatus @map("to_status")
+  reason     String?      @db.Text
+  createdAt  DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  signal Signal @relation(fields: [signalId], references: [id], onDelete: Restrict)
+
+  @@index([signalId, createdAt])
+  @@map("signal_events")
+}
+
+model Execution {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  signalId      String   @map("signal_id") @db.Uuid
+  mode          ExecMode
+  fillPrice     Decimal  @map("fill_price") @db.Decimal(18, 6)
+  quantity      Decimal  @db.Decimal(18, 6)
+  filledAt      DateTime @default(now()) @map("filled_at") @db.Timestamptz(6)
+  /// Null for paper fills; live fills carry the broker's order id.
+  brokerOrderId String?  @map("broker_order_id") @db.Text
+
+  signal Signal @relation(fields: [signalId], references: [id], onDelete: Restrict)
+
+  @@index([signalId])
+  @@map("executions")
+}
+
+/// Append-only. Corrections are new rows, never edits — the credibility of the
+/// track record is the product (PRD §4.4).
+model TrackRecord {
+  id            String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  signalId      String         @map("signal_id") @db.Uuid
+  entryPrice    Decimal        @map("entry_price") @db.Decimal(18, 6)
+  exitPrice     Decimal?       @map("exit_price") @db.Decimal(18, 6)
+  realizedPnl   Decimal?       @map("realized_pnl") @db.Decimal(18, 6)
+  unrealizedPnl Decimal?       @map("unrealized_pnl") @db.Decimal(18, 6)
+  status        PositionStatus
+  recordedAt    DateTime       @default(now()) @map("recorded_at") @db.Timestamptz(6)
+
+  signal Signal @relation(fields: [signalId], references: [id], onDelete: Restrict)
+
+  @@index([signalId, recordedAt])
+  @@map("track_record")
+}
+
+/// Single row (id is pinned to 1). Lives in the database rather than the
+/// environment so the kill switch survives a restart and the iOS app can flip
+/// it in Phase 2 without a redeploy.
+model AppSettings {
+  id            Int      @id @default(1)
+  killSwitch    Boolean  @default(false) @map("kill_switch")
+  executionMode ExecMode @default(paper) @map("execution_mode")
+  updatedAt     DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("app_settings")
+}
