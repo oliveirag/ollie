@@ -14,6 +14,7 @@ import {
 } from 'fastify-type-provider-zod';
 import type { Logger } from 'pino';
 import type { Config } from '../config/index.js';
+import type { BrokerAdapter } from '../orchestrator/robinhood/client.js';
 import { MissingOwnerTokenError, requireOwnerToken } from './auth.js';
 import { registerHealthRoutes } from './routes/health.js';
 import { registerSignalRoutes } from './routes/signals.js';
@@ -32,6 +33,13 @@ import { registerSignalRoutes } from './routes/signals.js';
 export interface ApiDeps {
   config: Config;
   logger: Logger;
+  /**
+   * Only reached by a live-mode approval, which throws until Phase 5, and by
+   * the dashboard's best-effort quotes. Injected rather than constructed here
+   * so tests can pass a mock and so the process owns exactly one adapter's
+   * lifecycle.
+   */
+  broker: BrokerAdapter;
 }
 
 /**
@@ -77,7 +85,7 @@ export const OPENAPI_SERVERS = [
  * silently disabled is worse than one that is down.
  */
 export async function buildApp(deps: ApiDeps): Promise<OllieApp> {
-  const { config, logger } = deps;
+  const { config, logger, broker } = deps;
   if (!config.ownerApiToken) throw new MissingOwnerTokenError();
 
   const app = Fastify({
@@ -124,7 +132,7 @@ export async function buildApp(deps: ApiDeps): Promise<OllieApp> {
   await app.register(
     async (scope) => {
       scope.addHook('onRequest', requireOwnerToken(config.ownerApiToken!));
-      await scope.register(registerSignalRoutes, { config });
+      await scope.register(registerSignalRoutes, { config, broker, logger });
     },
     { prefix: '/v1' },
   );

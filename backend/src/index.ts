@@ -40,7 +40,7 @@ async function main(): Promise<void> {
   // is the intended failure: the approval and kill-switch surface must not be
   // reachable without a credential, and a process that starts anyway would
   // hide the misconfiguration behind a healthy /healthz.
-  const app = await buildApp({ config, logger });
+  const app = await buildApp({ config, logger, broker });
   await app.listen({ port: config.port, host: '0.0.0.0' });
   logger.info({ port: config.port }, 'owner API listening on /healthz and /v1');
 

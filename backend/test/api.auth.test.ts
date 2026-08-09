@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildConfig } from '../src/config/index.js';
 import { logger } from '../src/logger.js';
+import { MockBrokerAdapter } from '../src/orchestrator/robinhood/mockClient.js';
 import { buildApp } from '../src/server/app.js';
 import { MissingOwnerTokenError } from '../src/server/auth.js';
 import { authHeader, buildTestApp, TEST_OWNER_TOKEN } from './helpers/api.js';
@@ -20,7 +21,9 @@ describe('owner API authentication', () => {
 
   it('refuses to build without an owner token', async () => {
     const config = { ...buildConfig(), ownerApiToken: null };
-    await expect(buildApp({ config, logger })).rejects.toThrow(MissingOwnerTokenError);
+    await expect(
+      buildApp({ config, logger, broker: new MockBrokerAdapter() }),
+    ).rejects.toThrow(MissingOwnerTokenError);
   });
 
   it('serves /healthz without a token', async () => {

@@ -52,10 +52,19 @@ async function main(): Promise<void> {
       macdSignal: -1.42,
       macdHist: -0.42,
     },
+    // Fabricated, but shaped so ReviewSnapshotSchema accepts it. A snapshot
+    // that only looks plausible makes this signal un-approvable: the executor
+    // parses the snapshot to get its fill price and refuses to guess, so a
+    // partial one turns every `--decide approve` into an approved-but-unfilled
+    // signal. `note` survives because the schema passes extra keys through.
     reviewSnapshot: {
+      schema_version: 1,
       note: 'fabricated — not a real review_equity_order response',
       estimated_price: '182.50',
       alerts: [],
+      requested: { symbol: 'AAPL', side: 'buy', quantity: '2', type: 'market' },
+      captured_at: barTime,
+      raw: { note: 'no broker was contacted' },
     },
     executionMode: settings.executionMode,
     dedupeKey: `write-test:AAPL:buy:${barTime}:${randomUUID().slice(0, 8)}`,

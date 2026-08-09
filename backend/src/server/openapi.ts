@@ -1,6 +1,7 @@
 import { stringify } from 'yaml';
 import { buildConfig } from '../config/index.js';
 import { logger } from '../logger.js';
+import { MockBrokerAdapter } from '../orchestrator/robinhood/mockClient.js';
 import { buildApp } from './app.js';
 
 /**
@@ -95,7 +96,13 @@ export async function renderOpenApiYaml(): Promise<string> {
     ownerApiToken: SPEC_ONLY_TOKEN,
   };
 
-  const app = await buildApp({ config, logger: logger.child({ component: 'openapi' }) });
+  // The mock adapter never opens a connection; rendering a document should not
+  // require broker credentials, or reach the network at all.
+  const app = await buildApp({
+    config,
+    logger: logger.child({ component: 'openapi' }),
+    broker: new MockBrokerAdapter(),
+  });
   try {
     await app.ready();
     const document = app.swagger() as Record<string, unknown>;

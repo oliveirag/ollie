@@ -20,6 +20,19 @@ components:
       scheme: bearer
       description: The pre-shared owner token (OWNER_API_TOKEN). Phase 2 has one user; Sign in with Apple arrives in Phase 4 with the subscriber side.
   schemas:
+    DecisionRequestInput:
+      type: object
+      properties:
+        action:
+          type: string
+          enum:
+            - approve
+            - reject
+        reason:
+          type: string
+          maxLength: 500
+      required:
+        - action
     SignalSide:
       type: string
       enum:
@@ -60,6 +73,18 @@ components:
         - error
       additionalProperties: false
       description: Error response
+    ReviewAlert:
+      type: object
+      properties:
+        type:
+          type: string
+          description: Broker alert code, e.g. EQUITY_NOT_ENOUGH_BP
+        details:
+          description: Broker-supplied payload; shape is not ours to declare
+      required:
+        - type
+        - details
+      additionalProperties: false
     SignalSummary:
       type: object
       properties:
@@ -141,6 +166,174 @@ components:
             $ref: "#/components/schemas/SignalSummary"
       required:
         - signals
+      additionalProperties: false
+    SignalEvent:
+      type: object
+      properties:
+        from_status:
+          $ref: "#/components/schemas/SignalStatus"
+        to_status:
+          $ref: "#/components/schemas/SignalStatus"
+        reason:
+          anyOf:
+            - type: string
+            - type: "null"
+        created_at:
+          type: string
+          format: date-time
+          pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z))$
+      required:
+        - from_status
+        - to_status
+        - reason
+        - created_at
+      additionalProperties: false
+    SignalDetail:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+        created_at:
+          type: string
+          format: date-time
+          pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z))$
+        symbol:
+          type: string
+        side:
+          $ref: "#/components/schemas/SignalSide"
+        signal_type:
+          $ref: "#/components/schemas/SignalType"
+        quantity:
+          type: string
+          description: Decimal number as a string. Never parse this into a float.
+        status:
+          $ref: "#/components/schemas/SignalStatus"
+        execution_mode:
+          $ref: "#/components/schemas/ExecutionMode"
+        estimated_price:
+          anyOf:
+            - type: string
+              description: Decimal number as a string. Never parse this into a float.
+            - type: "null"
+          description: From the review snapshot at proposal time; null if unreadable
+        thesis:
+          anyOf:
+            - type: string
+            - type: "null"
+        thesis_source:
+          anyOf:
+            - $ref: "#/components/schemas/ThesisSource"
+            - type: "null"
+          description: null when the stored value is not one the app knows how to render. The app uses this to mark a fallback-template thesis, so an unrecognized value must not be shown as "llm".
+        expires_at:
+          anyOf:
+            - type: string
+              format: date-time
+              pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z))$
+            - type: "null"
+          description: created_at + SIGNAL_EXPIRY_MINUTES, computed at read time, for pending signals only. The expiry sweep remains the authority; this is a countdown hint, not a promise.
+        decided_at:
+          anyOf:
+            - type: string
+              format: date-time
+              pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z))$
+            - type: "null"
+        decide_reason:
+          anyOf:
+            - type: string
+            - type: "null"
+        indicators:
+          description: Computed strategy inputs at proposal time (rsi14, macd line/signal/hist, …)
+        review:
+          anyOf:
+            - type: object
+              properties:
+                estimated_price:
+                  type: string
+                  description: Decimal number as a string. Never parse this into a float.
+                captured_at:
+                  type: string
+                alerts:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/ReviewAlert"
+              required:
+                - estimated_price
+                - captured_at
+                - alerts
+              additionalProperties: false
+            - type: "null"
+          description: Parsed review snapshot; null when the stored snapshot is unreadable
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/SignalEvent"
+      required:
+        - id
+        - created_at
+        - symbol
+        - side
+        - signal_type
+        - quantity
+        - status
+        - execution_mode
+        - estimated_price
+        - thesis
+        - thesis_source
+        - expires_at
+        - decided_at
+        - decide_reason
+        - indicators
+        - review
+        - events
+      additionalProperties: false
+    Execution:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+        mode:
+          $ref: "#/components/schemas/ExecutionMode"
+        fill_price:
+          type: string
+          description: Decimal number as a string. Never parse this into a float.
+        quantity:
+          type: string
+          description: Decimal number as a string. Never parse this into a float.
+        filled_at:
+          type: string
+          format: date-time
+          pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z))$
+        broker_order_id:
+          anyOf:
+            - type: string
+            - type: "null"
+          description: Null for paper fills
+      required:
+        - id
+        - mode
+        - fill_price
+        - quantity
+        - filled_at
+        - broker_order_id
+      additionalProperties: false
+    DecisionResponse:
+      type: object
+      properties:
+        signal:
+          $ref: "#/components/schemas/SignalSummary"
+        execution:
+          anyOf:
+            - $ref: "#/components/schemas/Execution"
+            - type: "null"
+          description: The fill, on approval. Null for a rejection — nothing is executed.
+      required:
+        - signal
+        - execution
       additionalProperties: false
     HealthReport:
       type: object
@@ -240,6 +433,99 @@ paths:
                 $ref: "#/components/schemas/SignalList"
         "401":
           description: Missing or invalid owner token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /v1/signals/{id}:
+    get:
+      operationId: getSignal
+      summary: Full detail for one signal
+      tags:
+        - signals
+      description: Thesis and its source, the computed indicators, the parsed review snapshot (estimated price and any broker alerts), and the append-only status history.
+      parameters:
+        - schema:
+            type: string
+            format: uuid
+            pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+          in: path
+          name: id
+          required: true
+      security:
+        - ownerToken: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SignalDetail"
+        "401":
+          description: Missing or invalid owner token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No signal with that id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /v1/signals/{id}/decision:
+    post:
+      operationId: decideSignal
+      summary: Approve or reject a pending signal
+      tags:
+        - signals
+      description: |-
+        Approving runs the executor for the signal's own execution mode and returns the resulting fill; in paper mode that never contacts the broker. Rejecting records the reason and executes nothing.
+
+        A signal that has already left `pending` — decided elsewhere, or expired by the sweep — returns 409 with its current status. That is the system working: the decision is exactly-once at the database tier.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DecisionRequestInput"
+      parameters:
+        - schema:
+            type: string
+            format: uuid
+            pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+          in: path
+          name: id
+          required: true
+      security:
+        - ownerToken: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DecisionResponse"
+        "401":
+          description: Missing or invalid owner token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No signal with that id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Already decided or expired, the kill switch is engaged, or live mode is not enabled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Approved, but the fill failed — see detail
           content:
             application/json:
               schema:

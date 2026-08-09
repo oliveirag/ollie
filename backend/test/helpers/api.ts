@@ -1,6 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import pino from 'pino';
 import { buildConfig, type Config } from '../../src/config/index.js';
+import type { BrokerAdapter } from '../../src/orchestrator/robinhood/client.js';
+import { MockBrokerAdapter } from '../../src/orchestrator/robinhood/mockClient.js';
 import { buildApp } from '../../src/server/app.js';
 
 export const TEST_OWNER_TOKEN = process.env.OWNER_API_TOKEN!;
@@ -21,8 +23,11 @@ export function testConfig(overrides: Partial<Config> = {}): Config {
   return { ...buildConfig(), ...overrides };
 }
 
-export async function buildTestApp(overrides: Partial<Config> = {}): Promise<FastifyInstance> {
-  return buildApp({ config: testConfig(overrides), logger: testLogger });
+export async function buildTestApp(
+  overrides: Partial<Config> = {},
+  broker: BrokerAdapter = new MockBrokerAdapter(),
+): Promise<FastifyInstance> {
+  return buildApp({ config: testConfig(overrides), logger: testLogger, broker });
 }
 
 export function authHeader(token: string = TEST_OWNER_TOKEN): Record<string, string> {

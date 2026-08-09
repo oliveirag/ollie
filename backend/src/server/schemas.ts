@@ -141,6 +141,109 @@ export function toSignalSummary(signal: Signal, expiryMinutes: number): SignalSu
   };
 }
 
+/**
+ * One row of the append-only `signal_events` audit. The app renders this as
+ * the status history, which is the honest answer to "why is this expired" —
+ * the sweep writes its reason here the same way a decision does.
+ */
+export const SignalEventSchema = z
+  .object({
+    from_status: SignalStatusSchema,
+    to_status: SignalStatusSchema,
+    reason: z.string().nullable(),
+    created_at: z.string().datetime(),
+  })
+  .meta({ id: 'SignalEvent' });
+
+export const SignalDetailSchema = SignalSummarySchema.extend({
+  indicators: z
+    .unknown()
+    .describe('Computed strategy inputs at proposal time (rsi14, macd line/signal/hist, …)'),
+  review: z
+    .object({
+      estimated_price: decimalString,
+      captured_at: z.string(),
+      alerts: z.array(ReviewAlertSchema),
+    })
+    .nullable()
+    .describe('Parsed review snapshot; null when the stored snapshot is unreadable'),
+  events: z.array(SignalEventSchema),
+}).meta({ id: 'SignalDetail' });
+
+export type SignalDetail = z.infer<typeof SignalDetailSchema>;
+
+export const DecisionRequestSchema = z
+  .object({
+    action: z.enum(['approve', 'reject']),
+    reason: z.string().max(500).optional(),
+  })
+  .meta({ id: 'DecisionRequest' });
+
+export const ExecutionSchema = z
+  .object({
+    id: z.string().uuid(),
+    mode: ExecModeSchema,
+    fill_price: decimalString,
+    quantity: decimalString,
+    filled_at: z.string().datetime(),
+    broker_order_id: z.string().nullable().describe('Null for paper fills'),
+  })
+  .meta({ id: 'Execution' });
+
+export const DecisionResponseSchema = z
+  .object({
+    signal: SignalSummarySchema,
+    execution: ExecutionSchema.nullable().describe(
+      'The fill, on approval. Null for a rejection — nothing is executed.',
+    ),
+  })
+  .meta({ id: 'DecisionResponse' });
+
+export function toSignalEvent(event: {
+  fromStatus: string;
+  toStatus: string;
+  reason: string | null;
+  createdAt: Date;
+}): z.infer<typeof SignalEventSchema> {
+  return {
+    from_status: event.fromStatus as z.infer<typeof SignalStatusSchema>,
+    to_status: event.toStatus as z.infer<typeof SignalStatusSchema>,
+    reason: event.reason,
+    created_at: event.createdAt.toISOString(),
+  };
+}
+
+/**
+ * The detail view exposes the parsed review, not the raw broker payload. The
+ * app needs the estimated price and the alert codes — an `EQUITY_NOT_ENOUGH_BP`
+ * chip rather than buried JSON — and shipping the vendor's whole response to a
+ * client would make its shape our contract.
+ */
+export function toSignalDetail(
+  signal: Signal,
+  events: Parameters<typeof toSignalEvent>[0][],
+  expiryMinutes: number,
+): SignalDetail {
+  let review: SignalDetail['review'] = null;
+  try {
+    const parsed = parseReviewSnapshot(signal.reviewSnapshot);
+    review = {
+      estimated_price: parsed.estimated_price,
+      captured_at: parsed.captured_at,
+      alerts: parsed.alerts,
+    };
+  } catch {
+    review = null;
+  }
+
+  return {
+    ...toSignalSummary(signal, expiryMinutes),
+    indicators: signal.indicators,
+    review,
+    events: events.map(toSignalEvent),
+  };
+}
+
 export const HealthReportSchema = z
   .object({
     status: z.enum(['ok', 'degraded']),
