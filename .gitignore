@@ -76,3 +76,11 @@ coverage/
 .DS_Store
 *.log
 backend/scripts/out/
+
+# iOS: the project file is generated from ios/project.yml by XcodeGen and is a
+# build product, not source. Checking it in would reintroduce exactly the
+# pbxproj merge conflicts the declarative manifest exists to avoid.
+ios/*.xcodeproj
+ios/*.xcworkspace
+ios/build/
+DerivedData/

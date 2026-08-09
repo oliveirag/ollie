@@ -1,0 +1,67 @@
+# XcodeGen manifest. The .xcodeproj is generated from this file and is NOT
+# checked in — see .gitignore. Regenerate with `xcodegen` from this directory.
+#
+# Declarative on purpose (Phase 2 plan, decision 5): adding a source file here
+# is a one-line edit, where hand-editing a pbxproj means inventing UUIDs and
+# hoping. That difference is what makes the project agent-editable.
+
+name: Ollie
+
+options:
+  bundleIdPrefix: com.guilhermeoliveira
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+  groupSortPosition: top
+
+packages:
+  # Apple's own OpenAPI toolchain. The Swift client is a build product
+  # generated from docs/openapi.yaml, never checked-in source, so a backend
+  # route change cannot leave a stale client behind.
+  swift-openapi-runtime:
+    url: https://github.com/apple/swift-openapi-runtime
+    from: 1.12.0
+  swift-openapi-urlsession:
+    url: https://github.com/apple/swift-openapi-urlsession
+    from: 1.3.1
+  swift-openapi-generator:
+    url: https://github.com/apple/swift-openapi-generator
+    from: 1.13.0
+
+targets:
+  Ollie:
+    type: application
+    platform: iOS
+    sources:
+      # Ollie/Networking/openapi.yaml is a symlink to ../../../docs/openapi.yaml.
+      # The generator plugin requires the document inside the target's own
+      # source directory and explicitly supports a symlink, which is how the
+      # contract stays a single file: a copy under ios/ would be a second
+      # source of truth, and the backend's drift test only guards the one.
+      - path: Ollie
+    dependencies:
+      - package: swift-openapi-runtime
+        product: OpenAPIRuntime
+      - package: swift-openapi-urlsession
+        product: OpenAPIURLSession
+    buildToolPlugins:
+      - plugin: OpenAPIGenerator
+        package: swift-openapi-generator
+    # Without this XcodeGen writes no .xcscheme, and `xcodebuild -scheme Ollie`
+    # fails with "supported platforms ... is empty" — which reads like a missing
+    # SDK and is not one.
+    scheme:
+      testTargets: []
+      gatherCoverageData: false
+    settings:
+      base:
+        SWIFT_VERSION: "5.10"
+        TARGETED_DEVICE_FAMILY: "1"
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
+    info:
+      path: Ollie/Resources/Info.plist
+      properties:
+        CFBundleDisplayName: Ollie
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait

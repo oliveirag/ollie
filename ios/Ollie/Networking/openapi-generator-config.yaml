@@ -1,0 +1,6 @@
+# Client only — the app never serves the API, so generating server stubs would
+# be dead code in the binary.
+generate:
+  - types
+  - client
+accessModifier: internal
