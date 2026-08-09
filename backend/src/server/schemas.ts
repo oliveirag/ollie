@@ -34,9 +34,13 @@ export const ThesisSourceSchema = z
   .enum(['llm', 'fallback_template'])
   .meta({ id: 'ThesisSource' });
 
-const decimalString = z
-  .string()
-  .describe('Decimal number as a string. Never parse this into a float.');
+const decimalString = z.string().describe(
+  'Decimal number as a string. Never parse this into a float.\n\n' +
+    'Stored prices are serialized verbatim from the database, so trailing zeros are not ' +
+    'padded — "100" and "100.00" are the same value, and a fill of "182.6825" keeps all ' +
+    'four places. Computed aggregates are fixed at two. Format for display on the client; ' +
+    'do not assume a decimal-place count.',
+);
 
 export const ErrorSchema = z
   .object({
@@ -243,6 +247,72 @@ export function toSignalDetail(
     events: events.map(toSignalEvent),
   };
 }
+
+export const OpenLotSchema = z
+  .object({
+    signal_id: z.string().uuid(),
+    symbol: z.string(),
+    side: SignalSideSchema,
+    quantity: decimalString,
+    entry_price: decimalString,
+    opened_at: z.string().datetime(),
+    quote: decimalString
+      .nullable()
+      .describe('Last trade price. Null when the broker was unreachable.'),
+    quote_age_seconds: z
+      .number()
+      .int()
+      .nullable()
+      .describe('How stale the quote is. Render it — a stale price read as current is a lie.'),
+    unrealized_pnl: decimalString
+      .nullable()
+      .describe('(quote - entry) * quantity for a buy. Null whenever quote is null.'),
+  })
+  .meta({ id: 'OpenLot' });
+
+export const DashboardSchema = z
+  .object({
+    lots: z.array(OpenLotSchema),
+    totals: z.object({
+      cost_basis: decimalString,
+      market_value: decimalString
+        .nullable()
+        .describe('Null when any lot is missing a quote — a partial total is worse than none'),
+      unrealized_pnl: decimalString.nullable(),
+      realized_pnl: decimalString.describe(
+        'Zero until Phase 3. Nothing closes a position yet, so this is the honest number ' +
+          'rather than an invented one. A sell fill currently opens its own lot; matching it ' +
+          'against the buy is Phase 3 work.',
+      ),
+    }),
+    quotes_available: z
+      .boolean()
+      .describe('False when the broker could not be reached; lots then show entry basis only'),
+  })
+  .meta({ id: 'Dashboard' });
+
+export const SettingsSchema = z
+  .object({
+    kill_switch: z.boolean(),
+    execution_mode: ExecModeSchema,
+    live_trading_enabled: z
+      .boolean()
+      .describe(
+        'From the environment, read-only. The second of the two gates in front of real ' +
+          'money; the app renders the mode toggle as locked while this is false.',
+      ),
+  })
+  .meta({ id: 'Settings' });
+
+export const SettingsUpdateSchema = z
+  .object({
+    kill_switch: z.boolean().optional(),
+    execution_mode: ExecModeSchema.optional(),
+  })
+  .refine((body) => body.kill_switch !== undefined || body.execution_mode !== undefined, {
+    message: 'provide at least one of kill_switch or execution_mode',
+  })
+  .meta({ id: 'SettingsUpdate' });
 
 export const HealthReportSchema = z
   .object({
