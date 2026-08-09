@@ -1,20 +1,19 @@
-import { createServer, type Server } from 'node:http';
-import type { Logger } from 'pino';
+import type { ExecMode } from '@prisma/client';
 import { getPrisma } from '../db/client.js';
 import { getAppSettings } from '../db/settings.js';
 
 /**
- * The whole HTTP surface for Phases 0-1: a health endpoint for the platform.
- * The REST API the iOS app talks to arrives in Phase 2, generated against
- * docs/openapi.yaml — deliberately not started here so there is no half-built
- * API to accidentally depend on.
+ * The health probe's logic, independent of how it is served. Phase 2 moved the
+ * transport onto Fastify (see routes/health.ts); the report shape and its
+ * status codes are unchanged, because Railway's health check already keys on
+ * them.
  */
 
 export interface HealthReport {
   status: 'ok' | 'degraded';
   database: 'up' | 'down';
   killSwitch: boolean | null;
-  executionMode: string | null;
+  executionMode: ExecMode | null;
   uptimeSeconds: number;
   checkedAt: string;
 }
@@ -45,24 +44,4 @@ export async function checkHealth(): Promise<HealthReport> {
       checkedAt,
     };
   }
-}
-
-export function createHealthServer(logger: Logger): Server {
-  return createServer((req, res) => {
-    if (req.method !== 'GET' || req.url !== '/healthz') {
-      res.writeHead(404, { 'content-type': 'application/json' });
-      res.end(JSON.stringify({ error: 'not found' }));
-      return;
-    }
-
-    void checkHealth().then((report) => {
-      if (report.status !== 'ok') {
-        logger.error({ report }, 'health check degraded');
-      }
-      res.writeHead(report.status === 'ok' ? 200 : 503, {
-        'content-type': 'application/json',
-      });
-      res.end(JSON.stringify(report));
-    });
-  });
 }

@@ -4,7 +4,7 @@ import { getAppSettings } from './db/settings.js';
 import { logger } from './logger.js';
 import { McpBrokerAdapter } from './orchestrator/robinhood/mcpClient.js';
 import { startScheduler } from './orchestrator/scheduler.js';
-import { createHealthServer } from './server/health.js';
+import { buildApp } from './server/app.js';
 
 /**
  * Service entry point. Boot order matters: configuration is validated before
@@ -36,9 +36,13 @@ async function main(): Promise<void> {
   const broker = new McpBrokerAdapter({ logger });
   const scheduler = startScheduler({ broker, config, logger });
 
-  const server = createHealthServer(logger);
-  await new Promise<void>((resolve) => server.listen(config.port, resolve));
-  logger.info({ port: config.port }, 'health server listening on /healthz');
+  // Throws when OWNER_API_TOKEN is unset, taking the whole service down. That
+  // is the intended failure: the approval and kill-switch surface must not be
+  // reachable without a credential, and a process that starts anyway would
+  // hide the misconfiguration behind a healthy /healthz.
+  const app = await buildApp({ config, logger });
+  await app.listen({ port: config.port, host: '0.0.0.0' });
+  logger.info({ port: config.port }, 'owner API listening on /healthz and /v1');
 
   let shuttingDown = false;
   const shutdown = (signal: string) => {
@@ -46,15 +50,16 @@ async function main(): Promise<void> {
     shuttingDown = true;
     logger.info({ signal }, 'shutting down');
 
-    // Stop scheduling first so nothing new starts while we drain.
+    // Stop scheduling first so nothing new starts while we drain. Fastify's
+    // close awaits in-flight requests, which matters here: one of them may be
+    // an approval midway through writing a fill.
     scheduler.stop();
-    server.close(() => {
-      void broker
-        .close()
-        .catch(() => undefined)
-        .then(() => disconnectPrisma())
-        .then(() => process.exit(0));
-    });
+    void app
+      .close()
+      .then(() => broker.close())
+      .catch(() => undefined)
+      .then(() => disconnectPrisma())
+      .then(() => process.exit(0));
 
     // Railway sends SIGTERM and waits; if a request or a run is wedged, exit
     // anyway rather than being killed mid-write with no log line explaining it.

@@ -24,16 +24,21 @@
     "rh:authorize": "tsx scripts/authorize-rh.ts",
     "signal:write-test": "tsx scripts/write-test-signal.ts",
     "pipeline:once": "tsx scripts/run-pipeline-once.ts",
-    "signal:decide": "tsx scripts/decide-signal.ts"
+    "signal:decide": "tsx scripts/decide-signal.ts",
+    "openapi:write": "tsx scripts/write-openapi.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",
+    "@fastify/swagger": "^9.8.1",
     "@modelcontextprotocol/sdk": "^1.20.0",
     "@prisma/client": "^6.16.2",
     "croner": "^9.1.0",
     "dotenv": "^16.6.1",
+    "fastify": "^5.11.3",
+    "fastify-type-provider-zod": "^7.0.0",
     "pino": "^9.13.0",
-    "zod": "^3.25.76"
+    "yaml": "^2.9.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "^22.18.6",

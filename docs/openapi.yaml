@@ -1,85 +1,251 @@
-openapi: 3.1.0
-
-# Stub. The orchestrator is headless in Phases 0-1 and /healthz is its entire
-# HTTP surface, so this file documents only that.
+# Generated from the zod route schemas. Do not edit by hand.
 #
-# In Phase 2 this becomes the contract between the Node backend and the SwiftUI
-# app (PRD §5): Swift and TypeScript cannot share types, so the schema here is
-# the single source of truth, the Swift client is generated from it, and the
-# Node handlers are validated against it. Adding a route to the backend without
-# adding it here is how the two sides drift.
-
+# Regenerate with:  npm run openapi:write
+# The drift test (test/openapi.drift.test.ts) fails if this file falls behind
+# the routes, which is how a Swift client and a Node handler stay in sync.
+openapi: 3.1.0
 info:
   title: Ollie Orchestrator API
-  version: 0.1.0
-  description: |
+  version: 0.2.0
+  description: |-
     Owner-facing API for the Ollie trading-signal orchestrator.
 
-    Phases 0-1 expose only a health check. The approval, dashboard, and kill
-    switch endpoints arrive with the iOS app in Phase 2; the subscriber-facing
-    signal feed is a separate read-only MCP server in Phase 4 and will not be
-    described by this document.
+    Every route under /v1 requires the owner bearer token. `/healthz` is public so the platform health check can reach it.
 
+    The subscriber-facing signal feed is a separate read-only MCP server in Phase 4 and is not described by this document.
+components:
+  securitySchemes:
+    ownerToken:
+      type: http
+      scheme: bearer
+      description: The pre-shared owner token (OWNER_API_TOKEN). Phase 2 has one user; Sign in with Apple arrives in Phase 4 with the subscriber side.
+  schemas:
+    SignalSide:
+      type: string
+      enum:
+        - buy
+        - sell
+    SignalStatus:
+      type: string
+      enum:
+        - pending
+        - approved
+        - rejected
+        - expired
+    SignalType:
+      type: string
+      enum:
+        - technical
+        - rebalance
+    ExecutionMode:
+      type: string
+      enum:
+        - paper
+        - live
+    ThesisSource:
+      type: string
+      enum:
+        - llm
+        - fallback_template
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+        detail:
+          type: string
+        status:
+          $ref: "#/components/schemas/SignalStatus"
+      required:
+        - error
+      additionalProperties: false
+      description: Error response
+    SignalSummary:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+        created_at:
+          type: string
+          format: date-time
+          pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z))$
+        symbol:
+          type: string
+        side:
+          $ref: "#/components/schemas/SignalSide"
+        signal_type:
+          $ref: "#/components/schemas/SignalType"
+        quantity:
+          type: string
+          description: Decimal number as a string. Never parse this into a float.
+        status:
+          $ref: "#/components/schemas/SignalStatus"
+        execution_mode:
+          $ref: "#/components/schemas/ExecutionMode"
+        estimated_price:
+          anyOf:
+            - type: string
+              description: Decimal number as a string. Never parse this into a float.
+            - type: "null"
+          description: From the review snapshot at proposal time; null if unreadable
+        thesis:
+          anyOf:
+            - type: string
+            - type: "null"
+        thesis_source:
+          anyOf:
+            - $ref: "#/components/schemas/ThesisSource"
+            - type: "null"
+          description: null when the stored value is not one the app knows how to render. The app uses this to mark a fallback-template thesis, so an unrecognized value must not be shown as "llm".
+        expires_at:
+          anyOf:
+            - type: string
+              format: date-time
+              pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z))$
+            - type: "null"
+          description: created_at + SIGNAL_EXPIRY_MINUTES, computed at read time, for pending signals only. The expiry sweep remains the authority; this is a countdown hint, not a promise.
+        decided_at:
+          anyOf:
+            - type: string
+              format: date-time
+              pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z))$
+            - type: "null"
+        decide_reason:
+          anyOf:
+            - type: string
+            - type: "null"
+      required:
+        - id
+        - created_at
+        - symbol
+        - side
+        - signal_type
+        - quantity
+        - status
+        - execution_mode
+        - estimated_price
+        - thesis
+        - thesis_source
+        - expires_at
+        - decided_at
+        - decide_reason
+      additionalProperties: false
+    SignalList:
+      type: object
+      properties:
+        signals:
+          type: array
+          items:
+            $ref: "#/components/schemas/SignalSummary"
+      required:
+        - signals
+      additionalProperties: false
+    HealthReport:
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+            - ok
+            - degraded
+        database:
+          type: string
+          enum:
+            - up
+            - down
+        killSwitch:
+          anyOf:
+            - type: boolean
+            - type: "null"
+          description: Runtime kill switch from app_settings; null when the database is unreachable
+        executionMode:
+          anyOf:
+            - $ref: "#/components/schemas/ExecutionMode"
+            - type: "null"
+        uptimeSeconds:
+          type: integer
+          minimum: -9007199254740991
+          maximum: 9007199254740991
+        checkedAt:
+          type: string
+          format: date-time
+          pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z))$
+      required:
+        - status
+        - database
+        - killSwitch
+        - executionMode
+        - uptimeSeconds
+        - checkedAt
+      additionalProperties: false
+paths:
+  /healthz:
+    get:
+      operationId: getHealth
+      summary: Liveness and configuration check
+      description: |-
+        Reports database reachability and the runtime safety flags as the service currently sees them. The flags are included deliberately: the fastest way to answer "what mode is production actually in" should not be reading deploy variables and hoping they match.
+
+        Returns 503 when the database is unreachable, which is what the platform health check keys on.
+      responses:
+        "200":
+          description: Service healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthReport"
+        "503":
+          description: Service degraded — the database is unreachable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthReport"
+  /v1/signals:
+    get:
+      operationId: listSignals
+      summary: List pending or decided signals
+      tags:
+        - signals
+      description: Pending items carry `expires_at`, computed at read time from the current SIGNAL_EXPIRY_MINUTES. The expiry sweep remains the authority on what is actually expired; the timestamp drives the countdown UI and nothing else.
+      parameters:
+        - schema:
+            default: pending
+            type: string
+            enum:
+              - pending
+              - decided
+          in: query
+          name: status
+          required: false
+          description: pending = awaiting the owner; decided = approved, rejected, or expired
+        - schema:
+            default: 50
+            type: integer
+            minimum: 1
+            maximum: 200
+          in: query
+          name: limit
+          required: false
+          description: Decided list only
+      security:
+        - ownerToken: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SignalList"
+        "401":
+          description: Missing or invalid owner token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 servers:
   - url: http://localhost:3000
     description: Local development
   - url: https://ollie.up.railway.app
     description: Railway
-
-paths:
-  /healthz:
-    get:
-      summary: Liveness and configuration check
-      description: |
-        Reports database reachability and the runtime safety flags as the
-        service currently sees them. The flags are included deliberately: the
-        fastest way to answer "what mode is production actually in" should not
-        be reading deploy variables and hoping they match.
-
-        Returns 503 when the database is unreachable, which is what the
-        platform health check keys on.
-      operationId: getHealth
-      responses:
-        '200':
-          description: Service healthy
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HealthReport'
-        '503':
-          description: Service degraded — the database is unreachable
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HealthReport'
-
-components:
-  schemas:
-    HealthReport:
-      type: object
-      required: [status, database, uptimeSeconds, checkedAt]
-      properties:
-        status:
-          type: string
-          enum: [ok, degraded]
-        database:
-          type: string
-          enum: [up, down]
-        killSwitch:
-          type: [boolean, 'null']
-          description: Runtime kill switch from app_settings; null when the database is unreachable.
-        executionMode:
-          type: [string, 'null']
-          enum: [paper, live, null]
-        uptimeSeconds:
-          type: integer
-        checkedAt:
-          type: string
-          format: date-time
-      example:
-        status: ok
-        database: up
-        killSwitch: false
-        executionMode: paper
-        uptimeSeconds: 42
-        checkedAt: '2026-08-04T17:39:01.034Z'

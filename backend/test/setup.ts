@@ -8,3 +8,7 @@ process.env.LOG_LEVEL ??= 'silent';
 // developer's working data. Nothing in a test may write to the dev DATABASE_URL.
 process.env.DATABASE_URL =
   process.env.TEST_DATABASE_URL ?? 'postgresql://ollie:ollie@localhost:5432/ollie_test';
+
+// The API refuses to build without one. Fixed rather than random so a failing
+// assertion prints something recognizable instead of noise.
+process.env.OWNER_API_TOKEN = 'test-owner-token-0000000000000000000000';

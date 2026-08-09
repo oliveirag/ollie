@@ -145,6 +145,22 @@ export async function listPendingSignals(
   return prisma.signal.findMany({ where: { status: 'pending' }, orderBy: { createdAt: 'asc' } });
 }
 
+/**
+ * Signals that have reached a terminal status, newest first — the app's
+ * history view. Capped because the owner scrolls a recent window, not the
+ * whole archive; the track record (Phase 3) is where the full history lives.
+ */
+export async function listDecidedSignals(
+  limit = 50,
+  prisma: PrismaClient = getPrisma(),
+): Promise<Signal[]> {
+  return prisma.signal.findMany({
+    where: { status: { in: ['approved', 'rejected', 'expired'] } },
+    orderBy: { decidedAt: 'desc' },
+    take: limit,
+  });
+}
+
 /** Pending signals whose approval window has elapsed, oldest first. */
 export async function listExpiredPendingSignals(
   cutoff: Date,

@@ -7,6 +7,8 @@ import { z } from 'zod';
  * half-written signal.
  */
 
+// `.default()` takes the *output* value in zod 4, so these read `false`, not
+// `'false'` — the default short-circuits the transform rather than feeding it.
 const bool = z
   .enum(['true', 'false'])
   .transform((v) => v === 'true');
@@ -53,8 +55,20 @@ const EnvSchema = z.object({
   PIPELINE_CRON: z.string().default('35 9 * * 1-5'),
   EXPIRY_SWEEP_CRON: z.string().default('* * * * *'),
 
-  KILL_SWITCH: bool.default('false'),
-  LIVE_TRADING_ENABLED: bool.default('false'),
+  KILL_SWITCH: bool.default(false),
+  LIVE_TRADING_ENABLED: bool.default(false),
+
+  /**
+   * Bearer credential for the owner API (Phase 2). Empty means "no API",
+   * which is why the shape is validated here but the requirement is enforced
+   * by the server: the CLIs and the scheduler have no business demanding an
+   * HTTP token, and a weak-but-present token is worse than an absent one.
+   */
+  OWNER_API_TOKEN: z
+    .string()
+    .min(32, 'must be at least 32 characters; generate with `openssl rand -hex 32`')
+    .or(z.literal(''))
+    .default(''),
 });
 
 export type Env = z.infer<typeof EnvSchema>;
@@ -95,6 +109,8 @@ export interface Config {
   timezone: string;
   killSwitchEnv: boolean;
   liveTradingEnabled: boolean;
+  /** null when unset; the API refuses to start rather than run unauthenticated. */
+  ownerApiToken: string | null;
   anthropic: { apiKey: string; model: string };
   robinhood: {
     mcpUrl: string;
@@ -177,6 +193,7 @@ export function buildConfig(source: NodeJS.ProcessEnv = process.env): Config {
     timezone: TIMEZONE,
     killSwitchEnv: env.KILL_SWITCH,
     liveTradingEnabled: env.LIVE_TRADING_ENABLED,
+    ownerApiToken: env.OWNER_API_TOKEN || null,
     anthropic: { apiKey: env.ANTHROPIC_API_KEY, model: env.ANTHROPIC_MODEL },
     robinhood: {
       mcpUrl: env.RH_MCP_URL,
