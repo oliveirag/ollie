@@ -25,6 +25,7 @@ is observed through logs and the database.
 
    ```
    ANTHROPIC_API_KEY=…
+   OWNER_API_TOKEN=…
    RH_OAUTH_CLIENT_ID=…
    RH_OAUTH_REFRESH_TOKEN=…
    SYMBOL_ALLOWLIST=AAPL,MSFT,SPY
@@ -33,6 +34,13 @@ is observed through logs and the database.
    LIVE_TRADING_ENABLED=false
    NODE_ENV=production
    ```
+
+   `OWNER_API_TOKEN` is the owner API's only credential (Phase 2). Generate it
+   with `openssl rand -hex 32` and paste the same value into the iOS app, which
+   keeps it in the Keychain. **The service refuses to boot without it** — it
+   would otherwise serve the approval and kill-switch endpoints unauthenticated,
+   so a crash-loop is the intended failure. If a deploy is restarting with no
+   obvious cause, check this variable first.
 
    The Robinhood credential is **not** a token you can paste from anywhere. The
    MCP speaks OAuth 2.1 + PKCE, and the first token requires a human at
