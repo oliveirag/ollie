@@ -12,7 +12,8 @@ Two strictly separated sides:
   places a trade for anyone but the owner.
 
 Full product spec: [Ollie.md](Ollie.md).
-Current build plan: [docs/implementation-plan-phases-0-1.md](docs/implementation-plan-phases-0-1.md).
+Build plans: [phases 0–1](docs/implementation-plan-phases-0-1.md) (done, pending live E2E) ·
+[phase 2](docs/implementation-plan-phase-2.md) (planned).
 
 ## Status
 
@@ -20,7 +21,7 @@ Current build plan: [docs/implementation-plan-phases-0-1.md](docs/implementation
 | --- | --- | --- |
 | 0 | Repo, Postgres, data model, immutable signal logging | complete |
 | 1 | Headless orchestrator: strategy, review snapshot, thesis, paper execute seam | complete (pending live E2E) |
-| 2 | iOS owner app (approve/reject, dashboard, kill switch) | not started |
+| 2 | iOS owner app (approve/reject, dashboard, kill switch) | planned |
 | 3 | Track record accrual | not started |
 | 4 | Subscriber Signal MCP server | not started |
 | 5 | Gated flips: live money, then autonomy within caps | not started |
