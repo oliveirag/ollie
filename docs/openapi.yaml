@@ -3,7 +3,12 @@
 # Regenerate with:  npm run openapi:write
 # The drift test (test/openapi.drift.test.ts) fails if this file falls behind
 # the routes, which is how a Swift client and a Node handler stay in sync.
-openapi: 3.1.0
+#
+# Emitted as OpenAPI 3.0.3 with `nullable: true` rather than 3.1's
+# `anyOf: [X, {type: "null"}]`: swift-openapi-generator does not support the
+# 3.1 null type and drops nullable properties from the generated client
+# entirely. See toOpenApi30 in src/server/openapi.ts.
+openapi: 3.0.3
 info:
   title: Ollie Orchestrator API
   version: 0.2.0
@@ -125,40 +130,34 @@ components:
         execution_mode:
           $ref: "#/components/schemas/ExecutionMode"
         estimated_price:
-          anyOf:
-            - type: string
-              description: |-
-                Decimal number as a string. Never parse this into a float.
+          type: string
+          description: |-
+            Decimal number as a string. Never parse this into a float.
 
-                Stored prices are serialized verbatim from the database, so trailing zeros are not padded — "100" and "100.00" are the same value, and a fill of "182.6825" keeps all four places. Computed aggregates are fixed at two. Format for display on the client; do not assume a decimal-place count.
-            - type: "null"
-          description: From the review snapshot at proposal time; null if unreadable
+            Stored prices are serialized verbatim from the database, so trailing zeros are not padded — "100" and "100.00" are the same value, and a fill of "182.6825" keeps all four places. Computed aggregates are fixed at two. Format for display on the client; do not assume a decimal-place count.
+          nullable: true
         thesis:
-          anyOf:
-            - type: string
-            - type: "null"
+          type: string
+          nullable: true
         thesis_source:
-          anyOf:
-            - $ref: "#/components/schemas/ThesisSource"
-            - type: "null"
           description: null when the stored value is not one the app knows how to render. The app uses this to mark a fallback-template thesis, so an unrecognized value must not be shown as "llm".
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/ThesisSource"
         expires_at:
-          anyOf:
-            - type: string
-              format: date-time
-              pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z))$
-            - type: "null"
+          type: string
+          format: date-time
+          pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z))$
+          nullable: true
           description: created_at + SIGNAL_EXPIRY_MINUTES, computed at read time, for pending signals only. The expiry sweep remains the authority; this is a countdown hint, not a promise.
         decided_at:
-          anyOf:
-            - type: string
-              format: date-time
-              pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z))$
-            - type: "null"
+          type: string
+          format: date-time
+          pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z))$
+          nullable: true
         decide_reason:
-          anyOf:
-            - type: string
-            - type: "null"
+          type: string
+          nullable: true
       required:
         - id
         - created_at
@@ -193,9 +192,8 @@ components:
         to_status:
           $ref: "#/components/schemas/SignalStatus"
         reason:
-          anyOf:
-            - type: string
-            - type: "null"
+          type: string
+          nullable: true
         created_at:
           type: string
           format: date-time
@@ -234,64 +232,57 @@ components:
         execution_mode:
           $ref: "#/components/schemas/ExecutionMode"
         estimated_price:
-          anyOf:
-            - type: string
+          type: string
+          description: |-
+            Decimal number as a string. Never parse this into a float.
+
+            Stored prices are serialized verbatim from the database, so trailing zeros are not padded — "100" and "100.00" are the same value, and a fill of "182.6825" keeps all four places. Computed aggregates are fixed at two. Format for display on the client; do not assume a decimal-place count.
+          nullable: true
+        thesis:
+          type: string
+          nullable: true
+        thesis_source:
+          description: null when the stored value is not one the app knows how to render. The app uses this to mark a fallback-template thesis, so an unrecognized value must not be shown as "llm".
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/ThesisSource"
+        expires_at:
+          type: string
+          format: date-time
+          pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z))$
+          nullable: true
+          description: created_at + SIGNAL_EXPIRY_MINUTES, computed at read time, for pending signals only. The expiry sweep remains the authority; this is a countdown hint, not a promise.
+        decided_at:
+          type: string
+          format: date-time
+          pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z))$
+          nullable: true
+        decide_reason:
+          type: string
+          nullable: true
+        indicators:
+          description: Computed strategy inputs at proposal time (rsi14, macd line/signal/hist, …)
+        review:
+          type: object
+          properties:
+            estimated_price:
+              type: string
               description: |-
                 Decimal number as a string. Never parse this into a float.
 
                 Stored prices are serialized verbatim from the database, so trailing zeros are not padded — "100" and "100.00" are the same value, and a fill of "182.6825" keeps all four places. Computed aggregates are fixed at two. Format for display on the client; do not assume a decimal-place count.
-            - type: "null"
-          description: From the review snapshot at proposal time; null if unreadable
-        thesis:
-          anyOf:
-            - type: string
-            - type: "null"
-        thesis_source:
-          anyOf:
-            - $ref: "#/components/schemas/ThesisSource"
-            - type: "null"
-          description: null when the stored value is not one the app knows how to render. The app uses this to mark a fallback-template thesis, so an unrecognized value must not be shown as "llm".
-        expires_at:
-          anyOf:
-            - type: string
-              format: date-time
-              pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z))$
-            - type: "null"
-          description: created_at + SIGNAL_EXPIRY_MINUTES, computed at read time, for pending signals only. The expiry sweep remains the authority; this is a countdown hint, not a promise.
-        decided_at:
-          anyOf:
-            - type: string
-              format: date-time
-              pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z))$
-            - type: "null"
-        decide_reason:
-          anyOf:
-            - type: string
-            - type: "null"
-        indicators:
-          description: Computed strategy inputs at proposal time (rsi14, macd line/signal/hist, …)
-        review:
-          anyOf:
-            - type: object
-              properties:
-                estimated_price:
-                  type: string
-                  description: |-
-                    Decimal number as a string. Never parse this into a float.
-
-                    Stored prices are serialized verbatim from the database, so trailing zeros are not padded — "100" and "100.00" are the same value, and a fill of "182.6825" keeps all four places. Computed aggregates are fixed at two. Format for display on the client; do not assume a decimal-place count.
-                captured_at:
-                  type: string
-                alerts:
-                  type: array
-                  items:
-                    $ref: "#/components/schemas/ReviewAlert"
-              required:
-                - estimated_price
-                - captured_at
-                - alerts
-              additionalProperties: false
-            - type: "null"
+            captured_at:
+              type: string
+            alerts:
+              type: array
+              items:
+                $ref: "#/components/schemas/ReviewAlert"
+          required:
+            - estimated_price
+            - captured_at
+            - alerts
+          additionalProperties: false
+          nullable: true
           description: Parsed review snapshot; null when the stored snapshot is unreadable
         events:
           type: array
@@ -342,9 +333,8 @@ components:
           format: date-time
           pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z))$
         broker_order_id:
-          anyOf:
-            - type: string
-            - type: "null"
+          type: string
+          nullable: true
           description: Null for paper fills
       required:
         - id
@@ -360,10 +350,10 @@ components:
         signal:
           $ref: "#/components/schemas/SignalSummary"
         execution:
-          anyOf:
-            - $ref: "#/components/schemas/Execution"
-            - type: "null"
           description: The fill, on approval. Null for a rejection — nothing is executed.
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/Execution"
       required:
         - signal
         - execution
@@ -396,30 +386,25 @@ components:
           format: date-time
           pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z))$
         quote:
-          anyOf:
-            - type: string
-              description: |-
-                Decimal number as a string. Never parse this into a float.
+          type: string
+          description: |-
+            Decimal number as a string. Never parse this into a float.
 
-                Stored prices are serialized verbatim from the database, so trailing zeros are not padded — "100" and "100.00" are the same value, and a fill of "182.6825" keeps all four places. Computed aggregates are fixed at two. Format for display on the client; do not assume a decimal-place count.
-            - type: "null"
-          description: Last trade price. Null when the broker was unreachable.
+            Stored prices are serialized verbatim from the database, so trailing zeros are not padded — "100" and "100.00" are the same value, and a fill of "182.6825" keeps all four places. Computed aggregates are fixed at two. Format for display on the client; do not assume a decimal-place count.
+          nullable: true
         quote_age_seconds:
-          anyOf:
-            - type: integer
-              minimum: -9007199254740991
-              maximum: 9007199254740991
-            - type: "null"
+          type: integer
+          minimum: -9007199254740991
+          maximum: 9007199254740991
+          nullable: true
           description: How stale the quote is. Render it — a stale price read as current is a lie.
         unrealized_pnl:
-          anyOf:
-            - type: string
-              description: |-
-                Decimal number as a string. Never parse this into a float.
+          type: string
+          description: |-
+            Decimal number as a string. Never parse this into a float.
 
-                Stored prices are serialized verbatim from the database, so trailing zeros are not padded — "100" and "100.00" are the same value, and a fill of "182.6825" keeps all four places. Computed aggregates are fixed at two. Format for display on the client; do not assume a decimal-place count.
-            - type: "null"
-          description: (quote - entry) * quantity for a buy. Null whenever quote is null.
+            Stored prices are serialized verbatim from the database, so trailing zeros are not padded — "100" and "100.00" are the same value, and a fill of "182.6825" keeps all four places. Computed aggregates are fixed at two. Format for display on the client; do not assume a decimal-place count.
+          nullable: true
       required:
         - signal_id
         - symbol
@@ -448,22 +433,19 @@ components:
 
                 Stored prices are serialized verbatim from the database, so trailing zeros are not padded — "100" and "100.00" are the same value, and a fill of "182.6825" keeps all four places. Computed aggregates are fixed at two. Format for display on the client; do not assume a decimal-place count.
             market_value:
-              anyOf:
-                - type: string
-                  description: |-
-                    Decimal number as a string. Never parse this into a float.
+              type: string
+              description: |-
+                Decimal number as a string. Never parse this into a float.
 
-                    Stored prices are serialized verbatim from the database, so trailing zeros are not padded — "100" and "100.00" are the same value, and a fill of "182.6825" keeps all four places. Computed aggregates are fixed at two. Format for display on the client; do not assume a decimal-place count.
-                - type: "null"
-              description: Null when any lot is missing a quote — a partial total is worse than none
+                Stored prices are serialized verbatim from the database, so trailing zeros are not padded — "100" and "100.00" are the same value, and a fill of "182.6825" keeps all four places. Computed aggregates are fixed at two. Format for display on the client; do not assume a decimal-place count.
+              nullable: true
             unrealized_pnl:
-              anyOf:
-                - type: string
-                  description: |-
-                    Decimal number as a string. Never parse this into a float.
+              type: string
+              description: |-
+                Decimal number as a string. Never parse this into a float.
 
-                    Stored prices are serialized verbatim from the database, so trailing zeros are not padded — "100" and "100.00" are the same value, and a fill of "182.6825" keeps all four places. Computed aggregates are fixed at two. Format for display on the client; do not assume a decimal-place count.
-                - type: "null"
+                Stored prices are serialized verbatim from the database, so trailing zeros are not padded — "100" and "100.00" are the same value, and a fill of "182.6825" keeps all four places. Computed aggregates are fixed at two. Format for display on the client; do not assume a decimal-place count.
+              nullable: true
             realized_pnl:
               type: string
               description: Zero until Phase 3. Nothing closes a position yet, so this is the honest number rather than an invented one. A sell fill currently opens its own lot; matching it against the buy is Phase 3 work.
@@ -510,14 +492,13 @@ components:
             - up
             - down
         killSwitch:
-          anyOf:
-            - type: boolean
-            - type: "null"
+          type: boolean
+          nullable: true
           description: Runtime kill switch from app_settings; null when the database is unreachable
         executionMode:
-          anyOf:
+          nullable: true
+          allOf:
             - $ref: "#/components/schemas/ExecutionMode"
-            - type: "null"
         uptimeSeconds:
           type: integer
           minimum: -9007199254740991

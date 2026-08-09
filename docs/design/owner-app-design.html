@@ -1,0 +1,1037 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ollie — Owner App Design Reference</title>
+<style>
+/* ================= DOC BOARD ================= */
+:root{
+  --board:#0c0e12; --board2:#12151b; --panel:#171b22;
+  --ink:#e9ecf1; --ink2:#9aa4b0; --ink3:#606a76;
+  --hair:rgba(255,255,255,.08);
+  --amber:#e8a33d; --amberdim:#8a5f1e;
+  --crimson:#c9364c;
+  --gain:#3ec08d; --loss:#e5605b;
+  --sans:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{background:var(--board);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.55;
+  -webkit-font-smoothing:antialiased}
+.wrap{max-width:1360px;margin:0 auto;padding:0 40px 120px}
+a{color:var(--amber)}
+::selection{background:rgba(232,163,61,.3)}
+
+/* header */
+header.doc{padding:72px 0 40px;border-bottom:1px solid var(--hair);margin-bottom:56px}
+.doc-rail{height:26px;border-radius:6px;display:flex;align-items:center;justify-content:center;
+  font:700 11px/1 var(--mono);letter-spacing:.18em;color:var(--amber);
+  background:repeating-linear-gradient(125deg,rgba(232,163,61,.17) 0 9px,rgba(232,163,61,.045) 9px 18px),#221a0e;
+  border:1px solid rgba(232,163,61,.28);margin-bottom:36px;max-width:520px}
+header.doc h1{font-size:46px;font-weight:800;letter-spacing:-.02em;line-height:1.05}
+header.doc h1 span{color:var(--ink3);font-weight:600}
+.doc-meta{margin-top:14px;font:500 12px/1.6 var(--mono);color:var(--ink2);letter-spacing:.04em}
+.doc-meta b{color:var(--amber);font-weight:600}
+.doc-intro{margin-top:22px;max-width:66ch;color:var(--ink2);font-size:15.5px}
+.doc-intro strong{color:var(--ink);font-weight:600}
+
+/* sections */
+section{margin:0 0 88px}
+.eyebrow{font:600 11px/1 var(--mono);letter-spacing:.22em;color:var(--amber);text-transform:uppercase;
+  display:flex;align-items:center;gap:12px;margin-bottom:14px}
+.eyebrow::after{content:"";height:1px;flex:1;background:var(--hair)}
+section>h2{font-size:26px;font-weight:700;letter-spacing:-.01em;margin-bottom:8px}
+.lede{color:var(--ink2);max-width:70ch;margin-bottom:34px}
+.lede strong{color:var(--ink);font-weight:600}
+.lede code, .note code, .doc-intro code{font:500 .86em var(--mono);background:var(--panel);
+  border:1px solid var(--hair);border-radius:4px;padding:1px 5px;color:#d8b06a;white-space:nowrap}
+
+/* shelf = frames + notes */
+.shelf{display:flex;gap:44px;align-items:flex-start;flex-wrap:wrap}
+.frames{display:flex;gap:36px;flex-wrap:wrap}
+.notes{flex:1 1 280px;min-width:270px;max-width:380px;position:sticky;top:32px}
+.note{padding:14px 0;border-top:1px solid var(--hair);font-size:13.5px;color:var(--ink2)}
+.note:first-child{border-top:none;padding-top:0}
+.note b{display:block;color:var(--ink);font-weight:600;margin-bottom:3px;font-size:13.5px}
+.cap{margin-top:14px;text-align:center;font:500 11.5px/1.5 var(--mono);color:var(--ink3);letter-spacing:.05em}
+.cap b{color:var(--ink2);font-weight:600}
+
+/* spec figures */
+.figrow{display:flex;gap:22px;flex-wrap:wrap;margin-bottom:30px}
+.fig{background:var(--board2);border:1px solid var(--hair);border-radius:14px;padding:20px 22px;flex:1 1 280px}
+.fig h3{font:600 11px/1 var(--mono);letter-spacing:.16em;color:var(--ink3);text-transform:uppercase;margin-bottom:16px}
+.fig p.fine{font-size:12.5px;color:var(--ink2);margin-top:14px}
+.sw{display:flex;align-items:center;gap:10px;margin-bottom:9px}
+.sw i{width:26px;height:26px;border-radius:7px;border:1px solid var(--hair);flex:none}
+.sw span{font:500 12px var(--mono);color:var(--ink2)}
+.sw span b{color:var(--ink);font-weight:600;margin-right:8px}
+
+/* ================= PHONE ================= */
+.phone{width:393px;flex:none;background:linear-gradient(180deg,#3a3f47,#22262c);border-radius:58px;
+  padding:5px;box-shadow:0 30px 60px rgba(0,0,0,.55),0 4px 14px rgba(0,0,0,.4)}
+.screen{position:relative;width:383px;height:832px;border-radius:53px;overflow:hidden;
+  display:flex;flex-direction:column;background:var(--s-bg);color:var(--s-tx);
+  font-family:var(--sans);font-size:15px;line-height:1.35;
+  /* dark tokens (default) */
+  --s-bg:#10141b; --s-bg2:#171d26; --s-bg3:#212936; --s-hair:rgba(233,240,255,.09);
+  --s-tx:#ecf0f5; --s-tx2:#9aa5b1; --s-tx3:#5f6b78;
+  --s-mode:#e8a33d; --s-mode-ink:#181207;
+  --s-rail-tx:#f0b459; --s-rail-bg:repeating-linear-gradient(125deg,rgba(232,163,61,.17) 0 9px,rgba(232,163,61,.05) 9px 18px),#211a0e;
+  --s-gain:#3ec08d; --s-gain-bg:rgba(62,192,141,.13);
+  --s-loss:#e5605b; --s-loss-bg:rgba(229,96,91,.13);
+  --s-warn:#e8a33d; --s-warn-bg:rgba(232,163,61,.13);
+  --s-danger:#e5484d;
+  --s-bar:rgba(16,20,27,.9)}
+.screen.light{
+  --s-bg:#f2f3f5; --s-bg2:#ffffff; --s-bg3:#e7e9ed; --s-hair:rgba(18,28,44,.11);
+  --s-tx:#161c25; --s-tx2:#5a6470; --s-tx3:#9aa2ad;
+  --s-mode:#c07c16; --s-mode-ink:#fffdf7;
+  --s-rail-tx:#7a5210; --s-rail-bg:repeating-linear-gradient(125deg,#f3ca7c 0 9px,#fbe8c6 9px 18px),#fbe8c6;
+  --s-gain:#12855e; --s-gain-bg:rgba(18,133,94,.1);
+  --s-loss:#c2413c; --s-loss-bg:rgba(194,65,60,.1);
+  --s-warn:#a86a0b; --s-warn-bg:rgba(192,124,22,.12);
+  --s-danger:#c93a40;
+  --s-bar:rgba(242,243,245,.92)}
+
+/* status bar + island */
+.sb{height:52px;flex:none;display:flex;align-items:flex-end;justify-content:space-between;
+  padding:0 32px 6px;font-size:15px;font-weight:600;position:relative;z-index:5}
+.sb svg{display:block}
+.isl{position:absolute;top:11px;left:50%;transform:translateX(-50%);width:118px;height:34px;
+  background:#000;border-radius:19px;z-index:9}
+
+/* mode rail — the signature */
+.rail{flex:none;height:22px;display:flex;align-items:center;justify-content:center;gap:7px;
+  font:700 10px/1 var(--mono);letter-spacing:.17em;color:var(--s-rail-tx);
+  background:var(--s-rail-bg);border-bottom:1px solid var(--s-hair)}
+.rail svg{flex:none}
+.rail.live{background:var(--crimson);color:#fff;letter-spacing:.2em}
+
+/* nav */
+.navL{flex:none;padding:12px 20px 10px}
+.navL h1{font-size:32px;font-weight:700;letter-spacing:.2px;line-height:1.1}
+.navL .sub{margin-top:3px;font-size:12.5px;color:var(--s-tx2)}
+.navL .sub b{color:var(--s-tx);font-weight:600}
+.navI{flex:none;height:44px;display:flex;align-items:center;position:relative;padding:0 14px;
+  border-bottom:1px solid var(--s-hair)}
+.navI .back{display:flex;align-items:center;gap:3px;color:var(--s-mode);font-size:16px;font-weight:400}
+.navI .ttl{position:absolute;left:0;right:0;text-align:center;font-size:16px;font-weight:600;pointer-events:none}
+
+/* content area */
+.body{flex:1;overflow:hidden;padding:2px 16px 0;display:flex;flex-direction:column}
+
+/* tab bar */
+.tabbar{flex:none;display:flex;justify-content:space-around;align-items:flex-start;
+  padding:9px 8px 24px;border-top:1px solid var(--s-hair);background:var(--s-bar)}
+.tab{display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--s-tx3);
+  font-size:10px;font-weight:500;width:74px;position:relative}
+.tab.on{color:var(--s-mode);font-weight:600}
+.tab svg{display:block}
+.tbadge{position:absolute;top:-4px;right:16px;min-width:16px;height:16px;border-radius:9px;
+  background:var(--s-danger);color:#fff;font:700 10px/16px var(--sans);text-align:center;padding:0 4px}
+.homebar{position:absolute;bottom:7px;left:50%;transform:translateX(-50%);width:134px;height:5px;
+  border-radius:3px;background:var(--s-tx);opacity:.35;z-index:8}
+
+/* generic bits */
+.chip{display:inline-flex;align-items:center;gap:4px;height:22px;padding:0 8px;border-radius:6px;
+  font-size:11.5px;font-weight:700;letter-spacing:.04em;white-space:nowrap}
+.chip.buy{background:var(--s-gain-bg);color:var(--s-gain)}
+.chip.sell{background:var(--s-loss-bg);color:var(--s-loss)}
+.chip.alert{background:var(--s-warn-bg);color:var(--s-warn);font-family:var(--mono);font-weight:600;font-size:10.5px;gap:5px}
+.chip.tmpl{background:none;border:1px solid var(--s-hair);color:var(--s-tx3);font-weight:600;font-size:10px;
+  letter-spacing:.08em;gap:4px;height:19px}
+.m{font-variant-numeric:tabular-nums lining-nums}
+.xd{font-size:.72em;color:var(--s-tx3);letter-spacing:0}
+.up{color:var(--s-gain)} .dn{color:var(--s-loss)}
+.mono{font-family:var(--mono)}
+
+/* countdown */
+.cd{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px 0 7px;border-radius:14px;
+  background:var(--s-bg3);border:1px solid var(--s-hair);
+  font:600 13px var(--mono);font-variant-numeric:tabular-nums;color:var(--s-tx)}
+.cd svg{flex:none}
+.cd .trk{stroke:var(--s-hair)} .cd .arc{stroke:var(--s-tx2)}
+.cd.warn{color:var(--s-warn);border-color:rgba(232,163,61,.4);background:var(--s-warn-bg)}
+.cd.warn .arc{stroke:var(--s-warn)}
+.cd.crit{color:var(--s-danger);border-color:rgba(229,72,77,.45);background:var(--s-loss-bg);
+  animation:pulse 1s ease-in-out infinite}
+.cd.crit .arc{stroke:var(--s-danger)}
+@keyframes pulse{50%{box-shadow:0 0 0 4px rgba(229,72,77,.14)}}
+@media (prefers-reduced-motion:reduce){.cd.crit{animation:none}}
+
+/* signal cards (approvals list) */
+.sig{background:var(--s-bg2);border:1px solid var(--s-hair);border-radius:14px;padding:13px 14px 11px;margin-bottom:12px}
+.sig .r1{display:flex;align-items:center;gap:8px}
+.sig .sym{font-size:19px;font-weight:700;letter-spacing:.01em}
+.sig .qty{font-size:14px;color:var(--s-tx2);margin-left:2px}
+.sig .qty b{color:var(--s-tx);font-weight:600}
+.sig .r1 .cd{margin-left:auto}
+.sig .thesis{margin-top:9px;font-size:13.5px;color:var(--s-tx2);line-height:1.45;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.sig .meta{margin-top:9px;display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--s-tx3)}
+.sig .meta .warnflag{display:inline-flex;align-items:center;gap:4px;color:var(--s-warn);font-weight:600}
+.sig .meta .chev{margin-left:auto;color:var(--s-tx3)}
+.runfoot{margin-top:6px;text-align:center;font-size:11.5px;color:var(--s-tx3);line-height:1.6}
+
+/* empty state */
+.empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:0 26px 40px}
+.empty h2{font-size:19px;font-weight:600;margin-top:20px}
+.empty p{font-size:13.5px;color:var(--s-tx2);margin-top:6px;max-width:30ch}
+.heart{width:100%;margin-top:30px;background:var(--s-bg2);border:1px solid var(--s-hair);border-radius:14px;padding:4px 16px}
+.heart .hr{display:flex;justify-content:space-between;align-items:baseline;padding:10px 0;font-size:13px;
+  border-top:1px solid var(--s-hair)}
+.heart .hr:first-child{border-top:none}
+.heart .hr span{color:var(--s-tx2)}
+.heart .hr b{font-weight:600;font-variant-numeric:tabular-nums}
+.heart .hr b.mono{font-size:12.5px}
+.livecdot{display:inline-block;width:7px;height:7px;border-radius:4px;background:var(--s-gain);margin-right:6px}
+
+/* detail screen */
+.dhead{padding:8px 4px 0}
+.dhead .r1{display:flex;align-items:center;gap:8px}
+.dhead .co{font-size:12.5px;color:var(--s-tx3);margin-left:auto}
+.dhead h2{font-size:27px;font-weight:700;letter-spacing:-.01em;margin-top:5px}
+.dhead h2 small{font-size:17px;font-weight:600;color:var(--s-tx2)}
+.dhead .est{margin-top:2px;font-size:13.5px;color:var(--s-tx2)}
+.dhead .est b{color:var(--s-tx);font-weight:600}
+.cdband{margin:10px 0 0;background:var(--s-bg2);border:1px solid var(--s-hair);border-radius:14px;padding:10px 14px 11px}
+.cdband .r{display:flex;align-items:baseline;justify-content:space-between}
+.cdband .big{font:700 24px var(--mono);font-variant-numeric:tabular-nums;letter-spacing:.01em}
+.cdband .lbl{font-size:11px;letter-spacing:.1em;color:var(--s-tx3);font-weight:600}
+.cdband .exp{font-size:12px;color:var(--s-tx2)}
+.cdband .track{margin-top:8px;height:4px;border-radius:2px;background:var(--s-bg3);overflow:hidden}
+.cdband .track i{display:block;height:100%;border-radius:2px;background:var(--s-warn)}
+.cdband.warn .big{color:var(--s-warn)}
+.sect{margin-top:11px}
+.sect>h3{font-size:11px;font-weight:600;letter-spacing:.12em;color:var(--s-tx3);text-transform:uppercase;margin-bottom:6px}
+.alertrow{display:flex;flex-direction:column;gap:6px}
+.alertrow .gloss{font-size:12px;color:var(--s-tx2)}
+.thesisfull{font-size:14px;line-height:1.45;color:var(--s-tx)}
+.src{margin-top:5px;font-size:11px;color:var(--s-tx3)}
+.evi{background:var(--s-bg2);border:1px solid var(--s-hair);border-radius:14px;padding:2px 14px}
+.evi .why{padding:9px 0 8px;font-size:12.5px;line-height:1.45;color:var(--s-tx2);border-bottom:1px solid var(--s-hair)}
+.evi .why b{color:var(--s-tx);font-weight:600}
+.ev{display:flex;align-items:baseline;padding:7px 0;border-top:1px solid var(--s-hair);font-size:13px}
+.ev:nth-child(2){border-top:none}
+.ev .k{width:86px;flex:none;color:var(--s-tx2)}
+.ev .v{font:500 13px var(--mono);font-variant-numeric:tabular-nums}
+.ev .v .prev{color:var(--s-tx3)}
+.ev .v .arr{color:var(--s-tx3);padding:0 5px}
+.ev .d{margin-left:auto;font:600 12px var(--mono);font-variant-numeric:tabular-nums}
+.ev.hot .v b{color:var(--s-gain);font-weight:600}
+.evfoot{padding:7px 0 9px;border-top:1px solid var(--s-hair);font:500 10.5px var(--mono);color:var(--s-tx3);letter-spacing:.03em;white-space:nowrap;overflow:hidden}
+.actionbar{flex:none;display:flex;gap:12px;padding:10px 16px 26px;border-top:1px solid var(--s-hair);background:var(--s-bar)}
+.btn{flex:1;height:50px;border-radius:13px;display:flex;align-items:center;justify-content:center;gap:7px;
+  font-size:16px;font-weight:600;border:none}
+.btn.reject{background:none;border:1.5px solid var(--s-hair);color:var(--s-tx)}
+.btn.approve{background:var(--s-mode);color:var(--s-mode-ink)}
+.btn.halt{background:var(--s-danger);color:#fff}
+
+/* confirmation sheet */
+.dim{position:absolute;inset:0;background:rgba(0,0,0,.52);z-index:6;border-radius:inherit}
+.sheet{position:absolute;left:0;right:0;bottom:0;z-index:7;background:var(--s-bg2);
+  border-radius:24px 24px 53px 53px;padding:10px 20px 44px;box-shadow:0 -12px 40px rgba(0,0,0,.45)}
+.grab{width:38px;height:5px;border-radius:3px;background:var(--s-tx3);opacity:.5;margin:0 auto 16px}
+.sheet h3{font-size:19px;font-weight:700;text-align:center}
+.sheet .subt{text-align:center;font-size:12.5px;color:var(--s-tx2);margin-top:3px}
+.sheet .sumrow{display:flex;justify-content:space-between;align-items:baseline;padding:11px 2px;
+  border-bottom:1px solid var(--s-hair);font-size:14px}
+.sheet .sumrow span{color:var(--s-tx2)}
+.sheet .sumrow b{font-weight:600;font-variant-numeric:tabular-nums}
+.sheet .sums{margin-top:14px;border-top:1px solid var(--s-hair)}
+.sheet .cdline{display:flex;justify-content:center;margin:16px 0 4px}
+.sheet .btn{width:100%;margin-top:10px}
+.sheet .cancel{display:block;text-align:center;margin-top:16px;font-size:16px;color:var(--s-mode);font-weight:500}
+.papernote{margin-top:12px;display:flex;gap:8px;align-items:flex-start;background:var(--s-warn-bg);
+  border:1px solid rgba(232,163,61,.3);border-radius:10px;padding:9px 11px;font-size:12px;color:var(--s-warn);line-height:1.45}
+.papernote svg{flex:none;margin-top:1px}
+
+/* history */
+.grp{font-size:12px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--s-tx3);
+  margin:14px 4px 7px}
+.hcard{background:var(--s-bg2);border:1px solid var(--s-hair);border-radius:14px;padding:0 14px}
+.hrow{display:flex;gap:11px;padding:12px 0;border-top:1px solid var(--s-hair);align-items:flex-start}
+.hrow:first-child{border-top:none}
+.hic{flex:none;width:26px;height:26px;border-radius:13px;display:flex;align-items:center;justify-content:center;margin-top:1px}
+.hic.ok{background:var(--s-gain-bg);color:var(--s-gain)}
+.hic.no{background:var(--s-bg3);color:var(--s-tx2)}
+.hic.ex{background:var(--s-warn-bg);color:var(--s-warn)}
+.hbody{flex:1;min-width:0}
+.hbody .r1{display:flex;align-items:baseline;gap:7px}
+.hbody .sym{font-size:15px;font-weight:700}
+.hbody .side{font-size:11px;font-weight:700;letter-spacing:.05em}
+.hbody .side.b{color:var(--s-gain)} .hbody .side.s{color:var(--s-loss)}
+.hbody .st{margin-left:auto;font-size:12px;font-weight:600}
+.hbody .st.ok{color:var(--s-gain)} .hbody .st.no{color:var(--s-tx2)} .hbody .st.ex{color:var(--s-warn)}
+.hbody .rsn{margin-top:3px;font-size:12.5px;color:var(--s-tx2);line-height:1.4}
+.hbody .tm{margin-top:3px;font:500 11px var(--mono);color:var(--s-tx3)}
+
+/* dashboard */
+.tot{background:var(--s-bg2);border:1px solid var(--s-hair);border-radius:14px;padding:14px 14px 4px;margin-bottom:12px}
+.tot .mvl{font-size:11px;font-weight:600;letter-spacing:.11em;color:var(--s-tx3);text-transform:uppercase}
+.tot .mv{font-size:32px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.01em;margin-top:2px}
+.tot .mv .cur{font-size:17px;font-weight:600;color:var(--s-tx2);vertical-align:6px;margin-right:2px}
+.tot .rows{margin-top:10px;border-top:1px solid var(--s-hair)}
+.trow{display:flex;justify-content:space-between;align-items:baseline;padding:9px 0;border-top:1px solid var(--s-hair);font-size:13.5px}
+.trow:nth-child(1){border-top:none}
+.trow span{color:var(--s-tx2)}
+.trow small{display:block;font-size:11px;color:var(--s-tx3);margin-top:1px}
+.trow b{font-weight:600;font-variant-numeric:tabular-nums}
+.trow b i{font-style:normal;font-weight:700;margin-right:3px}
+.fresh{display:flex;align-items:center;gap:6px;justify-content:center;margin:2px 0 12px;
+  font:500 11px var(--mono);color:var(--s-tx3)}
+.lot{background:var(--s-bg2);border:1px solid var(--s-hair);border-radius:14px;padding:12px 14px;margin-bottom:10px}
+.lot .r1{display:flex;align-items:baseline;gap:8px}
+.lot .sym{font-size:16px;font-weight:700}
+.lot .pnl{margin-left:auto;font:600 15px/1 var(--sans);font-variant-numeric:tabular-nums}
+.lot .r2{display:flex;gap:0;margin-top:10px}
+.lot .cell{flex:1}
+.lot .cell .k{font-size:10px;font-weight:600;letter-spacing:.08em;color:var(--s-tx3);text-transform:uppercase}
+.lot .cell .v{font-size:13.5px;font-weight:500;font-variant-numeric:tabular-nums;margin-top:2px}
+.lot .cell .v.na{color:var(--s-tx3)}
+.lot .r3{margin-top:9px;display:flex;justify-content:space-between;font:500 10.5px var(--mono);color:var(--s-tx3)}
+.banner{display:flex;gap:9px;align-items:flex-start;background:var(--s-warn-bg);
+  border:1px solid rgba(192,124,22,.35);border-radius:12px;padding:11px 12px;margin-bottom:12px;
+  font-size:12.5px;line-height:1.45;color:var(--s-warn)}
+.banner svg{flex:none;margin-top:1px}
+.banner b{font-weight:700}
+.banner .sub{display:block;color:var(--s-tx2);margin-top:2px;font-size:12px}
+.withheld{color:var(--s-tx3);font-weight:500;letter-spacing:.02em}
+
+/* controls */
+.ctl{background:var(--s-bg2);border:1px solid var(--s-hair);border-radius:14px;padding:12px 14px;margin-bottom:10px}
+.ctl h3{font-size:15px;font-weight:600}
+.ctl .desc{font-size:12.5px;color:var(--s-tx2);line-height:1.5;margin-top:5px}
+.ctl .desc code{font:500 11px var(--mono);background:var(--s-bg3);border-radius:4px;padding:1px 5px;color:var(--s-tx2)}
+.seg{margin-top:12px;display:flex;background:var(--s-bg3);border-radius:10px;padding:2px;position:relative}
+.seg .opt{flex:1;height:34px;display:flex;align-items:center;justify-content:center;gap:6px;
+  font-size:13.5px;font-weight:600;border-radius:8px;color:var(--s-tx2)}
+.seg .opt.on{background:var(--s-mode);color:var(--s-mode-ink);box-shadow:0 1px 4px rgba(0,0,0,.3)}
+.seg .opt.locked{color:var(--s-tx3)}
+.ctl.killzone{border-color:rgba(229,72,77,.4)}
+.ctl .btn{margin-top:12px;width:100%}
+.statgrid .hr{display:flex;justify-content:space-between;padding:8px 0;border-top:1px solid var(--s-hair);font-size:13px}
+.statgrid .hr:first-of-type{border-top:none}
+.statgrid .hr span{color:var(--s-tx2)}
+.statgrid .hr b{font-weight:600;font-variant-numeric:tabular-nums}
+.statgrid .hr b.mono{font-size:12px}
+
+/* spec strip extras */
+.raildemo{margin-bottom:10px;border-radius:8px;overflow:hidden;border:1px solid var(--hair)}
+.raildemo .rail{height:26px;font-size:10.5px;border-bottom:none}
+.money-spec{font-variant-numeric:tabular-nums;text-align:right;font-size:19px;font-weight:600}
+.money-spec div{padding:5px 0;border-bottom:1px dashed var(--hair)}
+.money-spec .xd{font-size:.7em;color:var(--ink3)}
+.gray{filter:grayscale(1)}
+.pl-demo{display:flex;flex-direction:column;gap:8px}
+.pl-demo .chip{height:26px;font-size:13px}
+footer.doc{border-top:1px solid var(--hair);padding-top:32px;color:var(--ink3);font-size:13px}
+footer.doc h2{font-size:15px;color:var(--ink);margin-bottom:14px}
+.map{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:10px 36px;font-size:13px;color:var(--ink2)}
+.map div b{color:var(--ink);font-weight:600}
+.map div code{font:500 11.5px var(--mono);color:#d8b06a}
+
+@media (max-width:900px){.wrap{padding:0 18px 80px}.notes{position:static;max-width:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="doc">
+  <div class="doc-rail">PAPER&nbsp;·&nbsp;SIMULATED FILLS</div>
+  <h1>Ollie <span>/ owner app</span></h1>
+  <div class="doc-meta">VISUAL DESIGN REFERENCE · iOS 17+ · SWIFTUI · SINGLE USER · MODE: <b>PAPER</b></div>
+  <p class="doc-intro">Ollie fires at most a handful of signals per trading day and each one dies in
+  <strong>15 minutes</strong>. The app therefore optimizes for two moments: the <strong>decision under a
+  countdown</strong>, and the <strong>quiet check-in</strong> where nothing is pending. Everything else —
+  positions, history, controls — is instrumentation around those two moments. The design language is a native
+  iOS instrument: system type, hairline dividers, dense tabular data, and exactly one loud element — the
+  <strong>mode rail</strong>.</p>
+</header>
+
+<!-- ================================================================ SYSTEM -->
+<section id="system">
+  <div class="eyebrow">System</div>
+  <h2>Mode is chrome, not a badge</h2>
+  <p class="lede">The single most important requirement: the owner must never wonder whether a tap moves real
+  money. A per-screen badge gets tuned out; so instead <strong>the mode owns the app shell</strong>. A 22pt
+  rail sits pinned directly under the status-bar clock on <em>every</em> screen
+  (<code>safeAreaInset(edge:&nbsp;.top)</code> on the root <code>TabView</code>, above navigation), and the
+  app's entire accent color derives from the mode. In paper, the tint is <strong>amber</strong> — the Approve
+  button, the selected tab, the back chevron are amber <em>because</em> the app is simulating. Flipping to
+  live would repaint every one of those surfaces crimson. The two rails also differ in
+  <strong>texture</strong> (diagonal caution stripes vs. solid) and <strong>wording</strong>, so the
+  distinction survives grayscale, color-blindness, and peripheral vision.</p>
+
+  <div class="figrow">
+    <div class="fig" style="flex:2 1 420px">
+      <h3>The two rails</h3>
+      <div class="raildemo"><div class="rail" style="--s-rail-tx:#f0b459;--s-rail-bg:repeating-linear-gradient(125deg,rgba(232,163,61,.17) 0 9px,rgba(232,163,61,.05) 9px 18px),#211a0e;--s-hair:transparent">
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M1.5 8.5 L8.5 1.5 M1.5 4 L4 1.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+        PAPER&nbsp;·&nbsp;SIMULATED FILLS</div></div>
+      <div class="raildemo"><div class="rail live" style="--s-hair:transparent">
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><circle cx="5" cy="5" r="3.4"/></svg>
+        LIVE&nbsp;·&nbsp;REAL ORDERS</div></div>
+      <p class="fine">Paper: striped amber, pencil glyph, "simulated fills." Live (Phase&nbsp;5, currently
+      impossible — <code style="white-space:nowrap">LIVE_TRADING_ENABLED=false</code>): solid crimson, record-dot
+      glyph, "real orders." Stripes vs. solid is deliberate: even with color stripped, the shell looks different.
+      The rail never scrolls away, never animates, never shows anything else.</p>
+    </div>
+    <div class="fig">
+      <h3>Countdown states</h3>
+      <div style="display:flex;flex-direction:column;gap:10px;align-items:flex-start">
+        <span class="cd" style="--s-bg3:#212936;--s-hair:rgba(233,240,255,.12);color:#ecf0f5"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle class="trk" cx="8" cy="8" r="6" stroke="rgba(233,240,255,.14)" stroke-width="2"/><circle cx="8" cy="8" r="6" stroke="#9aa5b1" stroke-width="2" stroke-dasharray="21.5 37.7" stroke-linecap="round" transform="rotate(-90 8 8)"/></svg>08:42</span>
+        <span class="cd warn" style="--s-warn:#e8a33d;--s-warn-bg:rgba(232,163,61,.13);--s-hair:rgba(233,240,255,.12)"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="rgba(233,240,255,.14)" stroke-width="2"/><circle cx="8" cy="8" r="6" stroke="#e8a33d" stroke-width="2" stroke-dasharray="10.5 37.7" stroke-linecap="round" transform="rotate(-90 8 8)"/></svg>04:12</span>
+        <span class="cd crit" style="--s-danger:#e5484d;--s-loss-bg:rgba(229,96,91,.13);--s-hair:rgba(233,240,255,.12)"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="rgba(233,240,255,.14)" stroke-width="2"/><circle cx="8" cy="8" r="6" stroke="#e5484d" stroke-width="2" stroke-dasharray="2.8 37.7" stroke-linecap="round" transform="rotate(-90 8 8)"/></svg>01:07</span>
+      </div>
+      <p class="fine">Derived from <code>expires_at</code>, ticking via <code>TimelineView(.periodic)</code>.
+      Neutral above 5:00; amber at ≤5:00; red at ≤1:00 with a soft pulse (disabled under Reduce Motion).
+      The depleting ring makes remaining <em>fraction</em> legible before the digits are read. SF&nbsp;Mono,
+      tabular — the pill never changes width as it ticks.</p>
+    </div>
+  </div>
+
+  <div class="figrow">
+    <div class="fig">
+      <h3>Palette — dark / light</h3>
+      <div class="sw"><i style="background:#10141b"></i><span><b>#10141B</b>bg — cold graphite, not pure black</span></div>
+      <div class="sw"><i style="background:#171d26"></i><span><b>#171D26</b>card / elevated</span></div>
+      <div class="sw"><i style="background:#e8a33d"></i><span><b>#E8A33D</b>mode·paper (light: #C07C16)</span></div>
+      <div class="sw"><i style="background:#c9364c"></i><span><b>#C9364C</b>mode·live (spec only)</span></div>
+      <div class="sw"><i style="background:#3ec08d"></i><span><b>#3EC08D</b>gain / buy (light: #12855E)</span></div>
+      <div class="sw"><i style="background:#e5605b"></i><span><b>#E5605B</b>loss / sell (light: #C2413C)</span></div>
+      <div class="sw"><i style="background:#e5484d"></i><span><b>#E5484D</b>destructive (halt, badge)</span></div>
+      <p class="fine">Paper-amber is deliberately outside the gain/loss axis, so "simulation" never reads as
+      "profit" or "danger." Green leans teal and red leans orange — the pair most separable under deutan and
+      protan vision — and neither is ever the only carrier of meaning.</p>
+    </div>
+    <div class="fig">
+      <h3>Money typography</h3>
+      <div class="money-spec">
+        <div>100<span class="xd">.00</span></div>
+        <div>182.50</div>
+        <div>308.94<span class="xd">864</span></div>
+        <div style="border-bottom:none">411.03<span class="xd">33</span></div>
+      </div>
+      <p class="fine">Backend money is a decimal string of arbitrary precision. Rule: render verbatim, pad to
+      two places minimum, and set everything past two decimals at 70% size in secondary color. Cents always
+      visible, sub-cent precision preserved but de-weighted. All money is SF&nbsp;Pro with
+      <code>.monospacedDigit()</code>, right-aligned in columns so magnitudes compare vertically.</p>
+    </div>
+    <div class="fig">
+      <h3>P&amp;L without hue</h3>
+      <div class="pl-demo">
+        <span class="chip buy" style="--s-gain:#3ec08d;--s-gain-bg:rgba(62,192,141,.13)">▲ +3.24</span>
+        <span class="chip sell" style="--s-loss:#e5605b;--s-loss-bg:rgba(229,96,91,.13)">▼ −2.08</span>
+      </div>
+      <div class="pl-demo gray" style="margin-top:10px">
+        <span class="chip buy" style="--s-gain:#3ec08d;--s-gain-bg:rgba(62,192,141,.13)">▲ +3.24</span>
+        <span class="chip sell" style="--s-loss:#e5605b;--s-loss-bg:rgba(229,96,91,.13)">▼ −2.08</span>
+      </div>
+      <p class="fine">Same chips, grayscaled: sign and triangle still carry the direction. Every gain/loss
+      value in the app ships with an explicit <b>+/−</b> and a <b>▲/▼</b>; buy/sell chips carry the word
+      itself. Color is reinforcement, never the message.</p>
+    </div>
+  </div>
+
+  <p class="lede" style="margin-bottom:0"><strong>Type.</strong> Two voices, both native. <strong>SF Pro</strong>
+  (system) for everything conversational — titles, theses, buttons. <strong>SF Mono</strong> for everything the
+  machine measured — countdowns, indicator values, timestamps, quote ages. The mono voice marks "this is
+  evidence, not prose," which is exactly the distinction the owner needs while deciding. Scale: 32 large title
+  / 19–16 headings / 15 body / 13.5 secondary / 11 caption-caps with .1em tracking.</p>
+</section>
+
+<!-- ================================================================ APPROVALS -->
+<section id="approvals">
+  <div class="eyebrow">Screen 1 — Approvals · primary</div>
+  <h2>The queue, and the state it's usually in</h2>
+  <p class="lede">Everything needed to triage is on the card's first line — symbol, side, size, estimated
+  price, time left — with the thesis as a two-line teaser underneath. Both signals here came from the same
+  9:35 scan, so their countdowns agree; that's honest, not lazy. The third frame is the screen the owner
+  actually sees most days: <strong>empty is the default state</strong>, and it's designed as a heartbeat, not
+  an absence.</p>
+  <div class="shelf">
+    <div class="frames">
+
+      <!-- Approvals · dark -->
+      <div>
+      <div class="phone"><div class="screen">
+        <span class="isl"></span>
+        <div class="sb"><span>9:41</span><svg width="66" height="12" viewBox="0 0 66 12" fill="currentColor"><rect x="0" y="7" width="3" height="4" rx="1"/><rect x="5" y="5" width="3" height="6" rx="1"/><rect x="10" y="3" width="3" height="8" rx="1"/><rect x="15" y="1" width="3" height="10" rx="1"/><g stroke="currentColor" fill="none" stroke-width="1.6" stroke-linecap="round"><path d="M26 5.2a9 9 0 0 1 12.6 0"/><path d="M28.7 7.9a5.2 5.2 0 0 1 7.2 0"/></g><circle cx="32.3" cy="10.4" r="1.4"/><rect x="44" y="1" width="20" height="10" rx="3" fill="none" stroke="currentColor" opacity=".45" stroke-width="1"/><rect x="45.8" y="2.8" width="13.5" height="6.4" rx="1.7"/><rect x="64.6" y="4" width="1.6" height="4" rx=".8" opacity=".45"/></svg></div>
+        <div class="rail"><svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M1.5 8.5 L8.5 1.5 M1.5 4 L4 1.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>PAPER&nbsp;·&nbsp;SIMULATED FILLS</div>
+        <div class="navL"><h1>Approvals</h1><div class="sub">Run of <b>9:35 AM</b> · window 15:00 · <b>2 pending</b></div></div>
+        <div class="body">
+          <div class="sig">
+            <div class="r1"><span class="sym">AAPL</span><span class="chip buy">▲ BUY</span>
+              <span class="qty"><b>2</b> × <span class="m">182.50</span></span>
+              <span class="cd"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="var(--s-hair)" stroke-width="2"/><circle cx="8" cy="8" r="6" stroke="var(--s-tx2)" stroke-width="2" stroke-dasharray="21.9 37.7" stroke-linecap="round" transform="rotate(-90 8 8)"/></svg>08:42</span></div>
+            <p class="thesis">RSI pushed through 60 as the MACD histogram flipped positive — momentum is rebuilding after a two-day pullback.</p>
+            <div class="meta"><span>Fired 9:35:12 · expires 9:50</span>
+              <span class="warnflag"><svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M6 1.6 L11 10.2 H1 Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M6 4.8v2.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><circle cx="6" cy="8.9" r=".7" fill="currentColor"/></svg>1 broker alert</span>
+              <span class="chev">›</span></div>
+          </div>
+          <div class="sig">
+            <div class="r1"><span class="sym">NVDA</span><span class="chip sell">▼ SELL</span>
+              <span class="qty"><b>1</b> × <span class="m">176.24</span></span>
+              <span class="cd"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="var(--s-hair)" stroke-width="2"/><circle cx="8" cy="8" r="6" stroke="var(--s-tx2)" stroke-width="2" stroke-dasharray="21.8 37.7" stroke-linecap="round" transform="rotate(-90 8 8)"/></svg>08:41</span></div>
+            <p class="thesis">RSI crossed below 45 (48.90 → 41.20) and MACD fell under its signal line.</p>
+            <div class="meta"><span class="chip tmpl"><svg width="9" height="10" viewBox="0 0 9 11" fill="none"><path d="M1 1.5h4.5L8 4v5.5H1z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/><path d="M2.6 5.4h3.8M2.6 7.2h3.8" stroke="currentColor" stroke-width="1"/></svg>TEMPLATE</span>
+              <span>Fired 9:35:12 · expires 9:50</span><span class="chev">›</span></div>
+          </div>
+          <p class="runfoot">Signals expire 15:00 after firing.<br>A decision is final — nothing returns to pending.</p>
+        </div>
+        <div class="tabbar">
+          <div class="tab on"><svg width="25" height="25" viewBox="0 0 25 25" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><path d="M4 13 L6.6 5.8 a1.6 1.6 0 0 1 1.5-1.1 h8.8 a1.6 1.6 0 0 1 1.5 1.1 L21 13"/><path d="M4 13v5.2A2.3 2.3 0 0 0 6.3 20.5h12.4A2.3 2.3 0 0 0 21 18.2V13h-4.6c-.3 2-1.9 3.3-3.9 3.3S8.9 15 8.6 13Z" fill="currentColor" fill-opacity=".18"/></svg><span class="tbadge">2</span>Approvals</div>
+          <div class="tab"><svg width="25" height="25" viewBox="0 0 25 25" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><rect x="3.5" y="4" width="18" height="17" rx="4"/><polyline points="7,15.5 10.8,10.8 13.6,13.2 18,8"/></svg>Positions</div>
+          <div class="tab"><svg width="25" height="25" viewBox="0 0 25 25" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12.5" cy="12.5" r="8.8"/><path d="M12.5 7.6v4.9l3.4 2"/></svg>History</div>
+          <div class="tab"><svg width="25" height="25" viewBox="0 0 25 25" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3.5 6.5h3M11.5 6.5h10M3.5 12.5h9M17.5 12.5h4M3.5 18.5h1M9.5 18.5h12"/><circle cx="9" cy="6.5" r="2.4"/><circle cx="15" cy="12.5" r="2.4"/><circle cx="7" cy="18.5" r="2.4"/></svg>Controls</div>
+        </div>
+        <span class="homebar"></span>
+      </div></div>
+      <div class="cap"><b>Approvals · dark</b> · 9:41 — two pending, six minutes into the window</div>
+      </div>
+
+      <!-- Approvals · light -->
+      <div>
+      <div class="phone"><div class="screen light">
+        <span class="isl"></span>
+        <div class="sb"><span>9:41</span><svg width="66" height="12" viewBox="0 0 66 12" fill="currentColor"><rect x="0" y="7" width="3" height="4" rx="1"/><rect x="5" y="5" width="3" height="6" rx="1"/><rect x="10" y="3" width="3" height="8" rx="1"/><rect x="15" y="1" width="3" height="10" rx="1"/><g stroke="currentColor" fill="none" stroke-width="1.6" stroke-linecap="round"><path d="M26 5.2a9 9 0 0 1 12.6 0"/><path d="M28.7 7.9a5.2 5.2 0 0 1 7.2 0"/></g><circle cx="32.3" cy="10.4" r="1.4"/><rect x="44" y="1" width="20" height="10" rx="3" fill="none" stroke="currentColor" opacity=".45" stroke-width="1"/><rect x="45.8" y="2.8" width="13.5" height="6.4" rx="1.7"/><rect x="64.6" y="4" width="1.6" height="4" rx=".8" opacity=".45"/></svg></div>
+        <div class="rail"><svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M1.5 8.5 L8.5 1.5 M1.5 4 L4 1.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>PAPER&nbsp;·&nbsp;SIMULATED FILLS</div>
+        <div class="navL"><h1>Approvals</h1><div class="sub">Run of <b>9:35 AM</b> · window 15:00 · <b>2 pending</b></div></div>
+        <div class="body">
+          <div class="sig">
+            <div class="r1"><span class="sym">AAPL</span><span class="chip buy">▲ BUY</span>
+              <span class="qty"><b>2</b> × <span class="m">182.50</span></span>
+              <span class="cd"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="var(--s-hair)" stroke-width="2"/><circle cx="8" cy="8" r="6" stroke="var(--s-tx2)" stroke-width="2" stroke-dasharray="21.9 37.7" stroke-linecap="round" transform="rotate(-90 8 8)"/></svg>08:42</span></div>
+            <p class="thesis">RSI pushed through 60 as the MACD histogram flipped positive — momentum is rebuilding after a two-day pullback.</p>
+            <div class="meta"><span>Fired 9:35:12 · expires 9:50</span>
+              <span class="warnflag"><svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M6 1.6 L11 10.2 H1 Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M6 4.8v2.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><circle cx="6" cy="8.9" r=".7" fill="currentColor"/></svg>1 broker alert</span>
+              <span class="chev">›</span></div>
+          </div>
+          <div class="sig">
+            <div class="r1"><span class="sym">NVDA</span><span class="chip sell">▼ SELL</span>
+              <span class="qty"><b>1</b> × <span class="m">176.24</span></span>
+              <span class="cd"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="var(--s-hair)" stroke-width="2"/><circle cx="8" cy="8" r="6" stroke="var(--s-tx2)" stroke-width="2" stroke-dasharray="21.8 37.7" stroke-linecap="round" transform="rotate(-90 8 8)"/></svg>08:41</span></div>
+            <p class="thesis">RSI crossed below 45 (48.90 → 41.20) and MACD fell under its signal line.</p>
+            <div class="meta"><span class="chip tmpl"><svg width="9" height="10" viewBox="0 0 9 11" fill="none"><path d="M1 1.5h4.5L8 4v5.5H1z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/><path d="M2.6 5.4h3.8M2.6 7.2h3.8" stroke="currentColor" stroke-width="1"/></svg>TEMPLATE</span>
+              <span>Fired 9:35:12 · expires 9:50</span><span class="chev">›</span></div>
+          </div>
+          <p class="runfoot">Signals expire 15:00 after firing.<br>A decision is final — nothing returns to pending.</p>
+        </div>
+        <div class="tabbar">
+          <div class="tab on"><svg width="25" height="25" viewBox="0 0 25 25" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><path d="M4 13 L6.6 5.8 a1.6 1.6 0 0 1 1.5-1.1 h8.8 a1.6 1.6 0 0 1 1.5 1.1 L21 13"/><path d="M4 13v5.2A2.3 2.3 0 0 0 6.3 20.5h12.4A2.3 2.3 0 0 0 21 18.2V13h-4.6c-.3 2-1.9 3.3-3.9 3.3S8.9 15 8.6 13Z" fill="currentColor" fill-opacity=".18"/></svg><span class="tbadge">2</span>Approvals</div>
+          <div class="tab"><svg width="25" height="25" viewBox="0 0 25 25" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><rect x="3.5" y="4" width="18" height="17" rx="4"/><polyline points="7,15.5 10.8,10.8 13.6,13.2 18,8"/></svg>Positions</div>
+          <div class="tab"><svg width="25" height="25" viewBox="0 0 25 25" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12.5" cy="12.5" r="8.8"/><path d="M12.5 7.6v4.9l3.4 2"/></svg>History</div>
+          <div class="tab"><svg width="25" height="25" viewBox="0 0 25 25" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3.5 6.5h3M11.5 6.5h10M3.5 12.5h9M17.5 12.5h4M3.5 18.5h1M9.5 18.5h12"/><circle cx="9" cy="6.5" r="2.4"/><circle cx="15" cy="12.5" r="2.4"/><circle cx="7" cy="18.5" r="2.4"/></svg>Controls</div>
+        </div>
+        <span class="homebar"></span>
+      </div></div>
+      <div class="cap"><b>Approvals · light</b> · same tokens, remapped — amber deepens to #C07C16 for contrast</div>
+      </div>
+
+      <!-- Approvals · empty -->
+      <div>
+      <div class="phone"><div class="screen">
+        <span class="isl"></span>
+        <div class="sb"><span>10:02</span><svg width="66" height="12" viewBox="0 0 66 12" fill="currentColor"><rect x="0" y="7" width="3" height="4" rx="1"/><rect x="5" y="5" width="3" height="6" rx="1"/><rect x="10" y="3" width="3" height="8" rx="1"/><rect x="15" y="1" width="3" height="10" rx="1"/><g stroke="currentColor" fill="none" stroke-width="1.6" stroke-linecap="round"><path d="M26 5.2a9 9 0 0 1 12.6 0"/><path d="M28.7 7.9a5.2 5.2 0 0 1 7.2 0"/></g><circle cx="32.3" cy="10.4" r="1.4"/><rect x="44" y="1" width="20" height="10" rx="3" fill="none" stroke="currentColor" opacity=".45" stroke-width="1"/><rect x="45.8" y="2.8" width="13.5" height="6.4" rx="1.7"/><rect x="64.6" y="4" width="1.6" height="4" rx=".8" opacity=".45"/></svg></div>
+        <div class="rail"><svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M1.5 8.5 L8.5 1.5 M1.5 4 L4 1.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>PAPER&nbsp;·&nbsp;SIMULATED FILLS</div>
+        <div class="navL"><h1>Approvals</h1></div>
+        <div class="body">
+          <div class="empty">
+            <svg width="74" height="74" viewBox="0 0 62 62" fill="none" stroke="var(--s-tx2)" stroke-width="2" stroke-linecap="round">
+              <circle cx="31" cy="31" r="4.5" fill="var(--s-tx2)" stroke="none"/>
+              <path d="M20.5 41.5 a15 15 0 0 1 0 -21 M41.5 20.5 a15 15 0 0 1 0 21" opacity=".65"/>
+              <path d="M13.5 48.5 a25 25 0 0 1 0 -35 M48.5 13.5 a25 25 0 0 1 0 35" opacity=".3"/>
+            </svg>
+            <h2>All clear</h2>
+            <p>Nothing met the strategy at today's 9:35 scan. Ollie looks again on the next bar.</p>
+            <div class="heart">
+              <div class="hr"><span>Scanner</span><b><span class="livecdot"></span>Running</b></div>
+              <div class="hr"><span>Last scan</span><b class="mono">Today 9:35:04 AM</b></div>
+              <div class="hr"><span>Result</span><b>5 symbols · no entries</b></div>
+              <div class="hr"><span>Next scan</span><b class="mono">Mon 9:35 AM ET</b></div>
+              <div class="hr"><span>Kill switch</span><b>Off</b></div>
+            </div>
+          </div>
+        </div>
+        <div class="tabbar">
+          <div class="tab on"><svg width="25" height="25" viewBox="0 0 25 25" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><path d="M4 13 L6.6 5.8 a1.6 1.6 0 0 1 1.5-1.1 h8.8 a1.6 1.6 0 0 1 1.5 1.1 L21 13"/><path d="M4 13v5.2A2.3 2.3 0 0 0 6.3 20.5h12.4A2.3 2.3 0 0 0 21 18.2V13h-4.6c-.3 2-1.9 3.3-3.9 3.3S8.9 15 8.6 13Z" fill="currentColor" fill-opacity=".18"/></svg>Approvals</div>
+          <div class="tab"><svg width="25" height="25" viewBox="0 0 25 25" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><rect x="3.5" y="4" width="18" height="17" rx="4"/><polyline points="7,15.5 10.8,10.8 13.6,13.2 18,8"/></svg>Positions</div>
+          <div class="tab"><svg width="25" height="25" viewBox="0 0 25 25" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12.5" cy="12.5" r="8.8"/><path d="M12.5 7.6v4.9l3.4 2"/></svg>History</div>
+          <div class="tab"><svg width="25" height="25" viewBox="0 0 25 25" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3.5 6.5h3M11.5 6.5h10M3.5 12.5h9M17.5 12.5h4M3.5 18.5h1M9.5 18.5h12"/><circle cx="9" cy="6.5" r="2.4"/><circle cx="15" cy="12.5" r="2.4"/><circle cx="7" cy="18.5" r="2.4"/></svg>Controls</div>
+        </div>
+        <span class="homebar"></span>
+      </div></div>
+      <div class="cap"><b>Approvals · empty</b> · the most common state — a heartbeat, not an absence</div>
+      </div>
+
+    </div>
+    <div class="notes">
+      <div class="note"><b>Triage in one line</b>Symbol, side, size × price, and time remaining share the
+      card's first row. The owner can rank two signals against each other before reading a word of thesis.</div>
+      <div class="note"><b>Side is triple-encoded</b>BUY/SELL chips carry the word, a ▲/▼ glyph, and a tint —
+      never tint alone. Sell rows are not "errors"; the chip tint is quiet.</div>
+      <div class="note"><b>The fallback marker</b>When <code>thesis_source = fallback_template</code>, a small
+      outlined TEMPLATE chip with a document glyph sits at the start of the meta row. Grey, not amber — it
+      means "a rule wrote this sentence, weigh it accordingly," not "something is wrong." LLM-written theses
+      carry no marker; absence is the normal state.</div>
+      <div class="note"><b>Broker alerts surface early</b>A signal whose <code>review_snapshot</code> carries
+      alerts shows an amber "1 broker alert" flag in the list, so the owner opens that one knowing there's
+      something to read.</div>
+      <div class="note"><b>The empty state is the product</b>Most days the queue is empty, so the screen
+      reports why it's empty: scanner running, last scan and its result, next scan, kill switch off. Silence
+      becomes evidence the system is alive — and if the kill switch were on, this is where it would confront
+      the owner.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================ DETAIL -->
+<section id="detail">
+  <div class="eyebrow">Screen 2 — Signal detail · the decision</div>
+  <h2>Fast to read, hard to fat-finger</h2>
+  <p class="lede">The two frames are the <strong>same signal at two moments</strong>. At 9:46 the countdown
+  band has turned amber; at 9:49 the owner has tapped <strong>Approve…</strong> and the confirmation sheet is
+  up — with the countdown still ticking inside it, now red. Approve and Reject are single taps followed by
+  exactly one sheet; the trailing ellipsis is the iOS convention for "a confirmation follows."</p>
+  <div class="shelf">
+    <div class="frames">
+
+      <!-- Detail -->
+      <div>
+      <div class="phone"><div class="screen">
+        <span class="isl"></span>
+        <div class="sb"><span>9:46</span><svg width="66" height="12" viewBox="0 0 66 12" fill="currentColor"><rect x="0" y="7" width="3" height="4" rx="1"/><rect x="5" y="5" width="3" height="6" rx="1"/><rect x="10" y="3" width="3" height="8" rx="1"/><rect x="15" y="1" width="3" height="10" rx="1"/><g stroke="currentColor" fill="none" stroke-width="1.6" stroke-linecap="round"><path d="M26 5.2a9 9 0 0 1 12.6 0"/><path d="M28.7 7.9a5.2 5.2 0 0 1 7.2 0"/></g><circle cx="32.3" cy="10.4" r="1.4"/><rect x="44" y="1" width="20" height="10" rx="3" fill="none" stroke="currentColor" opacity=".45" stroke-width="1"/><rect x="45.8" y="2.8" width="13.5" height="6.4" rx="1.7"/><rect x="64.6" y="4" width="1.6" height="4" rx=".8" opacity=".45"/></svg></div>
+        <div class="rail"><svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M1.5 8.5 L8.5 1.5 M1.5 4 L4 1.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>PAPER&nbsp;·&nbsp;SIMULATED FILLS</div>
+        <div class="navI"><span class="ttl">Signal</span><span class="back">‹ Approvals</span></div>
+        <div class="body">
+          <div class="dhead">
+            <div class="r1"><span class="chip buy">▲ BUY</span><span class="co">technical · run 9:35</span></div>
+            <h2>AAPL <small>· Apple Inc.</small></h2>
+            <div class="est"><b>2 shares</b> · est. <b class="m">182.50</b> each · ≈ <span class="m">365.00</span> notional</div>
+          </div>
+          <div class="cdband warn">
+            <div class="r"><span><span class="lbl">REMAINING&nbsp;&nbsp;</span><span class="big m">04:12</span></span>
+            <span class="exp">expires <span class="m">9:50:12 AM</span></span></div>
+            <div class="track"><i style="width:28%"></i></div>
+          </div>
+          <div class="sect">
+            <h3>Broker review</h3>
+            <div class="alertrow">
+              <span class="chip alert"><svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M6 1.6 L11 10.2 H1 Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M6 4.8v2.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><circle cx="6" cy="8.9" r=".7" fill="currentColor"/></svg>EQUITY_NOT_ENOUGH_BP</span>
+              <span class="gloss">May exceed available buying power at fill time.</span>
+            </div>
+          </div>
+          <div class="sect">
+            <h3>Thesis</h3>
+            <p class="thesisfull">RSI pushed through 60 as the MACD histogram flipped positive — momentum is
+            rebuilding after a two-day pullback.</p>
+            <p class="src">Written by the model at 9:35:14 · source: llm</p>
+          </div>
+          <div class="sect">
+            <h3>Why it fired</h3>
+            <div class="evi">
+              <p class="why"><b>MACD histogram crossed zero</b> (−0.19 → +0.42) while <b>RSI rose through
+              60</b> on the daily bar.</p>
+              <div class="ev"><span class="k">RSI (14)</span><span class="v"><span class="prev">51.36</span><span class="arr">→</span>60.59</span><span class="d up">+9.23</span></div>
+              <div class="ev"><span class="k">MACD</span><span class="v"><span class="prev">0.31</span><span class="arr">→</span>0.83</span><span class="d up">+0.52</span></div>
+              <div class="ev"><span class="k">Signal</span><span class="v"><span class="prev">0.50</span><span class="arr">→</span>0.41</span><span class="d dn">−0.09</span></div>
+              <div class="ev hot"><span class="k">Histogram</span><span class="v"><span class="prev">−0.19</span><span class="arr">→</span><b>+0.42</b></span><span class="d up">crossed 0</span></div>
+              <div class="ev"><span class="k">Close</span><span class="v"><span class="prev">178.94</span><span class="arr">→</span>182.41</span><span class="d up">+1.94%</span></div>
+              <div class="evfoot">RSI(14) · MACD(12,26,9) · daily bars</div>
+            </div>
+          </div>
+        </div>
+        <div class="actionbar">
+          <button class="btn reject">Reject…</button>
+          <button class="btn approve">Approve…</button>
+        </div>
+        <span class="homebar"></span>
+      </div></div>
+      <div class="cap"><b>Signal detail</b> · 9:46 — countdown in its amber band, alerts above the thesis</div>
+      </div>
+
+      <!-- Confirm sheet -->
+      <div>
+      <div class="phone"><div class="screen">
+        <span class="isl"></span>
+        <div class="sb"><span>9:49</span><svg width="66" height="12" viewBox="0 0 66 12" fill="currentColor"><rect x="0" y="7" width="3" height="4" rx="1"/><rect x="5" y="5" width="3" height="6" rx="1"/><rect x="10" y="3" width="3" height="8" rx="1"/><rect x="15" y="1" width="3" height="10" rx="1"/><g stroke="currentColor" fill="none" stroke-width="1.6" stroke-linecap="round"><path d="M26 5.2a9 9 0 0 1 12.6 0"/><path d="M28.7 7.9a5.2 5.2 0 0 1 7.2 0"/></g><circle cx="32.3" cy="10.4" r="1.4"/><rect x="44" y="1" width="20" height="10" rx="3" fill="none" stroke="currentColor" opacity=".45" stroke-width="1"/><rect x="45.8" y="2.8" width="13.5" height="6.4" rx="1.7"/><rect x="64.6" y="4" width="1.6" height="4" rx=".8" opacity=".45"/></svg></div>
+        <div class="rail"><svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M1.5 8.5 L8.5 1.5 M1.5 4 L4 1.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>PAPER&nbsp;·&nbsp;SIMULATED FILLS</div>
+        <div class="navI"><span class="ttl">Signal</span><span class="back">‹ Approvals</span></div>
+        <div class="body">
+          <div class="dhead">
+            <div class="r1"><span class="chip buy">▲ BUY</span><span class="co">technical · run 9:35</span></div>
+            <h2>AAPL <small>· Apple Inc.</small></h2>
+            <div class="est"><b>2 shares</b> · est. <b class="m">182.50</b> each · ≈ <span class="m">365.00</span> notional</div>
+          </div>
+          <div class="cdband warn">
+            <div class="r"><span><span class="lbl">REMAINING&nbsp;&nbsp;</span><span class="big m">01:07</span></span>
+            <span class="exp">expires <span class="m">9:50:12 AM</span></span></div>
+            <div class="track"><i style="width:7%"></i></div>
+          </div>
+          <div class="sect">
+            <h3>Thesis</h3>
+            <p class="thesisfull">RSI pushed through 60 as the MACD histogram flipped positive — momentum is
+            rebuilding after a two-day pullback.</p>
+          </div>
+        </div>
+        <div class="dim"></div>
+        <div class="sheet">
+          <div class="grab"></div>
+          <h3>Approve this signal?</h3>
+          <p class="subt">Paper mode — no real order is placed.</p>
+          <div class="sums">
+            <div class="sumrow"><span>Order</span><b>Buy 2 × AAPL</b></div>
+            <div class="sumrow"><span>Est. price</span><b class="m">182.50</b></div>
+            <div class="sumrow"><span>Est. notional</span><b class="m">365.00</b></div>
+            <div class="sumrow"><span>Broker alerts</span><b style="color:var(--s-warn)">1 · not enough BP</b></div>
+            <div class="sumrow" style="border-bottom:none"><span>Mode</span><b style="color:var(--s-mode)">Paper · simulated fill</b></div>
+          </div>
+          <div class="cdline"><span class="cd crit"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="var(--s-hair)" stroke-width="2"/><circle cx="8" cy="8" r="6" stroke="var(--s-danger)" stroke-width="2" stroke-dasharray="2.8 37.7" stroke-linecap="round" transform="rotate(-90 8 8)"/></svg>01:07 left</span></div>
+          <div class="papernote"><svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 10.5 L10.5 2 M2 6 L4.5 3.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+            The executor records a simulated fill at the estimated price ± slippage. Decisions are final —
+            a signal never returns to pending.</div>
+          <button class="btn approve">Approve — paper buy</button>
+          <span class="cancel">Cancel</span>
+        </div>
+        <span class="homebar"></span>
+      </div></div>
+      <div class="cap"><b>Confirmation</b> · 9:49 — one sheet, still counting, unmistakably paper</div>
+      </div>
+
+    </div>
+    <div class="notes">
+      <div class="note"><b>Countdown gets a band, not a pill</b>On the decision screen the countdown earns
+      28pt mono digits inside its own card with a depleting track — glanceable from arm's length. The band
+      adopts the threshold color whole, so peripheral vision reads urgency before the digits do.</div>
+      <div class="note"><b>Alerts sit above the thesis</b><code>review_snapshot</code> alerts render as mono
+      chips with a plain-English gloss, placed between the countdown and the thesis. The prose argument never
+      outranks the broker's objection.</div>
+      <div class="note"><b>Evidence as ledger, not spreadsheet</b>Five rows, three columns: name, prev → now,
+      delta. The row that actually tripped the rule (histogram crossing zero) is bolded and labeled
+      "crossed 0" — the eye lands on the reason first. Mono figures make the prev/now comparison scan
+      vertically.</div>
+      <div class="note"><b>One confirmation, both verbs</b>Approve… and Reject… each open a sheet
+      (<code>.sheet</code> + summary, not <code>confirmationDialog</code> — the owner should re-read the
+      order, not just re-tap). The primary button restates everything: verb, mode, side —
+      "Approve — paper buy."</div>
+      <div class="note"><b>The sheet can't hide the clock</b>The countdown repeats inside the sheet in its
+      critical state. If it expires mid-sheet, the button disables and the sheet reports "Expired — window
+      closed" rather than failing on tap.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================ HISTORY -->
+<section id="history">
+  <div class="eyebrow">Screen 3 — Decided history</div>
+  <h2>Three outcomes, three temperatures</h2>
+  <p class="lede">Every signal leaves <code>pending</code> exactly once, with a reason attached — the history
+  is an immutable ledger, and it reads like one. <strong>Approved</strong> is teal with its fill price.
+  <strong>Rejected</strong> is deliberately <em>gray</em>: saying no is a valid outcome, not a failure.
+  <strong>Expired</strong> is amber and worded as a miss — "no decision within 15:00" — because the system
+  worked; the owner just wasn't there.</p>
+  <div class="shelf">
+    <div class="frames">
+      <div>
+      <div class="phone"><div class="screen">
+        <span class="isl"></span>
+        <div class="sb"><span>9:41</span><svg width="66" height="12" viewBox="0 0 66 12" fill="currentColor"><rect x="0" y="7" width="3" height="4" rx="1"/><rect x="5" y="5" width="3" height="6" rx="1"/><rect x="10" y="3" width="3" height="8" rx="1"/><rect x="15" y="1" width="3" height="10" rx="1"/><g stroke="currentColor" fill="none" stroke-width="1.6" stroke-linecap="round"><path d="M26 5.2a9 9 0 0 1 12.6 0"/><path d="M28.7 7.9a5.2 5.2 0 0 1 7.2 0"/></g><circle cx="32.3" cy="10.4" r="1.4"/><rect x="44" y="1" width="20" height="10" rx="3" fill="none" stroke="currentColor" opacity=".45" stroke-width="1"/><rect x="45.8" y="2.8" width="13.5" height="6.4" rx="1.7"/><rect x="64.6" y="4" width="1.6" height="4" rx=".8" opacity=".45"/></svg></div>
+        <div class="rail"><svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M1.5 8.5 L8.5 1.5 M1.5 4 L4 1.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>PAPER&nbsp;·&nbsp;SIMULATED FILLS</div>
+        <div class="navL"><h1>History</h1><div class="sub"><b>34</b> decided · records are immutable</div></div>
+        <div class="body">
+          <div class="grp">Today</div>
+          <div class="hcard">
+            <div class="hrow"><span class="hic ok"><svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 6.4 L4.8 9.2 L10 3.4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+              <div class="hbody"><div class="r1"><span class="sym">SPY</span><span class="side b">▲ BUY 1</span><span class="st ok">Approved</span></div>
+                <p class="rsn">Filled (paper) 1 @ <span class="m">448.12</span></p>
+                <p class="tm">9:37:41 AM · decided in 2:29</p></div></div>
+            <div class="hrow"><span class="hic no"><svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M2.5 2.5 L9.5 9.5 M9.5 2.5 L2.5 9.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></span>
+              <div class="hbody"><div class="r1"><span class="sym">TSLA</span><span class="side s">▼ SELL 1</span><span class="st no">Rejected</span></div>
+                <p class="rsn">"Earnings after close — sitting this one out."</p>
+                <p class="tm">9:38:05 AM · decided in 2:53</p></div></div>
+          </div>
+          <div class="grp">Friday</div>
+          <div class="hcard">
+            <div class="hrow"><span class="hic ex"><svg width="11" height="12" viewBox="0 0 12 13" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 1.5h7M2.5 11.5h7M3.2 1.5c0 3 2.8 3.2 2.8 5s-2.8 2-2.8 5M8.8 1.5c0 3-2.8 3.2-2.8 5s2.8 2 2.8 5"/></svg></span>
+              <div class="hbody"><div class="r1"><span class="sym">MSFT</span><span class="side b">▲ BUY 1</span><span class="st ex">Expired</span></div>
+                <p class="rsn">Missed — no decision within 15:00.</p>
+                <p class="tm">window closed 9:50:12 AM</p></div></div>
+            <div class="hrow"><span class="hic ok"><svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 6.4 L4.8 9.2 L10 3.4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+              <div class="hbody"><div class="r1"><span class="sym">MSFT</span><span class="side b">▲ BUY 1</span><span class="st ok">Approved</span></div>
+                <p class="rsn">Filled (paper) 1 @ <span class="m">411.03<span class="xd">33</span></span></p>
+                <p class="tm">9:41:20 AM · decided in 5:44</p></div></div>
+          </div>
+          <div class="grp">Thursday</div>
+          <div class="hcard">
+            <div class="hrow"><span class="hic ok"><svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 6.4 L4.8 9.2 L10 3.4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+              <div class="hbody"><div class="r1"><span class="sym">AAPL</span><span class="side b">▲ BUY 2</span><span class="st ok">Approved</span></div>
+                <p class="rsn">Filled (paper) 2 @ <span class="m">182.50</span></p>
+                <p class="tm">9:42:07 AM · decided in 6:55</p></div></div>
+            <div class="hrow"><span class="hic no"><svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M2.5 2.5 L9.5 9.5 M9.5 2.5 L2.5 9.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></span>
+              <div class="hbody"><div class="r1"><span class="sym">NVDA</span><span class="side b">▲ BUY 2</span><span class="st no">Rejected</span></div>
+                <p class="rsn">"Template thesis and a thin histogram — pass."</p>
+                <p class="tm">9:44:52 AM · decided in 9:40</p></div></div>
+          </div>
+        </div>
+        <div class="tabbar">
+          <div class="tab"><svg width="25" height="25" viewBox="0 0 25 25" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><path d="M4 13 L6.6 5.8 a1.6 1.6 0 0 1 1.5-1.1 h8.8 a1.6 1.6 0 0 1 1.5 1.1 L21 13"/><path d="M4 13v5.2A2.3 2.3 0 0 0 6.3 20.5h12.4A2.3 2.3 0 0 0 21 18.2V13h-4.6c-.3 2-1.9 3.3-3.9 3.3S8.9 15 8.6 13Z"/></svg><span class="tbadge">2</span>Approvals</div>
+          <div class="tab"><svg width="25" height="25" viewBox="0 0 25 25" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><rect x="3.5" y="4" width="18" height="17" rx="4"/><polyline points="7,15.5 10.8,10.8 13.6,13.2 18,8"/></svg>Positions</div>
+          <div class="tab on"><svg width="25" height="25" viewBox="0 0 25 25" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12.5" cy="12.5" r="8.8"/><path d="M12.5 7.6v4.9l3.4 2"/></svg>History</div>
+          <div class="tab"><svg width="25" height="25" viewBox="0 0 25 25" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3.5 6.5h3M11.5 6.5h10M3.5 12.5h9M17.5 12.5h4M3.5 18.5h1M9.5 18.5h12"/><circle cx="9" cy="6.5" r="2.4"/><circle cx="15" cy="12.5" r="2.4"/><circle cx="7" cy="18.5" r="2.4"/></svg>Controls</div>
+        </div>
+        <span class="homebar"></span>
+      </div></div>
+      <div class="cap"><b>History · dark</b> · grouped by day; one scan per weekday keeps groups short</div>
+      </div>
+    </div>
+    <div class="notes">
+      <div class="note"><b>Status is icon + word + color</b>Check/X/hourglass in a tinted disc, plus the word
+      set in the same tone. No outcome is ever communicated by tint alone.</div>
+      <div class="note"><b>Reasons are first-class</b><code>decide_reason</code> renders as the row's second
+      line: fill price for approvals, the owner's own words (in quotes) for rejections, the window fact for
+      expiries. This is the text the owner will grep their memory with.</div>
+      <div class="note"><b>Expired ≠ error</b>Amber hourglass, "Missed — no decision within 15:00." The copy
+      assigns no blame and the color says "attention," not "failure." Red is reserved for the halt button and
+      the critical countdown.</div>
+      <div class="note"><b>Decision latency, quietly</b>"decided in 2:29" — a mono footnote computed from
+      <code>created_at → decided_at</code>. Over weeks it tells the owner whether 15:00 is the right window.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================ POSITIONS -->
+<section id="positions">
+  <div class="eyebrow">Screen 4 — Dashboard · positions</div>
+  <h2>Live numbers, and the honest version without them</h2>
+  <p class="lede">Two frames, two truth states. Left: broker reachable, quotes 12 seconds old, full P&L.
+  Right: the <strong>common</strong> degraded state — broker unreachable, so every quote-derived number is
+  <strong>withheld, not zeroed and not guessed</strong>. Entry basis stays; dashes mark what's missing; the
+  banner says when data was last good. And <code>realized&nbsp;P&L: 0.00</code> is framed as a fact of the
+  system's phase ("no closed lots yet"), so a permanent zero never looks like a broken query.</p>
+  <div class="shelf">
+    <div class="frames">
+
+      <!-- Dashboard healthy -->
+      <div>
+      <div class="phone"><div class="screen">
+        <span class="isl"></span>
+        <div class="sb"><span>9:47</span><svg width="66" height="12" viewBox="0 0 66 12" fill="currentColor"><rect x="0" y="7" width="3" height="4" rx="1"/><rect x="5" y="5" width="3" height="6" rx="1"/><rect x="10" y="3" width="3" height="8" rx="1"/><rect x="15" y="1" width="3" height="10" rx="1"/><g stroke="currentColor" fill="none" stroke-width="1.6" stroke-linecap="round"><path d="M26 5.2a9 9 0 0 1 12.6 0"/><path d="M28.7 7.9a5.2 5.2 0 0 1 7.2 0"/></g><circle cx="32.3" cy="10.4" r="1.4"/><rect x="44" y="1" width="20" height="10" rx="3" fill="none" stroke="currentColor" opacity=".45" stroke-width="1"/><rect x="45.8" y="2.8" width="13.5" height="6.4" rx="1.7"/><rect x="64.6" y="4" width="1.6" height="4" rx=".8" opacity=".45"/></svg></div>
+        <div class="rail"><svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M1.5 8.5 L8.5 1.5 M1.5 4 L4 1.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>PAPER&nbsp;·&nbsp;SIMULATED FILLS</div>
+        <div class="navL"><h1>Positions</h1><div class="sub"><b>2</b> open lots · paper account</div></div>
+        <div class="body">
+          <div class="tot">
+            <div class="mvl">Market value</div>
+            <div class="mv m"><span class="cur">$</span>777.19</div>
+            <div class="rows">
+              <div class="trow"><span>Cost basis</span><b class="m">776.03</b></div>
+              <div class="trow"><span>Unrealized P&L</span><b class="up m">▲ +1.16 · +0.15%</b></div>
+              <div class="trow"><span>Realized P&L<small>no closed lots yet — exits arrive in a later phase</small></span><b class="m" style="color:var(--s-tx2)">0.00</b></div>
+            </div>
+          </div>
+          <div class="fresh"><span class="livecdot"></span>quotes 12s old · refreshed 9:47:03</div>
+          <div class="lot">
+            <div class="r1"><span class="sym">AAPL</span><span class="chip buy">▲ LONG</span><span class="qty" style="font-size:12.5px;color:var(--s-tx2)">2 sh</span><span class="pnl up m">▲ +3.24</span></div>
+            <div class="r2">
+              <div class="cell"><div class="k">Entry</div><div class="v m">182.50</div></div>
+              <div class="cell"><div class="k">Quote</div><div class="v m">184.12</div></div>
+              <div class="cell" style="text-align:right"><div class="k">Value</div><div class="v m">368.24</div></div>
+            </div>
+            <div class="r3"><span>opened Thu 9:42 AM</span><span>quote 12s</span></div>
+          </div>
+          <div class="lot">
+            <div class="r1"><span class="sym">MSFT</span><span class="chip buy">▲ LONG</span><span class="qty" style="font-size:12.5px;color:var(--s-tx2)">1 sh</span><span class="pnl dn m">▼ −2.08</span></div>
+            <div class="r2">
+              <div class="cell"><div class="k">Entry</div><div class="v m">411.03<span class="xd">33</span></div></div>
+              <div class="cell"><div class="k">Quote</div><div class="v m">408.94<span class="xd">864</span></div></div>
+              <div class="cell" style="text-align:right"><div class="k">Value</div><div class="v m">408.94<span class="xd">864</span></div></div>
+            </div>
+            <div class="r3"><span>opened Fri 9:41 AM</span><span>quote 12s</span></div>
+          </div>
+        </div>
+        <div class="tabbar">
+          <div class="tab"><svg width="25" height="25" viewBox="0 0 25 25" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><path d="M4 13 L6.6 5.8 a1.6 1.6 0 0 1 1.5-1.1 h8.8 a1.6 1.6 0 0 1 1.5 1.1 L21 13"/><path d="M4 13v5.2A2.3 2.3 0 0 0 6.3 20.5h12.4A2.3 2.3 0 0 0 21 18.2V13h-4.6c-.3 2-1.9 3.3-3.9 3.3S8.9 15 8.6 13Z"/></svg><span class="tbadge">2</span>Approvals</div>
+          <div class="tab on"><svg width="25" height="25" viewBox="0 0 25 25" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><rect x="3.5" y="4" width="18" height="17" rx="4"/><polyline points="7,15.5 10.8,10.8 13.6,13.2 18,8"/></svg>Positions</div>
+          <div class="tab"><svg width="25" height="25" viewBox="0 0 25 25" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12.5" cy="12.5" r="8.8"/><path d="M12.5 7.6v4.9l3.4 2"/></svg>History</div>
+          <div class="tab"><svg width="25" height="25" viewBox="0 0 25 25" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3.5 6.5h3M11.5 6.5h10M3.5 12.5h9M17.5 12.5h4M3.5 18.5h1M9.5 18.5h12"/><circle cx="9" cy="6.5" r="2.4"/><circle cx="15" cy="12.5" r="2.4"/><circle cx="7" cy="18.5" r="2.4"/></svg>Controls</div>
+        </div>
+        <span class="homebar"></span>
+      </div></div>
+      <div class="cap"><b>Positions · healthy</b> · sub-cent precision kept but de-weighted; quote age explicit</div>
+      </div>
+
+      <!-- Dashboard degraded -->
+      <div>
+      <div class="phone"><div class="screen light">
+        <span class="isl"></span>
+        <div class="sb"><span>9:47</span><svg width="66" height="12" viewBox="0 0 66 12" fill="currentColor"><rect x="0" y="7" width="3" height="4" rx="1"/><rect x="5" y="5" width="3" height="6" rx="1"/><rect x="10" y="3" width="3" height="8" rx="1"/><rect x="15" y="1" width="3" height="10" rx="1"/><g stroke="currentColor" fill="none" stroke-width="1.6" stroke-linecap="round"><path d="M26 5.2a9 9 0 0 1 12.6 0"/><path d="M28.7 7.9a5.2 5.2 0 0 1 7.2 0"/></g><circle cx="32.3" cy="10.4" r="1.4"/><rect x="44" y="1" width="20" height="10" rx="3" fill="none" stroke="currentColor" opacity=".45" stroke-width="1"/><rect x="45.8" y="2.8" width="13.5" height="6.4" rx="1.7"/><rect x="64.6" y="4" width="1.6" height="4" rx=".8" opacity=".45"/></svg></div>
+        <div class="rail"><svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M1.5 8.5 L8.5 1.5 M1.5 4 L4 1.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>PAPER&nbsp;·&nbsp;SIMULATED FILLS</div>
+        <div class="navL"><h1>Positions</h1><div class="sub"><b>2</b> open lots · paper account</div></div>
+        <div class="body">
+          <div class="banner"><svg width="13" height="13" viewBox="0 0 12 12" fill="none"><path d="M6 1.6 L11 10.2 H1 Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M6 4.8v2.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><circle cx="6" cy="8.9" r=".7" fill="currentColor"/></svg>
+            <span><b>Broker unreachable — entry basis only.</b>
+            <span class="sub">Quotes and P&L are withheld rather than guessed. Last good quote 9:12 AM · retrying every 30s.</span></span></div>
+          <div class="tot">
+            <div class="mvl">Market value</div>
+            <div class="mv m" style="color:var(--s-tx3)">—<span style="font-size:12px;font-weight:500;letter-spacing:.02em;margin-left:10px;vertical-align:8px">withheld — no quotes</span></div>
+            <div class="rows">
+              <div class="trow"><span>Cost basis</span><b class="m">776.03</b></div>
+              <div class="trow"><span>Unrealized P&L</span><b class="withheld">— withheld</b></div>
+              <div class="trow"><span>Realized P&L<small>no closed lots yet — exits arrive in a later phase</small></span><b class="m" style="color:var(--s-tx2)">0.00</b></div>
+            </div>
+          </div>
+          <div class="lot">
+            <div class="r1"><span class="sym">AAPL</span><span class="chip buy">▲ LONG</span><span class="qty" style="font-size:12.5px;color:var(--s-tx2)">2 sh</span><span class="pnl withheld">—</span></div>
+            <div class="r2">
+              <div class="cell"><div class="k">Entry</div><div class="v m">182.50</div></div>
+              <div class="cell"><div class="k">Quote</div><div class="v na">— no quote</div></div>
+              <div class="cell" style="text-align:right"><div class="k">Cost</div><div class="v m">365.00</div></div>
+            </div>
+            <div class="r3"><span>opened Thu 9:42 AM</span><span>last quote 9:12 AM</span></div>
+          </div>
+          <div class="lot">
+            <div class="r1"><span class="sym">MSFT</span><span class="chip buy">▲ LONG</span><span class="qty" style="font-size:12.5px;color:var(--s-tx2)">1 sh</span><span class="pnl withheld">—</span></div>
+            <div class="r2">
+              <div class="cell"><div class="k">Entry</div><div class="v m">411.03<span class="xd">33</span></div></div>
+              <div class="cell"><div class="k">Quote</div><div class="v na">— no quote</div></div>
+              <div class="cell" style="text-align:right"><div class="k">Cost</div><div class="v m">411.03<span class="xd">33</span></div></div>
+            </div>
+            <div class="r3"><span>opened Fri 9:41 AM</span><span>last quote 9:12 AM</span></div>
+          </div>
+        </div>
+        <div class="tabbar">
+          <div class="tab"><svg width="25" height="25" viewBox="0 0 25 25" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><path d="M4 13 L6.6 5.8 a1.6 1.6 0 0 1 1.5-1.1 h8.8 a1.6 1.6 0 0 1 1.5 1.1 L21 13"/><path d="M4 13v5.2A2.3 2.3 0 0 0 6.3 20.5h12.4A2.3 2.3 0 0 0 21 18.2V13h-4.6c-.3 2-1.9 3.3-3.9 3.3S8.9 15 8.6 13Z"/></svg><span class="tbadge">2</span>Approvals</div>
+          <div class="tab on"><svg width="25" height="25" viewBox="0 0 25 25" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><rect x="3.5" y="4" width="18" height="17" rx="4"/><polyline points="7,15.5 10.8,10.8 13.6,13.2 18,8"/></svg>Positions</div>
+          <div class="tab"><svg width="25" height="25" viewBox="0 0 25 25" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12.5" cy="12.5" r="8.8"/><path d="M12.5 7.6v4.9l3.4 2"/></svg>History</div>
+          <div class="tab"><svg width="25" height="25" viewBox="0 0 25 25" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3.5 6.5h3M11.5 6.5h10M3.5 12.5h9M17.5 12.5h4M3.5 18.5h1M9.5 18.5h12"/><circle cx="9" cy="6.5" r="2.4"/><circle cx="15" cy="12.5" r="2.4"/><circle cx="7" cy="18.5" r="2.4"/></svg>Controls</div>
+        </div>
+        <span class="homebar"></span>
+      </div></div>
+      <div class="cap"><b>Positions · degraded, light</b> · "entry basis only" — a designed state, not an error page</div>
+      </div>
+
+    </div>
+    <div class="notes">
+      <div class="note"><b>Quote age is always on screen</b>A mono freshness line under the totals ("quotes
+      12s old") and a per-lot stamp. A price with no age is how stale data gets believed; here age is part of
+      the number.</div>
+      <div class="note"><b>Withheld, never zero</b>When <code>quote: null</code> comes back, P&L cells render
+      an em-dash plus the word "withheld" / "no quote" in tertiary gray — neutral, not red, because nothing
+      is wrong with the <em>positions</em>. The Value column relabels itself <b>Cost</b> so no number changes
+      meaning silently.</div>
+      <div class="note"><b>Realized 0.00 explained in place</b>The caption "no closed lots yet — exits arrive
+      in a later phase" lives inside the row, permanently. A reader who has never seen the backend knows the
+      zero is structural.</div>
+      <div class="note"><b>Precision policy in action</b><code>411.0333</code> and <code>408.94864</code>
+      render with sub-cent digits at 70% size in tertiary color — auditable against the backend string, but
+      the eye compares dollars and cents.</div>
+      <div class="note"><b>One amber, two meanings? No.</b>The degraded banner uses the warning tint but
+      never the mode rail's stripes — texture keeps "paper" and "broker down" from ever blurring together.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================ CONTROLS -->
+<section id="controls">
+  <div class="eyebrow">Screen 5 — Controls</div>
+  <h2>One big red button, one lock that isn't yours to open</h2>
+  <p class="lede">The kill switch is the only red control surface in the app — nothing competes with it. The
+  paper/live segmented control renders <strong>locked</strong> because <code>LIVE_TRADING_ENABLED=false</code>
+  is set at the environment level: the UI shows the lock and says plainly that enabling live is a deploy, not
+  a tap. Showing a disabled control (instead of hiding it) documents the safety model on the device itself.</p>
+  <div class="shelf">
+    <div class="frames">
+      <div>
+      <div class="phone"><div class="screen">
+        <span class="isl"></span>
+        <div class="sb"><span>9:41</span><svg width="66" height="12" viewBox="0 0 66 12" fill="currentColor"><rect x="0" y="7" width="3" height="4" rx="1"/><rect x="5" y="5" width="3" height="6" rx="1"/><rect x="10" y="3" width="3" height="8" rx="1"/><rect x="15" y="1" width="3" height="10" rx="1"/><g stroke="currentColor" fill="none" stroke-width="1.6" stroke-linecap="round"><path d="M26 5.2a9 9 0 0 1 12.6 0"/><path d="M28.7 7.9a5.2 5.2 0 0 1 7.2 0"/></g><circle cx="32.3" cy="10.4" r="1.4"/><rect x="44" y="1" width="20" height="10" rx="3" fill="none" stroke="currentColor" opacity=".45" stroke-width="1"/><rect x="45.8" y="2.8" width="13.5" height="6.4" rx="1.7"/><rect x="64.6" y="4" width="1.6" height="4" rx=".8" opacity=".45"/></svg></div>
+        <div class="rail"><svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M1.5 8.5 L8.5 1.5 M1.5 4 L4 1.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>PAPER&nbsp;·&nbsp;SIMULATED FILLS</div>
+        <div class="navL"><h1>Controls</h1></div>
+        <div class="body">
+          <div class="ctl">
+            <h3>Trading mode</h3>
+            <p class="desc">Signals are created and settled in the mode below. Live is off at the environment
+            level — <code>LIVE_TRADING_ENABLED=false</code> — enabling it is a deliberate deploy, not a tap.</p>
+            <div class="seg">
+              <div class="opt on"><svg width="11" height="11" viewBox="0 0 10 10" fill="none"><path d="M1.5 8.5 L8.5 1.5 M1.5 4 L4 1.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>Paper</div>
+              <div class="opt locked"><svg width="11" height="12" viewBox="0 0 11 12" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="1.5" y="5" width="8" height="5.5" rx="1.5"/><path d="M3.4 5V3.6a2.1 2.1 0 0 1 4.2 0V5"/></svg>Live</div>
+            </div>
+          </div>
+          <div class="ctl killzone">
+            <h3>Emergency stop</h3>
+            <p class="desc">Sets <code>kill_switch</code>. The pipeline halts, pending signals expire on the
+            next sweep (≤ 1 min), and nothing fires until this is switched off. <code>KILL_SWITCH</code> in
+            the environment is a second, deploy-level override.</p>
+            <button class="btn halt"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="#fff" stroke-width="1.7" stroke-linejoin="round"><path d="M5.2 1.5h5.6L14.5 5.2v5.6l-3.7 3.7H5.2L1.5 10.8V5.2Z"/><path d="M8 4.6v4" stroke-linecap="round"/><circle cx="8" cy="11" r=".9" fill="#fff" stroke="none"/></svg>Halt Ollie…</button>
+          </div>
+          <div class="ctl">
+            <h3>Service</h3>
+            <div class="statgrid">
+              <div class="hr"><span>Pipeline</span><b class="mono">9:35 AM ET · weekdays</b></div>
+              <div class="hr"><span>Expiry sweep</span><b class="mono">every minute</b></div>
+              <div class="hr"><span>Last heartbeat</span><b class="mono">12s ago</b></div>
+              <div class="hr"><span>Broker session</span><b><span class="livecdot"></span>Connected</b></div>
+              <div class="hr"><span>Backend</span><b class="mono">ollie 0.6.2 · paper</b></div>
+            </div>
+          </div>
+        </div>
+        <div class="tabbar">
+          <div class="tab"><svg width="25" height="25" viewBox="0 0 25 25" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><path d="M4 13 L6.6 5.8 a1.6 1.6 0 0 1 1.5-1.1 h8.8 a1.6 1.6 0 0 1 1.5 1.1 L21 13"/><path d="M4 13v5.2A2.3 2.3 0 0 0 6.3 20.5h12.4A2.3 2.3 0 0 0 21 18.2V13h-4.6c-.3 2-1.9 3.3-3.9 3.3S8.9 15 8.6 13Z"/></svg><span class="tbadge">2</span>Approvals</div>
+          <div class="tab"><svg width="25" height="25" viewBox="0 0 25 25" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><rect x="3.5" y="4" width="18" height="17" rx="4"/><polyline points="7,15.5 10.8,10.8 13.6,13.2 18,8"/></svg>Positions</div>
+          <div class="tab"><svg width="25" height="25" viewBox="0 0 25 25" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12.5" cy="12.5" r="8.8"/><path d="M12.5 7.6v4.9l3.4 2"/></svg>History</div>
+          <div class="tab on"><svg width="25" height="25" viewBox="0 0 25 25" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3.5 6.5h3M11.5 6.5h10M3.5 12.5h9M17.5 12.5h4M3.5 18.5h1M9.5 18.5h12"/><circle cx="9" cy="6.5" r="2.4"/><circle cx="15" cy="12.5" r="2.4"/><circle cx="7" cy="18.5" r="2.4"/></svg>Controls</div>
+        </div>
+        <span class="homebar"></span>
+      </div></div>
+      <div class="cap"><b>Controls · dark</b> · halt is the only red surface; the lock explains itself</div>
+      </div>
+    </div>
+    <div class="notes">
+      <div class="note"><b>Halt gets the ellipsis too</b>"Halt Ollie…" opens one destructive confirmation
+      sheet (red button, octagon icon) listing exactly what happens: pipeline stops, pending signals expire,
+      nothing fires until re-enabled. Same one-step pattern as Approve — muscle memory transfers.</div>
+      <div class="note"><b>After the halt</b>The Controls card flips to a "Halted" state with an amber
+      "Resume…" action, and the Approvals empty state reports "Kill switch: On" — the stop is visible from
+      the screen the owner lands on, not just from Settings.</div>
+      <div class="note"><b>The locked segment is documentation</b>Live is shown, locked, with the env var
+      named. Hiding it would invite the question "where do I go live?"; a lock with a reason answers it and
+      reinforces that the gate is outside the phone's authority.</div>
+      <div class="note"><b>Service card = trust</b>Cron schedule, sweep cadence, heartbeat age, broker
+      session. The same vocabulary as the empty state's heartbeat card, so "is it running?" has the same
+      answer everywhere.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================ FOOTER -->
+<footer class="doc">
+  <h2>SwiftUI build notes</h2>
+  <div class="map">
+    <div><b>Mode rail</b> — root <code>TabView</code> wrapped with <code>.safeAreaInset(edge: .top)</code>;
+    stripes via a tiled <code>Canvas</code>. App-wide <code>.tint(mode.accent)</code> drives buttons, tabs,
+    links from one token.</div>
+    <div><b>Countdown</b> — <code>TimelineView(.periodic(from:by: 0.5))</code> over <code>expires_at</code>;
+    digits <code>.monospacedDigit()</code>; ring is <code>Circle().trim(from:to:)</code>. Pulse gated on
+    <code>accessibilityReduceMotion</code>; VoiceOver reads "4 minutes 12 seconds remaining."</div>
+    <div><b>Money</b> — keep the backend decimal string; split on the decimal point, render past-2 digits as a
+    smaller <code>Text</code> in <code>.secondary</code>. Never round, never Float.</div>
+    <div><b>Confirmations</b> — <code>.sheet</code> with <code>presentationDetents([.medium])</code> for
+    approve/reject/halt; a summary list, one filled button naming verb + mode, Cancel below.</div>
+    <div><b>Iconography</b> — SF Symbols: <code>tray.full</code>, <code>chart.xyaxis.line</code>,
+    <code>clock</code>, <code>slider.horizontal.3</code>, <code>arrowtriangle.up/down.fill</code>,
+    <code>exclamationmark.triangle</code>, <code>doc.plaintext</code> (template thesis),
+    <code>lock.fill</code>, <code>hourglass</code>, <code>checkmark</code>, <code>xmark</code>,
+    <code>octagon</code> (halt), <code>pencil.line</code> (paper).</div>
+    <div><b>Color assets</b> — every token above ships as an asset-catalog color with dark/light variants;
+    gain/loss additionally pass a grayscale legibility check (sign + triangle always present).</div>
+  </div>
+  <p style="margin-top:28px">ollie · owner app design reference · docs/design/owner-app-design.html</p>
+</footer>
+
+
+
+</div>
+</body>
+</html>

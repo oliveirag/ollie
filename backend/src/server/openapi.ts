@@ -21,6 +21,11 @@ export const OPENAPI_HEADER = `# Generated from the zod route schemas. Do not ed
 # Regenerate with:  npm run openapi:write
 # The drift test (test/openapi.drift.test.ts) fails if this file falls behind
 # the routes, which is how a Swift client and a Node handler stay in sync.
+#
+# Emitted as OpenAPI 3.0.3 with \`nullable: true\` rather than 3.1's
+# \`anyOf: [X, {type: "null"}]\`: swift-openapi-generator does not support the
+# 3.1 null type and drops nullable properties from the generated client
+# entirely. See toOpenApi30 in src/server/openapi.ts.
 `;
 
 /**
@@ -31,6 +36,71 @@ export const OPENAPI_HEADER = `# Generated from the zod route schemas. Do not ed
 const SPEC_ONLY_TOKEN = 'x'.repeat(64);
 
 const REF_PREFIX = '#/components/schemas/';
+
+/**
+ * Rewrite the document from OpenAPI 3.1 to 3.0.3, converting nullability from
+ * `anyOf: [X, {type: "null"}]` to `nullable: true`.
+ *
+ * This is not stylistic. `swift-openapi-generator` does not support the 3.1
+ * null type: given the anyOf form it logs `Schema "null" is not supported` and
+ * **drops the property entirely** — `quote`, `unrealized_pnl` and
+ * `market_value` simply did not exist on the generated Swift structs, so the
+ * app could not have read a degraded dashboard at all.
+ *
+ * The obvious 3.1-preserving fix, collapsing to `type: [X, "null"]`, is worse:
+ * it fixes scalars but silently types a nullable `$ref` as non-optional, so
+ * `DecisionResponse.execution` — null on every rejection — would have failed
+ * to decode at runtime instead of failing loudly at build time.
+ *
+ * 3.0's `nullable` handles both. The cost is that a nullable `$ref` needs the
+ * `allOf` wrapper below, which the generator surfaces as a nested payload with
+ * a `.value1` hop at the call site. Three fields pay that price
+ * (`execution`, `review`, `thesis_source`) and all three decode correctly,
+ * which is the trade worth making.
+ */
+export function toOpenApi30(document: Record<string, unknown>): void {
+  document.openapi = '3.0.3';
+
+  const convert = (node: unknown): unknown => {
+    if (Array.isArray(node)) return node.map(convert);
+    if (node === null || typeof node !== 'object') return node;
+
+    const record = node as Record<string, unknown>;
+    const branches = record.anyOf;
+
+    if (Array.isArray(branches)) {
+      const isNull = (b: unknown): boolean =>
+        typeof b === 'object' && b !== null && (b as { type?: unknown }).type === 'null';
+      const nulls = branches.filter(isNull);
+      const others = branches.filter((b) => !isNull(b));
+
+      // Only the single-branch case is a nullability idiom. A genuine union of
+      // two or more types plus null is a different thing and is left alone.
+      if (nulls.length > 0 && others.length === 1) {
+        const { anyOf: _dropped, ...siblings } = record;
+        const branch = others[0] as Record<string, unknown>;
+
+        if ('$ref' in branch) {
+          // 3.0 ignores keys sitting beside a $ref, so the reference has to be
+          // pushed inside an allOf for `nullable` to apply to it.
+          return convert({ ...siblings, nullable: true, allOf: [branch] });
+        }
+
+        const merged: Record<string, unknown> = { ...branch, nullable: true };
+        for (const [key, value] of Object.entries(siblings)) {
+          if (!(key in merged)) merged[key] = value;
+        }
+        return convert(merged);
+      }
+    }
+
+    return Object.fromEntries(Object.entries(record).map(([k, v]) => [k, convert(v)]));
+  };
+
+  for (const key of Object.keys(document)) {
+    if (key !== 'openapi') document[key] = convert(document[key]);
+  }
+}
 
 function collectRefs(node: unknown, into: Set<string>): void {
   if (Array.isArray(node)) {
@@ -106,7 +176,10 @@ export async function renderOpenApiYaml(): Promise<string> {
   try {
     await app.ready();
     const document = app.swagger() as Record<string, unknown>;
+    // Order matters: prune before converting, so the reachability walk sees the
+    // `anyOf` refs in the shape it was written against.
     pruneUnreferencedSchemas(document);
+    toOpenApi30(document);
     // `lineWidth: 0` disables folding: a wrapped description produces a diff
     // that moves when unrelated text changes length, which is noise in review.
     return OPENAPI_HEADER + stringify(document, { lineWidth: 0 });
