@@ -51,13 +51,21 @@ targets:
     # fails with "supported platforms ... is empty" — which reads like a missing
     # SDK and is not one.
     scheme:
-      testTargets: []
+      testTargets:
+        - OllieUITests
       gatherCoverageData: false
     settings:
       base:
         SWIFT_VERSION: "5.10"
         TARGETED_DEVICE_FAMILY: "1"
         ENABLE_USER_SCRIPT_SANDBOXING: NO
+      configs:
+        # `$()` splits the `//` so the build-settings parser does not read the
+        # rest of the line as a comment. It expands to nothing.
+        Debug:
+          OLLIE_BASE_URL: http:/$()/localhost:3000
+        Release:
+          OLLIE_BASE_URL: https:/$()/ollie.up.railway.app
     info:
       path: Ollie/Resources/Info.plist
       properties:
@@ -65,3 +73,33 @@ targets:
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
+        # Resolved per build configuration (see settings below), never a
+        # literal: Debug points at the dev machine, Release at the TLS
+        # endpoint. Hardcoding localhost here would make it the shipped
+        # default, which is exactly the wrong direction for a build that
+        # carries a trade-approving credential.
+        OllieBaseURL: $(OLLIE_BASE_URL)
+        NSAppTransportSecurity:
+          # NSAllowsLocalNetworking, deliberately, rather than
+          # NSAllowsArbitraryLoads. It permits cleartext only to local hosts —
+          # localhost, .local, link-local — and cannot enable cleartext to a
+          # public host. The Release build talks HTTPS to Railway and is
+          # unaffected by it; a Debug build talks HTTP to the dev machine and
+          # needs it.
+          NSAllowsLocalNetworking: true
+
+  # Drives the approval flow through the real UI. Not a unit-test target:
+  # what needs proving is that the decision surface works, and the backend
+  # already has 230 tests for what happens after the tap.
+  OllieUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - OllieUITests
+    dependencies:
+      - target: Ollie
+    settings:
+      base:
+        SWIFT_VERSION: "5.10"
+        TEST_TARGET_NAME: Ollie
+        GENERATE_INFOPLIST_FILE: YES
