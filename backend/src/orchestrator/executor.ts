@@ -1,9 +1,9 @@
-import type { Execution, PrismaClient, Signal, TrackRecord } from '@prisma/client';
+import { Prisma, type Execution, type PrismaClient, type Signal, type TrackRecord } from '@prisma/client';
 import type { Logger } from 'pino';
 import type { Config } from '../config/index.js';
 import { recordExecution } from '../db/executions.js';
 import { getAppSettings } from '../db/settings.js';
-import { appendTrackRecord } from '../db/trackRecord.js';
+import { appendTrackRecord, closeLots, openLotsForSymbol } from '../db/trackRecord.js';
 import { applySlippage } from '../money.js';
 import { parseReviewSnapshot } from './reviewSnapshot.js';
 import type { BrokerAdapter } from './robinhood/client.js';
@@ -20,7 +20,25 @@ import type { BrokerAdapter } from './robinhood/client.js';
 
 export interface ExecutionOutcome {
   execution: Execution;
+  /** The opened lot on a buy; the first closed lot on a sell. */
   trackRecord: TrackRecord;
+  /** Every lot a sell consumed, oldest first. Absent on a buy. */
+  closedLots?: TrackRecord[];
+}
+
+/**
+ * An approved exit had no open lot to close by the time it executed.
+ *
+ * Surfaced as its own error so the decision route can pre-flight it and answer
+ * 409 with the signal still pending, rather than transitioning it to approved
+ * and then failing — which would strand it approved with no fill and no way
+ * back, the exact hazard the Phase 2 pre-flight doctrine exists to avoid.
+ */
+export class NoOpenPositionError extends Error {
+  constructor(symbol: string) {
+    super(`no open ${symbol} lot to close`);
+    this.name = 'NoOpenPositionError';
+  }
 }
 
 export interface Executor {
@@ -90,6 +108,18 @@ export class PaperExecutor implements Executor {
     );
     const filledAt = (this.deps.now ?? (() => new Date()))();
 
+    // A sell is always a close, never a new position. Selecting the lots it
+    // consumes happens *before* the execution is recorded, so an exit with
+    // nothing to close leaves no trace at all rather than a fill against a
+    // position that does not exist.
+    const consumed =
+      signal.side === 'sell'
+        ? await selectLotsToClose(signal.symbol, quantity, this.deps.prisma)
+        : null;
+    if (consumed !== null && consumed.length === 0) {
+      throw new NoOpenPositionError(signal.symbol);
+    }
+
     const execution = await recordExecution(
       {
         signalId: signal.id,
@@ -102,15 +132,30 @@ export class PaperExecutor implements Executor {
       this.deps.prisma,
     );
 
-    const trackRecord = await appendTrackRecord(
-      {
-        signalId: signal.id,
-        entryPrice: fillPrice,
-        status: 'open',
-        recordedAt: filledAt,
-      },
-      this.deps.prisma,
-    );
+    let trackRecord: TrackRecord;
+    let closedLots: TrackRecord[] | undefined;
+    if (consumed) {
+      closedLots = await closeLots(
+        {
+          signalIds: consumed,
+          exitPrice: fillPrice,
+          closedBySignalId: signal.id,
+          recordedAt: filledAt,
+        },
+        this.deps.prisma,
+      );
+      trackRecord = closedLots[0]!;
+    } else {
+      trackRecord = await appendTrackRecord(
+        {
+          signalId: signal.id,
+          entryPrice: fillPrice,
+          status: 'open',
+          recordedAt: filledAt,
+        },
+        this.deps.prisma,
+      );
+    }
 
     this.deps.logger.info(
       {
@@ -121,11 +166,12 @@ export class PaperExecutor implements Executor {
         estimated_price: snapshot.estimated_price,
         fill_price: fillPrice,
         slippage_bps: this.deps.config.slippageBps,
+        lots_closed: closedLots?.length ?? 0,
       },
       'paper fill recorded',
     );
 
-    return { execution, trackRecord };
+    return closedLots ? { execution, trackRecord, closedLots } : { execution, trackRecord };
   }
 }
 
@@ -184,4 +230,35 @@ export function executorFor(
   return signal.executionMode === 'live'
     ? new LiveExecutor(deps, broker)
     : new PaperExecutor(deps);
+}
+
+/**
+ * The lots a sell consumes, oldest first, up to its quantity.
+ *
+ * Whole lots only (Phase 3 plan, decision 4): a lot that would overshoot the
+ * exit's quantity is left open rather than split. Entry sizing is one notional
+ * unit and the position cap is 2x that, so a position is at most a couple of
+ * lots and partial-exit bookkeeping buys nothing at this scale.
+ *
+ * FIFO earns its place in exactly one race — a buy on the same symbol approved
+ * *after* this exit was proposed. The exit's quantity was fixed at proposal
+ * time, so the newer lot is simply not covered and stays open.
+ */
+async function selectLotsToClose(
+  symbol: string,
+  quantity: string,
+  prisma?: PrismaClient,
+): Promise<string[]> {
+  const lots = await openLotsForSymbol(symbol, prisma);
+  const wanted = new Prisma.Decimal(quantity);
+
+  const chosen: string[] = [];
+  let running = new Prisma.Decimal(0);
+  for (const lot of [...lots].sort((a, b) => a.recordedAt.getTime() - b.recordedAt.getTime())) {
+    const next = running.plus(lot.quantity);
+    if (next.greaterThan(wanted)) break;
+    chosen.push(lot.signalId);
+    running = next;
+  }
+  return chosen;
 }

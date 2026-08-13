@@ -2,6 +2,7 @@ import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import type { Config } from '../../config/index.js';
 import { getAppSettings } from '../../db/settings.js';
+import { openLotsForSymbol } from '../../db/trackRecord.js';
 import {
   getSignal,
   listDecidedSignals,
@@ -12,6 +13,7 @@ import {
   type DecidedStatus,
 } from '../../db/signals.js';
 import type { Logger } from 'pino';
+import type { Signal } from '@prisma/client';
 import { executorFor } from '../../orchestrator/executor.js';
 import type { BrokerAdapter } from '../../orchestrator/robinhood/client.js';
 import {
@@ -173,7 +175,7 @@ export const registerSignalRoutes: FastifyPluginAsyncZod<SignalRouteOptions> = a
       // decidable. The executor re-checks both; that check, not this one, is
       // the authority.
       if (status === 'approved') {
-        const blocked = await preflightExecution(signal.executionMode, config);
+        const blocked = await preflightExecution(signal, config);
         if (blocked) return reply.code(409).send(blocked);
       }
 
@@ -241,9 +243,10 @@ export const registerSignalRoutes: FastifyPluginAsyncZod<SignalRouteOptions> = a
  * signal's one allowed transition.
  */
 async function preflightExecution(
-  mode: 'paper' | 'live',
+  signal: Signal,
   config: Config,
 ): Promise<{ error: string; detail: string } | null> {
+  const mode = signal.executionMode;
   if (config.killSwitchEnv) {
     return { error: 'kill_switch_engaged', detail: 'KILL_SWITCH is set in the environment' };
   }
@@ -262,6 +265,22 @@ async function preflightExecution(
         ? 'app_settings.execution_mode is not live'
         : 'the live order path is not implemented until Phase 5';
     return { error: 'live_mode_not_enabled', detail: reason };
+  }
+
+  // A long-only exit needs something to close. The executor refuses too and
+  // remains the authority, but discovering it there would mean the signal had
+  // already transitioned to approved — and the immutability triggers only allow
+  // pending -> terminal, so it would be stranded approved with no fill. Checked
+  // here, the answer is a 409 and the signal is still pending and still
+  // decidable, exactly as with the kill-switch and live-mode refusals above.
+  if (signal.side === 'sell') {
+    const lots = await openLotsForSymbol(signal.symbol);
+    if (lots.length === 0) {
+      return {
+        error: 'no_open_position',
+        detail: `no open ${signal.symbol} lot to close`,
+      };
+    }
   }
 
   return null;

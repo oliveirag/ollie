@@ -303,8 +303,14 @@ describe('approval writes a paper fill', () => {
 
     // Same machinery, opposite side: slippage is always the unfavourable
     // direction, so paper never flatters the strategy.
-    const sellSignal = { ...(await getSignal(signal.id, db))!, side: 'sell' as const };
     const executor = new PaperExecutor({ config: config(), logger, prisma: db, now: clock });
+
+    // Fill the entry first. A sell is a close now, so it needs a lot to close —
+    // executing one against an empty position is refused outright.
+    const approved = (await getSignal(signal.id, db))!;
+    await executor.execute(approved);
+
+    const sellSignal = { ...approved, side: 'sell' as const };
     const { execution } = await executor.execute(sellSignal);
 
     expect(execution.fillPrice.toString()).toBe('308.32137');

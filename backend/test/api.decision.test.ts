@@ -297,3 +297,31 @@ describe('GET /v1/signals/:id', () => {
     expect(malformed.statusCode).toBe(400);
   });
 });
+
+describe('approving an exit with nothing to close', () => {
+  it('returns 409 and leaves the signal decidable', async () => {
+    const exit = await seedSignal({ side: 'sell', dedupeKey: uniqueDedupeKey('exit') });
+
+    const response = await decide(exit.id, { action: 'approve' });
+
+    // Pre-flighted, not discovered mid-execution. The immutability triggers
+    // only permit pending -> terminal, so approving first and failing after
+    // would strand this signal approved with no fill and no way back.
+    expect(response.statusCode).toBe(409);
+    expect(response.json().error).toBe('no_open_position');
+
+    const after = await getSignal(exit.id, db);
+    expect(after!.status).toBe('pending');
+  });
+
+  it('still allows rejecting it', async () => {
+    const exit = await seedSignal({ side: 'sell', dedupeKey: uniqueDedupeKey('exit') });
+
+    const response = await decide(exit.id, { action: 'reject', reason: 'not now' });
+
+    // A reject moves no money and closes no lot, so nothing about an empty
+    // position should stop the owner clearing it out of the queue.
+    expect(response.statusCode).toBe(200);
+    expect((await getSignal(exit.id, db))!.status).toBe('rejected');
+  });
+});
