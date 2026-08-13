@@ -509,7 +509,14 @@ components:
         killSwitch:
           type: boolean
           nullable: true
-          description: Runtime kill switch from app_settings; null when the database is unreachable
+          description: "Effective kill switch: true when either half is on, so the pipeline is halted. Null only when the database is unreachable AND the environment override is off, which is the one case where the answer is genuinely unknown"
+        killSwitchEnv:
+          type: boolean
+          description: The KILL_SWITCH environment override. Clearing it requires a redeploy. Read from config, so it stays truthful even when the database is down
+        killSwitchDb:
+          type: boolean
+          nullable: true
+          description: The runtime half in app_settings, flipped from the iOS app with no redeploy; null when the database is unreachable
         executionMode:
           nullable: true
           allOf:
@@ -526,6 +533,8 @@ components:
         - status
         - database
         - killSwitch
+        - killSwitchEnv
+        - killSwitchDb
         - executionMode
         - uptimeSeconds
         - checkedAt

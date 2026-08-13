@@ -100,11 +100,19 @@ flags, which is the fastest way to confirm which mode production is actually in:
   "status": "ok",
   "database": "up",
   "killSwitch": false,
+  "killSwitchEnv": false,
+  "killSwitchDb": false,
   "executionMode": "paper",
   "uptimeSeconds": 42,
   "checkedAt": "2026-08-04T16:55:00.000Z"
 }
 ```
+
+`killSwitch` is the effective answer — true when *either* half is on, so it
+matches what the pipeline actually does. The two halves are reported separately
+because clearing them differs: `killSwitchEnv` needs a redeploy, `killSwitchDb`
+is one API call from the iOS app. `killSwitchEnv` is read from config rather
+than the database, so it stays truthful in the degraded response too.
 
 `/healthz` returns 503 when the database is unreachable, which is what the
 platform health check keys on.

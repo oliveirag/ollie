@@ -321,7 +321,24 @@ export const HealthReportSchema = z
     killSwitch: z
       .boolean()
       .nullable()
-      .describe('Runtime kill switch from app_settings; null when the database is unreachable'),
+      .describe(
+        'Effective kill switch: true when either half is on, so the pipeline is halted. ' +
+          'Null only when the database is unreachable AND the environment override is off, ' +
+          'which is the one case where the answer is genuinely unknown',
+      ),
+    killSwitchEnv: z
+      .boolean()
+      .describe(
+        'The KILL_SWITCH environment override. Clearing it requires a redeploy. ' +
+          'Read from config, so it stays truthful even when the database is down',
+      ),
+    killSwitchDb: z
+      .boolean()
+      .nullable()
+      .describe(
+        'The runtime half in app_settings, flipped from the iOS app with no redeploy; ' +
+          'null when the database is unreachable',
+      ),
     executionMode: ExecModeSchema.nullable(),
     uptimeSeconds: z.number().int(),
     checkedAt: z.string().datetime(),
