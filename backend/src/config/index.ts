@@ -50,6 +50,12 @@ const EnvSchema = z.object({
    * therefore no win rate and nothing worth publishing — merely because the
    * market never obliged with a crossing. 0 disables it.
    */
+  /**
+   * When the daily mark runs, ET. After the close by default, so the quote it
+   * records is a settled price rather than a mid-session one.
+   */
+  MARK_CRON: z.string().default('15 16 * * 1-5'),
+
   MAX_HOLDING_DAYS: z.coerce.number().int().min(0).default(30),
 
   ORDER_NOTIONAL_CENTS: positiveInt.default(50_000),
@@ -128,6 +134,7 @@ export interface Config {
   signalExpiryMinutes: number;
   pipelineCron: string;
   expirySweepCron: string;
+  markCron: string;
   /** Cron expressions above are interpreted in this zone; persistence is always UTC. */
   timezone: string;
   killSwitchEnv: boolean;
@@ -216,6 +223,7 @@ export function buildConfig(source: NodeJS.ProcessEnv = process.env): Config {
     signalExpiryMinutes: env.SIGNAL_EXPIRY_MINUTES,
     pipelineCron: env.PIPELINE_CRON,
     expirySweepCron: env.EXPIRY_SWEEP_CRON,
+    markCron: env.MARK_CRON,
     timezone: TIMEZONE,
     killSwitchEnv: env.KILL_SWITCH,
     liveTradingEnabled: env.LIVE_TRADING_ENABLED,

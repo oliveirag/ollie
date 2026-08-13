@@ -2,6 +2,7 @@ import { Cron } from 'croner';
 import type { PrismaClient } from '@prisma/client';
 import type { Logger } from 'pino';
 import type { Config } from '../config/index.js';
+import { runMarkToMarket } from './marks.js';
 import { runPipeline, sweepExpiredSignals } from './pipeline.js';
 import type { Notifier } from './push/notify.js';
 import type { BrokerAdapter } from './robinhood/client.js';
@@ -33,7 +34,7 @@ export interface SchedulerDeps {
 export interface RunningScheduler {
   stop(): void;
   /** Next fire times, for the startup log. */
-  nextRuns(): { pipeline: Date | null; expiry: Date | null };
+  nextRuns(): { pipeline: Date | null; expiry: Date | null; mark: Date | null };
 }
 
 export function startScheduler(deps: SchedulerDeps): RunningScheduler {
@@ -73,9 +74,28 @@ export function startScheduler(deps: SchedulerDeps): RunningScheduler {
     },
   );
 
+  // Deliberately not gated on the kill switch, unlike the two jobs above. This
+  // one observes rather than acts — see the header of marks.ts. Halting it
+  // would leave a permanent hole in the published curve to stop trading that
+  // the other two jobs have already stopped.
+  const markJob = new Cron(
+    config.markCron,
+    { timezone: config.timezone, protect: true, name: 'mark' },
+    () => {
+      void runMarkToMarket({
+        broker: deps.broker,
+        logger,
+        ...(deps.prisma ? { prisma: deps.prisma } : {}),
+      }).catch((error: unknown) => {
+        log.error({ err: error }, 'mark-to-market failed');
+      });
+    },
+  );
+
   log.info(
     {
       pipeline_cron: config.pipelineCron,
+      mark_cron: config.markCron,
       expiry_cron: config.expirySweepCron,
       timezone: config.timezone,
       next_pipeline_run: pipelineJob.nextRun()?.toISOString() ?? null,
@@ -87,10 +107,15 @@ export function startScheduler(deps: SchedulerDeps): RunningScheduler {
     stop() {
       pipelineJob.stop();
       expiryJob.stop();
+      markJob.stop();
       log.info('scheduler stopped');
     },
     nextRuns() {
-      return { pipeline: pipelineJob.nextRun(), expiry: expiryJob.nextRun() };
+      return {
+        pipeline: pipelineJob.nextRun(),
+        expiry: expiryJob.nextRun(),
+        mark: markJob.nextRun(),
+      };
     },
   };
 }
