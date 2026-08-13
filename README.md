@@ -13,7 +13,8 @@ Two strictly separated sides:
 
 Full product spec: [Ollie.md](Ollie.md).
 Build plans: [phases 0–1](docs/implementation-plan-phases-0-1.md) (done, pending live E2E) ·
-[phase 2](docs/implementation-plan-phase-2.md) (planned).
+[phase 2](docs/implementation-plan-phase-2.md) (built, pending device E2E).
+Design reference: [docs/design/owner-app-design.html](docs/design/owner-app-design.html).
 
 ## Status
 
@@ -21,7 +22,7 @@ Build plans: [phases 0–1](docs/implementation-plan-phases-0-1.md) (done, pendi
 | --- | --- | --- |
 | 0 | Repo, Postgres, data model, immutable signal logging | complete |
 | 1 | Headless orchestrator: strategy, review snapshot, thesis, paper execute seam | complete (pending live E2E) |
-| 2 | iOS owner app (approve/reject, dashboard, kill switch) | planned |
+| 2 | iOS owner app (approve/reject, dashboard, kill switch) | built; device E2E pending |
 | 3 | Track record accrual | not started |
 | 4 | Subscriber Signal MCP server | not started |
 | 5 | Gated flips: live money, then autonomy within caps | not started |
@@ -32,6 +33,7 @@ Phases 0–1 are backend-only and verified through logs, tests, and the database
 
 ```text
 backend/     Node.js + TypeScript orchestrator — see backend/README.md
+ios/         SwiftUI owner app — see ios/README.md
 docs/        API contract, published signal schema, deploy runbook, build plans
 Ollie.md     Product requirements document
 ```

@@ -24,19 +24,11 @@ struct RootView: View {
             ApprovalsView()
                 .tabItem { Label("Approvals", systemImage: "tray.full") }
 
-            PlaceholderTab(
-                title: "Positions",
-                systemImage: "chart.xyaxis.line",
-                note: "Open lots and PnL arrive with milestone 2.7."
-            )
-            .tabItem { Label("Positions", systemImage: "chart.xyaxis.line") }
+            DashboardView()
+                .tabItem { Label("Positions", systemImage: "chart.xyaxis.line") }
 
-            PlaceholderTab(
-                title: "Controls",
-                systemImage: "slider.horizontal.3",
-                note: "Kill switch and mode toggle arrive with milestone 2.7."
-            )
-            .tabItem { Label("Controls", systemImage: "slider.horizontal.3") }
+            ControlsView()
+                .tabItem { Label("Controls", systemImage: "slider.horizontal.3") }
         }
         // The rail is attached once, here, above navigation — not per screen.
         // PRD §4.3 wants the mode unmistakable everywhere, and a per-screen
@@ -51,23 +43,6 @@ struct RootView: View {
             // returning to the foreground always refetches. A missed
             // notification then costs one expired signal, never a silent one.
             if phase == .active { Task { await store.refresh() } }
-        }
-    }
-}
-
-private struct PlaceholderTab: View {
-    let title: String
-    let systemImage: String
-    let note: String
-
-    var body: some View {
-        NavigationStack {
-            ContentUnavailableView {
-                Label(title, systemImage: systemImage)
-            } description: {
-                Text(note)
-            }
-            .navigationTitle(title)
         }
     }
 }

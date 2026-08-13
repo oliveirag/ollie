@@ -4,6 +4,8 @@ import SwiftUI
 
 typealias SignalSummary = Components.Schemas.SignalSummary
 typealias SignalDetail = Components.Schemas.SignalDetail
+typealias Dashboard = Components.Schemas.Dashboard
+typealias OpenLot = Components.Schemas.OpenLot
 
 @MainActor
 @Observable
@@ -13,6 +15,8 @@ final class SignalStore {
     private(set) var mode: TradingMode = .paper
     private(set) var killSwitch = false
     private(set) var liveTradingEnabled = false
+
+    private(set) var dashboard: Dashboard?
 
     private(set) var isLoading = false
     private(set) var lastRefreshed: Date?
@@ -29,6 +33,7 @@ final class SignalStore {
     private func reset() {
         pending = []
         decided = []
+        dashboard = nil
         lastRefreshed = nil
         error = nil
     }
@@ -49,6 +54,7 @@ final class SignalStore {
             let client = try client()
             try await loadSettings(client)
             try await loadSignals(client)
+            await loadDashboard(client)
             lastRefreshed = Date()
             error = nil
         } catch let ollie as OllieError {
@@ -78,6 +84,8 @@ final class SignalStore {
             pending = try ok.body.json.signals
         case .unauthorized:
             throw OllieError.unauthorized
+        case .badRequest:
+            throw OllieError.server("The signals request failed validation.")
         case .undocumented(let status, _):
             throw OllieError.server("Signals returned \(status).")
         }
@@ -87,8 +95,44 @@ final class SignalStore {
             decided = try ok.body.json.signals
         case .unauthorized:
             throw OllieError.unauthorized
-        case .undocumented:
-            break  // History is secondary; a failure here must not blank the queue.
+        // History is secondary; a failure here must not blank the queue.
+        case .badRequest, .undocumented:
+            break
+        }
+    }
+
+    /// Never throws. The dashboard is instrumentation; a failure here must not
+    /// take down the approvals queue, which is the screen that matters when a
+    /// signal is ticking.
+    private func loadDashboard(_ client: Client) async {
+        do {
+            if case .ok(let ok) = try await client.getDashboard(.init()) {
+                dashboard = try ok.body.json
+            }
+        } catch {
+            // Left as whatever it was; the view shows its own staleness.
+        }
+    }
+
+    /// Flip the kill switch. Deliberately not optimistic: the switch's whole
+    /// purpose is that its displayed state is true, so the UI shows what the
+    /// server confirmed rather than what was requested.
+    func setKillSwitch(_ on: Bool) async throws {
+        let body = Components.Schemas.SettingsUpdateInput(kill_switch: on)
+        switch try await client().updateSettings(.init(body: .json(body))) {
+        case .ok(let ok):
+            let settings = try ok.body.json
+            killSwitch = settings.kill_switch
+            mode = settings.execution_mode == .live ? .live : .paper
+            liveTradingEnabled = settings.live_trading_enabled
+        case .conflict(let conflict):
+            throw OllieError.server(try conflict.body.json.detail ?? "Refused.")
+        case .unauthorized:
+            throw OllieError.unauthorized
+        case .badRequest:
+            throw OllieError.server("The settings update failed validation.")
+        case .undocumented(let status, _):
+            throw OllieError.server("Settings update returned \(status).")
         }
     }
 
@@ -100,6 +144,8 @@ final class SignalStore {
             throw OllieError.notFound
         case .unauthorized:
             throw OllieError.unauthorized
+        case .badRequest:
+            throw OllieError.notFound  // A malformed id names nothing that exists.
         case .undocumented(let status, _):
             throw OllieError.server("Signal detail returned \(status).")
         }
@@ -142,6 +188,9 @@ final class SignalStore {
 
         case .unauthorized:
             throw OllieError.unauthorized
+
+        case .badRequest:
+            throw OllieError.server("The decision failed validation.")
 
         case .internalServerError(let failure):
             let payload = try failure.body.json

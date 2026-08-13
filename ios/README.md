@@ -49,6 +49,41 @@ backend). The app stores it in the Keychain. Phase 2 has exactly one user, so
 this stands in for Sign in with Apple; SIWA arrives in Phase 4 with the
 subscriber side, where strangers make it earn its place.
 
+## Running the UI tests
+
+They drive the real app against a real backend, so both have to be up, and a
+pending signal expires 15 minutes after it is written — seed it immediately
+before the run, not before the build:
+
+```bash
+# 1. backend on :3000, with a database behind it
+docker compose up -d
+PORT=3000 npm --prefix ../backend run dev
+
+# 2. compile first, so the expiry window is not spent building
+cd ios
+export TEST_RUNNER_OWNER_API_TOKEN=$(grep '^OWNER_API_TOKEN=' ../backend/.env | cut -d= -f2)
+xcodebuild build-for-testing -project Ollie.xcodeproj -scheme Ollie \
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -skipPackagePluginValidation
+
+# 3. seed, then run
+npm --prefix ../backend run signal:write-test
+xcodebuild test-without-building -project Ollie.xcodeproj -scheme Ollie \
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -skipPackagePluginValidation
+```
+
+`TEST_RUNNER_OWNER_API_TOKEN` must be **exported**, not passed as an argument —
+`xcodebuild KEY=value` sets a build setting, not an environment variable, and
+the token would never reach the test.
+
+`ScreenshotUITests` captures each tab as an attachment for reviewing the app
+against `docs/design/owner-app-design.html`:
+
+```bash
+xcodebuild test ... -only-testing:OllieUITests/ScreenshotUITests -resultBundlePath /tmp/shots.xcresult
+xcrun xcresulttool export attachments --path /tmp/shots.xcresult --output-path /tmp/shots
+```
+
 ## Requirements
 
 Xcode 26+ with an **iOS simulator runtime matching the SDK**. An Xcode install
