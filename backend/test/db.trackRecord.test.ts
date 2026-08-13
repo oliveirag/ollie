@@ -207,3 +207,86 @@ describe('hasMarkForDay', () => {
     expect(await hasMarkForDay(signal.id, new Date('2026-08-13T20:15:00Z'), db)).toBe(false);
   });
 });
+
+/**
+ * Regression guards, not TDD drivers — both passed the moment they were
+ * written, because the triggers are table-wide and the ordering already exists.
+ * They are here because 3.1 adds columns and functions that would silently
+ * weaken either guarantee if someone later reached for the obvious shortcut.
+ */
+describe('append-only guarantees survive the new columns', () => {
+  it('still refuses UPDATE and DELETE on a row carrying a mark price', async () => {
+    const signal = await seedSignal();
+    await appendTrackRecord(
+      {
+        signalId: signal.id,
+        entryPrice: '100.00',
+        unrealizedPnl: '5.00',
+        markPrice: '102.50',
+        status: 'open',
+      },
+      db,
+    );
+
+    // A mark row is still a track-record row. If the trigger were ever narrowed
+    // to specific columns, correcting a bad quote in place would become
+    // possible — which is exactly the edit the record must never allow.
+    await expect(
+      db.$executeRawUnsafe(`UPDATE track_record SET mark_price = 1`),
+    ).rejects.toThrow();
+    await expect(db.$executeRawUnsafe(`DELETE FROM track_record`)).rejects.toThrow();
+  });
+
+  it('still refuses UPDATE on a closed row carrying a closer', async () => {
+    const entry = await seedSignal();
+    const exit = await seedSignal({ side: 'sell', dedupeKey: uniqueDedupeKey('exit') });
+    await appendTrackRecord({ signalId: entry.id, entryPrice: '100.00', status: 'open' }, db);
+    await closeLots(
+      { signalIds: [entry.id], exitPrice: '110.00', closedBySignalId: exit.id },
+      db,
+    );
+
+    // Re-pointing a close at a different signal would rewrite who decided it.
+    await expect(
+      db.$executeRawUnsafe(`UPDATE track_record SET closed_by_signal_id = NULL`),
+    ).rejects.toThrow();
+  });
+});
+
+describe('closed lots are never resurrected by an older row', () => {
+  it('keeps a lot closed when an open row is written with an earlier timestamp', async () => {
+    const entry = await seedSignal({ symbol: 'AAPL' });
+    const exit = await seedSignal({ side: 'sell', dedupeKey: uniqueDedupeKey('exit') });
+    await appendTrackRecord(
+      { signalId: entry.id, entryPrice: '100.00', status: 'open', recordedAt: new Date(1_000) },
+      db,
+    );
+    await closeLots(
+      {
+        signalIds: [entry.id],
+        exitPrice: '110.00',
+        closedBySignalId: exit.id,
+        recordedAt: new Date(3_000),
+      },
+      db,
+    );
+
+    // A late-arriving mark stamped *before* the close — the shape a backfill or
+    // a clock skew produces. `WHERE status = 'open'` ahead of the row pick would
+    // select this row and report the position open again.
+    await appendTrackRecord(
+      {
+        signalId: entry.id,
+        entryPrice: '100.00',
+        unrealizedPnl: '4.00',
+        markPrice: '102.00',
+        status: 'open',
+        recordedAt: new Date(2_000),
+      },
+      db,
+    );
+
+    expect(await listOpenLots(db)).toHaveLength(0);
+    expect(await openLotsForSymbol('AAPL', db)).toHaveLength(0);
+  });
+});

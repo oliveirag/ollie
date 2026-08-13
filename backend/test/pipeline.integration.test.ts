@@ -3,9 +3,9 @@ import type { Logger } from 'pino';
 import pino from 'pino';
 import { buildConfig, type Config } from '../src/config/index.js';
 import { listExecutions } from '../src/db/executions.js';
-import { getSignal, listSignalEvents, transitionSignal } from '../src/db/signals.js';
+import { getSignal, insertSignal, listSignalEvents, transitionSignal } from '../src/db/signals.js';
 import { setExecutionMode, setKillSwitch } from '../src/db/settings.js';
-import { listTrackRecord } from '../src/db/trackRecord.js';
+import { appendTrackRecord, listTrackRecord } from '../src/db/trackRecord.js';
 import {
   KillSwitchEngagedError,
   LiveExecutor,
@@ -205,16 +205,29 @@ describe('risk caps reject before anything is persisted', () => {
   it('drops a candidate over the position cap and never reviews it', async () => {
     // An existing 3-share position is ~$926; another 3 shares would take AAPL
     // to ~$1,852, past the $1,000 per-symbol cap.
-    const mock = broker({
-      positions: [
-        {
-          symbol: 'AAPL',
-          quantity: '3',
-          sharesAvailableForSells: '3',
-          averageBuyPrice: '300.00',
-        },
-      ],
-    });
+    //
+    // Seeded as a paper lot, not a broker position: app_settings defaults to
+    // paper, and in paper mode the gate reads the track record because that is
+    // where paper fills live. A broker position here would be invisible — which
+    // is the whole point of the paper position seam.
+    const held = await insertSignal(
+      {
+        symbol: 'AAPL',
+        side: 'buy',
+        signalType: 'technical',
+        quantity: '3',
+        thesis: null,
+        thesisSource: 'llm',
+        indicators: {},
+        reviewSnapshot: { estimated_price: '300.00' },
+        executionMode: 'paper',
+        dedupeKey: 'held-position-for-cap-test',
+      },
+      db,
+    );
+    await appendTrackRecord({ signalId: held.id, entryPrice: '300.00', status: 'open' }, db);
+
+    const mock = broker();
     const result = await runPipeline(
       deps({ broker: mock, config: config({ MAX_POSITION_CENTS: '100000' }) }),
     );
@@ -222,7 +235,10 @@ describe('risk caps reject before anything is persisted', () => {
     expect(result.signals).toHaveLength(0);
     expect(result.riskRejections.map((r) => r.reason)).toEqual(['position_size_cap']);
     expect(mock.callsTo('reviewEquityOrder')).toHaveLength(0);
-    expect(await db.signal.count()).toBe(0);
+    // The seeded holding is the only row: the rejected candidate added nothing.
+    // Asserting the id rather than a count keeps this honest if the fixture
+    // ever grows another seeded signal.
+    expect(await db.signal.findMany({ select: { id: true } })).toEqual([{ id: held.id }]);
   });
 
   it('drops a candidate whose symbol is not allowlisted', async () => {

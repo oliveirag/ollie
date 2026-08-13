@@ -14,6 +14,7 @@ import {
 import { getAppSettings } from '../db/settings.js';
 import { generateThesis as defaultGenerateThesis } from './anthropic/thesis.js';
 import type { ThesisInput, ThesisResult } from './anthropic/thesis.js';
+import { paperPositions } from './paperPositions.js';
 import { applyRiskCaps, type RiskRejection } from './risk.js';
 import type { Notifier } from './push/notify.js';
 import { buildReviewSnapshot } from './reviewSnapshot.js';
@@ -158,7 +159,15 @@ export async function runPipeline(deps: PipelineDeps): Promise<PipelineResult> {
   }
 
   // ---- 5. Risk gate --------------------------------------------------------
-  const positions = await broker.getPositions();
+  //
+  // Position source follows the execution mode, because the two modes hold
+  // positions in different places. A paper fill is a track-record row and never
+  // reaches the brokerage account, so asking the broker in paper mode reports
+  // an empty portfolio: every exit is rejected as `sell_without_position` and a
+  // paper position, once opened, can never be closed. The gate's check is
+  // right either way; only its input depends on the mode.
+  const positions =
+    settings.executionMode === 'paper' ? await paperPositions(prisma) : await broker.getPositions();
   const pendingSignals = await listPendingSignals(prisma);
 
   const pricedSymbols = [
