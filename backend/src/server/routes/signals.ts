@@ -71,6 +71,7 @@ export const registerSignalRoutes: FastifyPluginAsyncZod<SignalRouteOptions> = a
         querystring: ListQuerySchema,
         response: {
           200: SignalListSchema,
+          400: ErrorSchema.describe('The request failed schema validation'),
           401: ErrorSchema.describe('Missing or invalid owner token'),
         },
       },
@@ -100,6 +101,7 @@ export const registerSignalRoutes: FastifyPluginAsyncZod<SignalRouteOptions> = a
         params: SignalParamsSchema,
         response: {
           200: SignalDetailSchema,
+          400: ErrorSchema.describe('The request failed schema validation'),
           401: ErrorSchema.describe('Missing or invalid owner token'),
           404: ErrorSchema.describe('No signal with that id'),
         },
@@ -133,6 +135,7 @@ export const registerSignalRoutes: FastifyPluginAsyncZod<SignalRouteOptions> = a
         body: DecisionRequestSchema,
         response: {
           200: DecisionResponseSchema,
+          400: ErrorSchema.describe('The request failed schema validation'),
           401: ErrorSchema.describe('Missing or invalid owner token'),
           404: ErrorSchema.describe('No signal with that id'),
           409: ErrorSchema.describe(

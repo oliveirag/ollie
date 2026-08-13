@@ -67,6 +67,11 @@ is observed through logs and the database.
    false — it is the second of the two gates in front of real money and has no
    use before Phase 5.
 
+   The four `APNS_*` variables are optional. With any of them missing the
+   notifier is a no-op and signals are simply not pushed — push is best-effort
+   and the app refetches on foreground, so a partial configuration degrades
+   instead of failing. They need a paid Apple Developer Program membership.
+
 4. **Deploy.** The start command runs `prisma migrate deploy` before the
    process boots, so a deploy that includes a migration applies it exactly once
    and fails the release if it cannot.

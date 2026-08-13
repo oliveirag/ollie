@@ -15,6 +15,7 @@ import { getAppSettings } from '../db/settings.js';
 import { generateThesis as defaultGenerateThesis } from './anthropic/thesis.js';
 import type { ThesisInput, ThesisResult } from './anthropic/thesis.js';
 import { applyRiskCaps, type RiskRejection } from './risk.js';
+import type { Notifier } from './push/notify.js';
 import { buildReviewSnapshot } from './reviewSnapshot.js';
 import type { BrokerAdapter, Candle } from './robinhood/client.js';
 import { dedupeKeyFor, evaluateTechnical, requiredBars } from './strategy/index.js';
@@ -41,6 +42,8 @@ export interface PipelineDeps {
   clock?: () => Date;
   prisma?: PrismaClient;
   generateThesis?: (input: ThesisInput) => Promise<ThesisResult>;
+  /** Absent means no push, which is the default and not an error. */
+  notifier?: Notifier;
 }
 
 export interface PipelineResult {
@@ -275,6 +278,20 @@ export async function runPipeline(deps: PipelineDeps): Promise<PipelineResult> {
         },
         'SIGNAL PENDING — awaiting owner decision',
       );
+
+      // Push, after the signal is durable and never in its way.
+      //
+      // The try/catch is not redundant with the notifier's own error handling.
+      // This call sits inside the block that rethrows anything that is not a
+      // duplicate, so an implementation that throws — a future notifier, a
+      // test double, a bug — would abort the whole run and cost the owner the
+      // remaining candidates. The signal above is already committed; nothing
+      // that happens here is allowed to matter.
+      try {
+        await deps.notifier?.notifyNewSignal(signal);
+      } catch (error) {
+        log.error({ err: error, signal_id: signal.id }, 'push failed; signal is unaffected');
+      }
     } catch (error) {
       if (error instanceof DuplicateSignalError) {
         // Another run won the race between the dedupe check and this insert.

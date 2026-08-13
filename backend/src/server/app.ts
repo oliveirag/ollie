@@ -17,6 +17,7 @@ import type { Config } from '../config/index.js';
 import type { BrokerAdapter } from '../orchestrator/robinhood/client.js';
 import { MissingOwnerTokenError, requireOwnerToken } from './auth.js';
 import { registerDashboardRoutes } from './routes/dashboard.js';
+import { registerDeviceRoutes } from './routes/devices.js';
 import { registerHealthRoutes } from './routes/health.js';
 import { registerSettingsRoutes } from './routes/settings.js';
 import { registerSignalRoutes } from './routes/signals.js';
@@ -137,6 +138,7 @@ export async function buildApp(deps: ApiDeps): Promise<OllieApp> {
       await scope.register(registerSignalRoutes, { config, broker, logger });
       await scope.register(registerDashboardRoutes, { broker, logger });
       await scope.register(registerSettingsRoutes, { config });
+      await scope.register(registerDeviceRoutes);
     },
     { prefix: '/v1' },
   );

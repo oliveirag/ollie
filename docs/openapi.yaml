@@ -50,6 +50,21 @@ components:
           type: boolean
         execution_mode:
           $ref: "#/components/schemas/ExecutionModeInput"
+    DeviceRegistrationInput:
+      type: object
+      properties:
+        apns_token:
+          type: string
+          minLength: 1
+        environment:
+          default: production
+          description: Sandbox for development builds; a token is only valid against one of the two
+          type: string
+          enum:
+            - sandbox
+            - production
+      required:
+        - apns_token
     SignalSide:
       type: string
       enum:
@@ -515,6 +530,27 @@ components:
         - uptimeSeconds
         - checkedAt
       additionalProperties: false
+    Device:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+        environment:
+          type: string
+          enum:
+            - sandbox
+            - production
+        last_seen_at:
+          type: string
+          format: date-time
+          pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z))$
+      required:
+        - id
+        - environment
+        - last_seen_at
+      additionalProperties: false
 paths:
   /healthz:
     get:
@@ -573,6 +609,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SignalList"
+        "400":
+          description: The request failed schema validation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "401":
           description: Missing or invalid owner token
           content:
@@ -603,6 +645,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SignalDetail"
+        "400":
+          description: The request failed schema validation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "401":
           description: Missing or invalid owner token
           content:
@@ -648,6 +696,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DecisionResponse"
+        "400":
+          description: The request failed schema validation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "401":
           description: Missing or invalid owner token
           content:
@@ -739,6 +793,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Settings"
+        "400":
+          description: The request failed schema validation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "401":
           description: Missing or invalid owner token
           content:
@@ -747,6 +807,43 @@ paths:
                 $ref: "#/components/schemas/Error"
         "409":
           description: Live mode requested while LIVE_TRADING_ENABLED is false
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /v1/devices:
+    post:
+      operationId: registerDevice
+      summary: Register this device for push notifications
+      tags:
+        - devices
+      description: |-
+        Idempotent. Re-registering the same token updates its environment and last-seen time rather than creating a second row.
+
+        The response deliberately omits the token: it is write-only from the API's point of view, and the caller already has it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeviceRegistrationInput"
+      security:
+        - ownerToken: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Device"
+        "400":
+          description: The request failed schema validation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Missing or invalid owner token
           content:
             application/json:
               schema:

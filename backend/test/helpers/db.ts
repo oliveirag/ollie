@@ -19,7 +19,7 @@ export function testPrisma(): PrismaClient {
 export async function resetDatabase(): Promise<void> {
   const db = testPrisma();
   await db.$executeRawUnsafe(
-    'TRUNCATE TABLE "track_record", "executions", "signal_events", "signals" RESTART IDENTITY CASCADE',
+    'TRUNCATE TABLE "track_record", "executions", "signal_events", "signals", "devices" RESTART IDENTITY CASCADE',
   );
   await db.appSettings.upsert({
     where: { id: 1 },

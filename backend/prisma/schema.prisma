@@ -151,6 +151,19 @@ model TrackRecord {
   @@map("track_record")
 }
 
+/// APNs device tokens. A plain mutable table with no immutability trigger:
+/// a device token is operational state, not part of the record. Tokens rotate,
+/// and rows APNs reports as 410 Unregistered are deleted by the dispatcher.
+model Device {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  apnsToken   String   @unique @map("apns_token") @db.Text
+  environment String   @default("production") @db.Text
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  lastSeenAt  DateTime @default(now()) @map("last_seen_at") @db.Timestamptz(6)
+
+  @@map("devices")
+}
+
 /// Single row (id is pinned to 1). Lives in the database rather than the
 /// environment so the kill switch survives a restart and the iOS app can flip
 /// it in Phase 2 without a redeploy.

@@ -63,6 +63,7 @@ export const registerSettingsRoutes: FastifyPluginAsyncZod<SettingsRouteOptions>
         body: SettingsUpdateSchema,
         response: {
           200: SettingsSchema,
+          400: ErrorSchema.describe('The request failed schema validation'),
           401: ErrorSchema.describe('Missing or invalid owner token'),
           409: ErrorSchema.describe('Live mode requested while LIVE_TRADING_ENABLED is false'),
         },

@@ -3,6 +3,7 @@ import type { PrismaClient } from '@prisma/client';
 import type { Logger } from 'pino';
 import type { Config } from '../config/index.js';
 import { runPipeline, sweepExpiredSignals } from './pipeline.js';
+import type { Notifier } from './push/notify.js';
 import type { BrokerAdapter } from './robinhood/client.js';
 
 /**
@@ -24,6 +25,8 @@ export interface SchedulerDeps {
   broker: BrokerAdapter;
   config: Config;
   logger: Logger;
+  /** Absent means no push; the pipeline is unaffected either way. */
+  notifier?: Notifier;
   prisma?: PrismaClient;
 }
 
@@ -45,6 +48,7 @@ export function startScheduler(deps: SchedulerDeps): RunningScheduler {
         broker: deps.broker,
         config,
         logger,
+        ...(deps.notifier ? { notifier: deps.notifier } : {}),
         ...(deps.prisma ? { prisma: deps.prisma } : {}),
       }).catch((error: unknown) => {
         // A failed run must not take the process down — the next firing is a

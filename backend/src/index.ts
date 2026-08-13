@@ -3,6 +3,7 @@ import { disconnectPrisma, getPrisma } from './db/client.js';
 import { getAppSettings } from './db/settings.js';
 import { logger } from './logger.js';
 import { McpBrokerAdapter } from './orchestrator/robinhood/mcpClient.js';
+import { buildNotifier } from './orchestrator/push/notify.js';
 import { startScheduler } from './orchestrator/scheduler.js';
 import { buildApp } from './server/app.js';
 
@@ -34,7 +35,8 @@ async function main(): Promise<void> {
   );
 
   const broker = new McpBrokerAdapter({ logger });
-  const scheduler = startScheduler({ broker, config, logger });
+  const notifier = buildNotifier(config, logger);
+  const scheduler = startScheduler({ broker, config, logger, notifier });
 
   // Throws when OWNER_API_TOKEN is unset, taking the whole service down. That
   // is the intended failure: the approval and kill-switch surface must not be

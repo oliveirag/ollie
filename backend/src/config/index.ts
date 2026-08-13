@@ -69,6 +69,19 @@ const EnvSchema = z.object({
     .min(32, 'must be at least 32 characters; generate with `openssl rand -hex 32`')
     .or(z.literal(''))
     .default(''),
+
+  /**
+   * APNs, all optional: with any of them missing the notifier is a no-op and
+   * signals are simply not pushed. Push is best-effort by design, so a partial
+   * configuration must degrade rather than crash the service.
+   *
+   * The .p8 is base64-encoded because a PEM's newlines do not survive most
+   * environment-variable editors intact.
+   */
+  APNS_KEY_P8_BASE64: z.string().default(''),
+  APNS_KEY_ID: z.string().default(''),
+  APNS_TEAM_ID: z.string().default(''),
+  APNS_BUNDLE_ID: z.string().default(''),
 });
 
 export type Env = z.infer<typeof EnvSchema>;
@@ -112,6 +125,8 @@ export interface Config {
   /** null when unset; the API refuses to start rather than run unauthenticated. */
   ownerApiToken: string | null;
   anthropic: { apiKey: string; model: string };
+  /** Empty strings mean push is off; the notifier degrades to a no-op. */
+  apns: { keyP8: string; keyId: string; teamId: string; bundleId: string };
   robinhood: {
     mcpUrl: string;
     authToken: string;
@@ -195,6 +210,14 @@ export function buildConfig(source: NodeJS.ProcessEnv = process.env): Config {
     liveTradingEnabled: env.LIVE_TRADING_ENABLED,
     ownerApiToken: env.OWNER_API_TOKEN || null,
     anthropic: { apiKey: env.ANTHROPIC_API_KEY, model: env.ANTHROPIC_MODEL },
+    apns: {
+      keyP8: env.APNS_KEY_P8_BASE64
+        ? Buffer.from(env.APNS_KEY_P8_BASE64, 'base64').toString('utf8')
+        : '',
+      keyId: env.APNS_KEY_ID,
+      teamId: env.APNS_TEAM_ID,
+      bundleId: env.APNS_BUNDLE_ID,
+    },
     robinhood: {
       mcpUrl: env.RH_MCP_URL,
       authToken: env.RH_MCP_AUTH_TOKEN,
