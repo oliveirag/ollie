@@ -452,3 +452,79 @@ describe('execution mode follows the signal, not the account', () => {
     expect(signals[0]!.executionMode).toBe('live');
   });
 });
+
+describe('exits are proposed against a held paper position', () => {
+  /** Bars through 2026-07-31, where the MACD histogram turns negative. */
+  const THROUGH_BEARISH_CROSS = ALL_BARS.slice(
+    0,
+    ALL_BARS.findIndex((b) => b.t.startsWith('2026-07-31')) + 1,
+  );
+
+  const bearishBroker = () =>
+    new MockBrokerAdapter({
+      candles: { AAPL: THROUGH_BEARISH_CROSS },
+      quotes: { AAPL: quote('AAPL', '308.630000') },
+    });
+
+  async function seedPaperLot(quantity: string) {
+    const signal = await insertSignal(
+      {
+        symbol: 'AAPL',
+        side: 'buy',
+        signalType: 'technical',
+        quantity,
+        thesis: null,
+        thesisSource: 'llm',
+        indicators: {},
+        reviewSnapshot: { estimated_price: '300.00' },
+        executionMode: 'paper',
+        dedupeKey: `held-${quantity}`,
+      },
+      db,
+    );
+    await appendTrackRecord({ signalId: signal.id, entryPrice: '300.00', status: 'open' }, db);
+    return signal;
+  }
+
+  it('proposes a sell sized to the shares held', async () => {
+    await seedPaperLot('4');
+
+    const result = await runPipeline(
+      deps({ broker: bearishBroker(), clock: () => new Date('2026-07-31T13:35:00Z') }),
+    );
+
+    const sell = result.signals.find((s) => s.side === 'sell');
+    expect(sell).toBeDefined();
+    // Four shares held, four shares proposed — not the notional-derived three.
+    expect(sell!.quantity.toString()).toBe('4');
+    expect(sell!.status).toBe('pending');
+  });
+
+  it('proposes nothing on the same bars with no position held', async () => {
+    const result = await runPipeline(
+      deps({ broker: bearishBroker(), clock: () => new Date('2026-07-31T13:35:00Z') }),
+    );
+
+    // Identical bars, identical rules. The only difference is the empty
+    // position record, and a long-only exit has nothing to close.
+    expect(result.signals.filter((s) => s.side === 'sell')).toHaveLength(0);
+  });
+
+  it('proposes an exit even when one share costs more than a whole order', async () => {
+    await seedPaperLot('4');
+
+    const result = await runPipeline(
+      deps({
+        broker: bearishBroker(),
+        clock: () => new Date('2026-07-31T13:35:00Z'),
+        // A $10 order cannot buy a $308 share; entries are suppressed. Exits
+        // must not be, or this position could never be closed by rule.
+        config: config({ ORDER_NOTIONAL_CENTS: '1000' }),
+      }),
+    );
+
+    const sell = result.signals.find((s) => s.side === 'sell');
+    expect(sell).toBeDefined();
+    expect(sell!.quantity.toString()).toBe('4');
+  });
+});

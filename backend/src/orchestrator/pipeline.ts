@@ -111,6 +111,22 @@ export async function runPipeline(deps: PipelineDeps): Promise<PipelineResult> {
   });
 
   // ---- 3. Generate ---------------------------------------------------------
+  //
+  // Positions are read here, before generation, not at the risk gate where they
+  // are also used. The exit rules size a sell to the shares held, so the
+  // holding has to be known while candidates are being produced rather than
+  // when they are being filtered.
+  //
+  // The source follows the execution mode, because the two modes hold positions
+  // in different places. A paper fill is a track-record row and never reaches
+  // the brokerage account, so asking the broker in paper mode reports an empty
+  // portfolio: every exit would be sized to nothing and rejected as
+  // `sell_without_position`, leaving a paper position that can be opened and
+  // never closed.
+  const positions =
+    settings.executionMode === 'paper' ? await paperPositions(prisma) : await broker.getPositions();
+  const heldBySymbol = new Map(positions.map((p) => [p.symbol, p.sharesAvailableForSells]));
+
   const candidates: CandidateSignal[] = [];
 
   for (const symbol of config.symbolAllowlist) {
@@ -118,7 +134,13 @@ export async function runPipeline(deps: PipelineDeps): Promise<PipelineResult> {
     const usable = dropInterpolated(bars);
     const dropped = bars.length - usable.length;
 
-    const result = evaluateTechnical(symbol, usable, config.strategy);
+    const held = heldBySymbol.get(symbol);
+    const result = evaluateTechnical(
+      symbol,
+      usable,
+      config.strategy,
+      held === undefined ? undefined : { openQuantity: held },
+    );
 
     // PRD §11: log every strategy input and output, fired or not. A quiet run
     // has to be explainable from the logs alone.
@@ -159,15 +181,6 @@ export async function runPipeline(deps: PipelineDeps): Promise<PipelineResult> {
   }
 
   // ---- 5. Risk gate --------------------------------------------------------
-  //
-  // Position source follows the execution mode, because the two modes hold
-  // positions in different places. A paper fill is a track-record row and never
-  // reaches the brokerage account, so asking the broker in paper mode reports
-  // an empty portfolio: every exit is rejected as `sell_without_position` and a
-  // paper position, once opened, can never be closed. The gate's check is
-  // right either way; only its input depends on the mode.
-  const positions =
-    settings.executionMode === 'paper' ? await paperPositions(prisma) : await broker.getPositions();
   const pendingSignals = await listPendingSignals(prisma);
 
   const pricedSymbols = [

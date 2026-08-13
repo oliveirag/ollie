@@ -70,7 +70,21 @@ export interface StrategyConfig {
 export type SkipReason =
   | 'insufficient_history'
   | 'no_rule_fired'
-  | 'quantity_rounds_to_zero';
+  | 'quantity_rounds_to_zero'
+  | 'no_open_position';
+
+/**
+ * Position state the exit rules read. Entries ignore it entirely.
+ *
+ * This is the input that makes exit decisions impure with respect to OHLCV
+ * (Phase 3 plan, decision 3). Replayability survives because the position
+ * record is append-only: the holding at any past moment is reconstructible, so
+ * the same bars plus the same record still give the same answer.
+ */
+export interface PositionContext {
+  /** Shares currently held for this symbol, as a decimal string. */
+  openQuantity: string;
+}
 
 export interface EvaluationResult {
   candidate: CandidateSignal | null;

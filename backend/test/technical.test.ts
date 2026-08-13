@@ -32,6 +32,13 @@ const config = (overrides: Partial<StrategyConfig> = {}): StrategyConfig => ({
 });
 
 /** Bars up to and including the given date, as the pipeline would have seen them. */
+/**
+ * A holding, for the sell-side cases. A long-only exit rule has nothing to
+ * propose against an empty position, so a test asking whether the rule detects
+ * a crossing has to hold shares for the question to be reachable at all.
+ */
+const HELD = { openQuantity: '3' } as const;
+
 function through(isoDate: string): Candle[] {
   const index = ALL_BARS.findIndex((bar) => bar.t.startsWith(isoDate));
   if (index === -1) throw new Error(`no bar for ${isoDate}`);
@@ -52,14 +59,14 @@ describe('rules firing on real bars', () => {
   });
 
   it('fires a bearish MACD cross when the histogram turns negative', () => {
-    const { candidate } = evaluateTechnical('AAPL', through('2026-07-31'), config());
+    const { candidate } = evaluateTechnical('AAPL', through('2026-07-31'), config(), HELD);
 
     expect(candidate!.rule).toBe('macd_bearish_cross');
     expect(candidate!.side).toBe('sell');
   });
 
   it('fires an overbought RSI signal when RSI crosses up through the threshold', () => {
-    const { candidate } = evaluateTechnical('AAPL', through('2026-07-16'), config());
+    const { candidate } = evaluateTechnical('AAPL', through('2026-07-16'), config(), HELD);
 
     expect(candidate!.rule).toBe('rsi_overbought');
     expect(candidate!.side).toBe('sell');
@@ -101,8 +108,8 @@ describe('crossings do not re-fire', () => {
   });
 
   it('stays quiet while RSI remains above the overbought threshold', () => {
-    const crossing = evaluateTechnical('AAPL', through('2026-07-16'), config());
-    const stillHigh = evaluateTechnical('AAPL', through('2026-07-17'), config());
+    const crossing = evaluateTechnical('AAPL', through('2026-07-16'), config(), HELD);
+    const stillHigh = evaluateTechnical('AAPL', through('2026-07-17'), config(), HELD);
 
     expect(crossing.candidate!.rule).toBe('rsi_overbought');
     expect(stillHigh.indicators!.rsi).toBeGreaterThan(70);
@@ -240,5 +247,73 @@ describe('dedupe key', () => {
     const a = evaluateTechnical('AAPL', through('2026-07-02'), config()).candidate!;
     const b = evaluateTechnical('MSFT', through('2026-07-02'), config()).candidate!;
     expect(dedupeKeyFor(a)).not.toBe(dedupeKeyFor(b));
+  });
+});
+
+/**
+ * Exit sizing. A sell is always a closing trade (the strategy is long-only), so
+ * its quantity is a fact about the position, not a function of the order
+ * notional. Sizing it like an entry was wrong in two directions at once:
+ * it could propose selling more shares than are held, and on any symbol priced
+ * above the order notional it suppressed the exit entirely — leaving a position
+ * the rules could open and never close.
+ *
+ * This is the purity drift the Phase 3 plan accepts in decision 3: entry stays
+ * a function of OHLCV alone, exit becomes a function of OHLCV plus the
+ * append-only position record. Still replayable, one clause longer to state.
+ */
+describe('sell candidates are sized to the position', () => {
+  it('sizes a sell to the shares held, not to the order notional', () => {
+    const { candidate } = evaluateTechnical('AAPL', through('2026-07-31'), config(), {
+      openQuantity: '7',
+    });
+
+    expect(candidate!.side).toBe('sell');
+    expect(candidate!.quantity).toBe('7');
+  });
+
+  it('proposes no sell when nothing is held', () => {
+    const result = evaluateTechnical('AAPL', through('2026-07-31'), config(), {
+      openQuantity: '0',
+    });
+
+    // Nothing to close. Proposing an exit here would ask the owner to approve
+    // a trade the risk gate is certain to refuse.
+    expect(result.candidate).toBeNull();
+    expect(result.skipReason).toBe('no_open_position');
+  });
+
+  it('proposes no sell when no position context is supplied at all', () => {
+    const result = evaluateTechnical('AAPL', through('2026-07-31'), config());
+
+    expect(result.candidate).toBeNull();
+    expect(result.skipReason).toBe('no_open_position');
+  });
+
+  it('exits a symbol priced above the whole order notional', () => {
+    // One share costs more than a full order. An entry is correctly suppressed
+    // here; an exit must not be, or the position becomes unclosable by rule.
+    const tiny = config({ orderNotionalCents: 100 });
+
+    const { candidate, skipReason } = evaluateTechnical(
+      'AAPL',
+      through('2026-07-31'),
+      tiny,
+      { openQuantity: '3' },
+    );
+
+    expect(skipReason).toBeNull();
+    expect(candidate!.side).toBe('sell');
+    expect(candidate!.quantity).toBe('3');
+  });
+
+  it('still sizes a buy from the order notional', () => {
+    const { candidate } = evaluateTechnical('AAPL', through('2026-07-02'), config(), {
+      openQuantity: '7',
+    });
+
+    // The holding is irrelevant to an entry; only the notional sizes it.
+    expect(candidate!.side).toBe('buy');
+    expect(candidate!.quantity).toBe('3');
   });
 });

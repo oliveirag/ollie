@@ -6,6 +6,7 @@ import {
   type Candle,
   type CandidateSignal,
   type EvaluationResult,
+  type PositionContext,
   type StrategyConfig,
   type TechnicalIndicators,
   type TechnicalRule,
@@ -34,6 +35,8 @@ export function evaluateTechnical(
   symbol: string,
   candles: readonly Candle[],
   config: StrategyConfig,
+  /** Read by the exit rules only; entries are unaffected by what is held. */
+  position?: PositionContext,
 ): EvaluationResult {
   // Synthesized gap-fill bars carry no information — a fabricated close would
   // produce a fabricated crossing. The pipeline drops them too; doing it here
@@ -95,19 +98,40 @@ export function evaluateTechnical(
     return { candidate: null, skipReason: 'no_rule_fired', indicators, barTime };
   }
 
-  const shares = sharesForNotional(config.orderNotionalCents, referenceClose);
-  if (shares < 1) {
-    // One share costs more than the configured order size. Not an error —
-    // a $500 order simply cannot buy a $900 stock, and rounding up would
-    // silently exceed a cap the owner set.
-    return { candidate: null, skipReason: 'quantity_rounds_to_zero', indicators, barTime };
+  // Sizing depends on which way the trade goes, because the two sides answer
+  // different questions. An entry asks "how much should I buy" — a function of
+  // the configured notional. An exit asks "how much do I hold" — a fact about
+  // the position, and nothing else.
+  let quantity: string;
+  if (fired.side === 'sell') {
+    const held = Number(position?.openQuantity ?? '0');
+    if (!(held > 0)) {
+      // Long-only: a sell is only ever a close. With nothing held there is no
+      // trade to propose, and asking the owner to approve one the risk gate
+      // would certainly refuse is worse than staying quiet.
+      return { candidate: null, skipReason: 'no_open_position', indicators, barTime };
+    }
+    // Deliberately not notional-sized, and deliberately not subject to the
+    // rounds-to-zero check below: on a symbol priced above one order notional
+    // that check would suppress every exit, leaving a position the rules could
+    // open and never close.
+    quantity = position!.openQuantity;
+  } else {
+    const shares = sharesForNotional(config.orderNotionalCents, referenceClose);
+    if (shares < 1) {
+      // One share costs more than the configured order size. Not an error —
+      // a $500 order simply cannot buy a $900 stock, and rounding up would
+      // silently exceed a cap the owner set.
+      return { candidate: null, skipReason: 'quantity_rounds_to_zero', indicators, barTime };
+    }
+    quantity = String(shares);
   }
 
   const candidate: CandidateSignal = {
     symbol,
     side: fired.side,
     signalType: 'technical',
-    quantity: String(shares),
+    quantity,
     rule: fired.rule,
     indicators,
     barTime,
