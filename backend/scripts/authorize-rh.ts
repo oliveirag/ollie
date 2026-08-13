@@ -10,8 +10,9 @@
  * This exists as a script rather than as part of the service because it cannot
  * be automated. Railway has no browser; whatever this produces is what ships.
  */
-import { createServer } from 'node:http';
+import { createServer, type Server } from 'node:http';
 import { spawn } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import { once } from 'node:events';
 import {
   discoverAuthorizationServerMetadata,
@@ -28,11 +29,24 @@ import {
   rhClientMetadata,
 } from '../src/orchestrator/robinhood/oauth.js';
 
-/** Waits for the browser to come back to the loopback listener with a code. */
+/**
+ * Waits for the browser to come back to the loopback listener with a code.
+ *
+ * Two servers, one per loopback address, because neither alone is safe *and*
+ * reliable. The redirect names `localhost` (Robinhood's allowlist demands the
+ * string), and macOS resolves that to ::1 before 127.0.0.1 — so binding only
+ * the IPv4 loopback can refuse the callback after a successful authorization.
+ * Binding every interface would fix that by exposing a server holding a live
+ * authorization code to the whole network, which is not a trade worth making
+ * for a browser redirect that never leaves this machine.
+ */
 async function awaitAuthorizationCode(expectedState: string): Promise<string> {
-  const server = createServer();
+  const servers = [createServer(), createServer()];
   const result = new Promise<string>((resolve, reject) => {
-    server.on('request', (req, res) => {
+    const onRequest = (
+      req: import('node:http').IncomingMessage,
+      res: import('node:http').ServerResponse,
+    ): void => {
       const url = new URL(req.url ?? '/', RH_REDIRECT_URL);
       if (url.pathname !== '/callback') {
         res.writeHead(404).end('not found');
@@ -66,15 +80,28 @@ async function awaitAuthorizationCode(expectedState: string): Promise<string> {
         .writeHead(200, { 'Content-Type': 'text/html' })
         .end('<h1>Ollie is authorized</h1><p>You can close this tab.</p>');
       resolve(code);
-    });
+    };
+
+    for (const server of servers) server.on('request', onRequest);
   });
 
-  server.listen(RH_REDIRECT_PORT, '127.0.0.1');
-  await once(server, 'listening');
+  const [v4, v6] = servers as [Server, Server];
+  v4.listen(RH_REDIRECT_PORT, '127.0.0.1');
+  await once(v4, 'listening');
+
+  // The IPv6 half is best-effort: a host with IPv6 disabled has no ::1 to bind,
+  // and that is not a reason to fail an otherwise working flow.
+  const v6Listening = once(v6, 'listening');
+  v6.on('error', () => {
+    /* no ::1 on this host; the IPv4 listener carries the callback */
+  });
+  v6.listen(RH_REDIRECT_PORT, '::1');
+  await Promise.race([v6Listening, once(v6, 'error')]).catch(() => undefined);
+
   try {
     return await result;
   } finally {
-    server.close();
+    for (const server of servers) server.close();
   }
 }
 
@@ -111,14 +138,21 @@ async function main(): Promise<void> {
 
   const store = new MemoryOAuthStateStore({ clientId: clientInfo.client_id });
 
+  // `state` is not optional here, whatever the RFC says about it being
+  // RECOMMENDED. Robinhood discards an authorization request that omits it and
+  // redirects the browser to the account page — no consent screen, no error, so
+  // it reads as "the link did nothing". The SDK only sends state when asked, so
+  // the omission is silent on both ends. Verified 2026-08-12 by sending the same
+  // URL with and without it.
+  const state = randomBytes(16).toString('hex');
+
   const { authorizationUrl, codeVerifier } = await startAuthorization(serverUrl, {
     metadata,
     clientInformation: clientInfo,
     redirectUrl: RH_REDIRECT_URL,
     scope: RH_OAUTH_SCOPE,
+    state,
   });
-
-  const state = authorizationUrl.searchParams.get('state') ?? '';
   const codePromise = awaitAuthorizationCode(state);
 
   console.log('Opening your browser to authorize. If it does not open, visit:\n');

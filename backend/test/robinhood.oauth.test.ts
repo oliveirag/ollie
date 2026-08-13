@@ -29,7 +29,16 @@ describe('client metadata matches what the server advertises', () => {
   it('registers a fixed loopback redirect', () => {
     // A redirect_uri that changed between runs would invalidate the client.
     expect(rhClientMetadata().redirect_uris).toEqual([RH_REDIRECT_URL]);
-    expect(RH_REDIRECT_URL).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/callback$/);
+    expect(RH_REDIRECT_URL).toMatch(/^http:\/\/localhost:\d+\/callback$/);
+  });
+
+  it('names localhost rather than the loopback IP', () => {
+    // Pinned because the spec-correct value is the broken one here, so this
+    // reads like a mistake and would be "corrected" by anyone tidying it. RFC
+    // 8252 §8.3 prefers 127.0.0.1; Robinhood's allowlist matches the literal
+    // string `localhost` and silently discards the authorization otherwise —
+    // no error, just a redirect to the Robinhood home page.
+    expect(RH_REDIRECT_URL).not.toContain('127.0.0.1');
   });
 });
 

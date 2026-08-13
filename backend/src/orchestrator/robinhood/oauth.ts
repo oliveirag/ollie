@@ -75,27 +75,31 @@ export const RH_OAUTH_SCOPE = 'internal';
 /**
  * Loopback redirect.
  *
- * **This does not currently work, and the flow below cannot complete.** The
- * earlier claim here — that dynamic client registration gets this redirect
- * registered for us — is false. Probed 2026-08-12: POSTing three different
- * client metadata documents to the registration endpoint returns the *same*
- * fixed `client_id` every time, named "Robinhood Trading", with our
- * `redirect_uris` echoed back but ignored. Registration is a stub that hands
- * out one pre-provisioned public client whose allowed redirects we cannot
- * influence.
+ * **The host must be the literal `localhost`, not `127.0.0.1`.** That is the
+ * opposite of what the specs advise: RFC 8252 §8.3 and OAuth 2.1 both prefer
+ * the loopback *IP*, precisely because a hostname depends on a resolver that
+ * can be poisoned. Robinhood's allowlist matches the string, so the
+ * spec-correct value is rejected and the weaker one is what works.
  *
- * The visible symptom is not an error. `robinhood.com/oauth` silently
- * redirects to the Robinhood home page, so the browser shows no consent screen
- * and the loopback listener waits forever.
+ * Established by experiment on 2026-08-12: the same authorization URL, with
+ * only this host changed, renders the consent screen for `localhost` and is
+ * discarded for `127.0.0.1`. The failure is silent and easy to misread as our
+ * bug — no error is displayed, `robinhood.com/oauth` simply redirects to the
+ * Robinhood home page, so the browser looks like it did nothing and the
+ * listener waits forever. Reported elsewhere as a 403 `Mismatching Redirect
+ * URI`, which is the error this flow never gets to see.
  *
- * Everything else we send matches the server's advertised metadata (scope
- * `internal`, S256, the authorize endpoint) — the redirect URI is the sole
- * problem, and nothing on our side can fix it. Obtaining an unattended refresh
- * token needs a client provisioned by Robinhood with a redirect we control.
- * Port is fixed so the value stays stable across runs if that ever arrives.
+ * Registration cannot fix this for us. Three POSTs with different client
+ * metadata all returned the *same* pre-provisioned `client_id`, named
+ * "Robinhood Trading", with our `redirect_uris` echoed back but ignored. The
+ * allowlist is fixed and shared across every caller, so matching it is the only
+ * option available.
+ *
+ * Port is fixed so the value stays stable across runs — a changing redirect_uri
+ * would have to be on that allowlist too.
  */
 export const RH_REDIRECT_PORT = 8788;
-export const RH_REDIRECT_URL = `http://127.0.0.1:${RH_REDIRECT_PORT}/callback`;
+export const RH_REDIRECT_URL = `http://localhost:${RH_REDIRECT_PORT}/callback`;
 
 export function rhClientMetadata(): OAuthClientMetadata {
   return {

@@ -42,29 +42,37 @@ is observed through logs and the database.
    so a crash-loop is the intended failure. If a deploy is restarting with no
    obvious cause, check this variable first.
 
-   > **Blocked as of 2026-08-12: the `RH_OAUTH_*` pair cannot currently be
-   > obtained, so leave both empty and deploy without a broker credential.** The
-   > service boots fine without them; scheduled runs simply cannot reach a real
-   > broker.
-   >
-   > `npm run rh:authorize` does not work, and the failure is on Robinhood's
-   > side. Its registration endpoint is a stub: three POSTs with different client
-   > metadata all returned the same fixed `client_id` named "Robinhood Trading",
-   > with our `redirect_uris` echoed back but ignored. Our loopback redirect is
-   > therefore never registered, and `robinhood.com/oauth` responds by silently
-   > redirecting to the Robinhood home page — no consent screen, no error, and
-   > the script's listener waits forever. Everything else we send matches the
-   > server's advertised metadata, so there is nothing to fix on our side.
-   >
-   > Unblocking this needs a client provisioned by Robinhood against a redirect
-   > URI we control. Until then the only way to touch the real MCP is
-   > `RH_MCP_AUTH_TOKEN` with an access token pulled by hand from a logged-in
-   > browser session — good for a single manual run, useless for a deploy,
-   > because it expires and cannot renew itself.
+   The Robinhood credential is **not** a token you can paste from anywhere. The
+   MCP speaks OAuth 2.1 + PKCE, and the first token requires a human at
+   `robinhood.com/oauth` — which Railway has no way to do. Get the pair locally:
 
-   The shape the deploy *would* carry, once a credential exists: `client_id`
-   plus refresh token, with the service exchanging the refresh token for an
-   access token on boot and whenever one expires.
+   ```bash
+   cd backend && npm run rh:authorize
+   ```
+
+   That prints a `client_id` and a refresh token; those two are what the deploy
+   carries. The service exchanges the refresh token for an access token on boot
+   and whenever one expires. `RH_MCP_AUTH_TOKEN` still works for a one-off manual
+   run with a pasted access token, but it expires and cannot renew itself, so it
+   is not a deploy credential.
+
+   > **Two Robinhood quirks are load-bearing here, and both fail silently.**
+   > Established by experiment on 2026-08-12, after the flow appeared to do
+   > nothing twice. In each case `robinhood.com/oauth` redirects the browser to a
+   > Robinhood page with no consent screen and no error, so it reads as a dead
+   > link rather than a rejected request.
+   >
+   > 1. **The redirect host must be the literal `localhost`, not `127.0.0.1`.**
+   >    Robinhood's allowlist matches the string. RFC 8252 §8.3 and OAuth 2.1
+   >    both *prefer* the loopback IP, so the spec-correct value is the broken
+   >    one. Reported elsewhere as a 403 `Mismatching Redirect URI`.
+   > 2. **The `state` parameter is required**, whatever the RFC says about it
+   >    being RECOMMENDED. The MCP SDK omits it unless asked.
+   >
+   > Registration cannot help with either: three POSTs with different client
+   > metadata all return the same pre-provisioned `client_id` named "Robinhood
+   > Trading", with the submitted `redirect_uris` echoed back but ignored. The
+   > allowlist is fixed and shared, so matching it is the only option.
 
    > **Also unresolved:** whether Robinhood rotates refresh tokens on use. If it
    > does, the value in this variable goes stale after the first refresh and the

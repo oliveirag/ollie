@@ -245,20 +245,24 @@ Run sequence (each stage logged with `run_id`):
 - [x] 1.6 `scheduler.ts` + wire into `index.ts`; `run-pipeline-once.ts --broker=mock|real`.
 - [~] 1.7 Manual E2E vs real RH MCP (paper intent), then Railway deploy with `PIPELINE_CRON` live; watch first scheduled run. **← Phase 1 exit.**
 
-  **The real-MCP half is blocked on Robinhood, not on us (2026-08-12).** No
-  unattended broker credential can be obtained: the registration endpoint is a
-  stub that returns one fixed pre-provisioned `client_id` and ignores the
-  `redirect_uris` we send, so our loopback redirect is never registered and
-  `robinhood.com/oauth` silently redirects to the home page instead of showing a
-  consent screen. `npm run rh:authorize` therefore cannot complete. Details and
-  the probe that established it are in `docs/deploy-railway.md` and the header of
-  `src/orchestrator/robinhood/oauth.ts`.
+  **The real-MCP half is done (2026-08-12).** `npm run rh:authorize` completes
+  and yields a refresh token, and `pipeline:once --broker=real` pulled genuine
+  market data through the live MCP — 122 bars per symbol, real closes, indicators
+  computed, `no_rule_fired` on all three. No candidates is a correct outcome, not
+  a failure: nothing was oversold and no MACD cross had happened.
 
-  The deploy half proceeds without it — the service boots with the `RH_OAUTH_*`
-  variables empty, and everything not requiring a broker (migrations, `/healthz`,
-  the whole owner API driving the iOS app) is exercised against the real
-  deployment. Watching a real scheduled run against a real broker waits on a
-  credential Robinhood has to issue.
+  Getting there took two fixes, both for silent Robinhood behaviors that looked
+  identical from the outside — the browser lands on a Robinhood page with no
+  consent screen and no error. The redirect host must be the literal `localhost`
+  rather than the spec-preferred `127.0.0.1`, and `state` is mandatory though the
+  RFC calls it RECOMMENDED. Both are documented at `RH_REDIRECT_URL` in
+  `src/orchestrator/robinhood/oauth.ts` and in `docs/deploy-railway.md`.
+
+  Deployed to Railway with a managed Postgres, migrations applied on boot,
+  `/healthz` green over TLS and the owner API refusing unauthenticated calls.
+
+  **Still open:** watching a real scheduled run end to end, and the refresh-token
+  rotation question below — now observable for the first time.
 
 ## Where this left off (2026-08-04)
 
