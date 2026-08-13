@@ -44,6 +44,14 @@ const EnvSchema = z.object({
   MACD_SLOW: positiveInt.default(26),
   MACD_SIGNAL: positiveInt.default(9),
 
+  /**
+   * Trading days a lot may stay open before the time stop proposes an exit.
+   * Exists so a sustained paper run cannot end with zero closed trades — and
+   * therefore no win rate and nothing worth publishing — merely because the
+   * market never obliged with a crossing. 0 disables it.
+   */
+  MAX_HOLDING_DAYS: z.coerce.number().int().min(0).default(30),
+
   ORDER_NOTIONAL_CENTS: positiveInt.default(50_000),
   MAX_POSITION_CENTS: positiveInt.default(100_000),
   MAX_DAILY_TRADES: nonNegativeInt.default(3),
@@ -95,6 +103,8 @@ export interface StrategyConfig {
   macdSignal: number;
   /** Target notional per order, in integer cents. Sizing floors to whole shares. */
   orderNotionalCents: number;
+  /** 0 disables the time stop entirely. */
+  maxHoldingDays: number;
 }
 
 export interface RiskConfig {
@@ -194,6 +204,7 @@ export function buildConfig(source: NodeJS.ProcessEnv = process.env): Config {
       macdSlow: env.MACD_SLOW,
       macdSignal: env.MACD_SIGNAL,
       orderNotionalCents: env.ORDER_NOTIONAL_CENTS,
+      maxHoldingDays: env.MAX_HOLDING_DAYS,
     },
     risk: {
       symbolAllowlist,

@@ -24,6 +24,7 @@ const BASE: StrategyConfig = {
   macdSlow: 26,
   macdSignal: 9,
   orderNotionalCents: 100_000,
+  maxHoldingDays: 30,
 };
 
 const config = (overrides: Partial<StrategyConfig> = {}): StrategyConfig => ({

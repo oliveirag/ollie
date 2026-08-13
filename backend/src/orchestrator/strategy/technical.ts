@@ -4,7 +4,7 @@ import {
   TECHNICAL_RULES,
   dedupeKeyFor,
   type Candle,
-  type CandidateSignal,
+  type TechnicalCandidate,
   type EvaluationResult,
   type PositionContext,
   type StrategyConfig,
@@ -127,7 +127,7 @@ export function evaluateTechnical(
     quantity = String(shares);
   }
 
-  const candidate: CandidateSignal = {
+  const candidate: TechnicalCandidate = {
     symbol,
     side: fired.side,
     signalType: 'technical',

@@ -2,7 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import type { Logger } from 'pino';
 import { getConfig } from '../../config/index.js';
 import { logger as rootLogger } from '../../logger.js';
-import type { CandidateSignal } from '../strategy/index.js';
+import type { CandidateSignal, ExitIndicators, TechnicalIndicators } from '../strategy/index.js';
 
 /**
  * Thesis generation — the only place an LLM touches this system, and it touches
@@ -128,6 +128,41 @@ export async function generateThesis(
   }
 }
 
+/** Narrows the union so each rule family cites only what it actually read. */
+function isExitIndicators(
+  indicators: TechnicalIndicators | ExitIndicators,
+): indicators is ExitIndicators {
+  return 'barsHeld' in indicators;
+}
+
+
+function exitPayload(
+  indicators: TechnicalIndicators | ExitIndicators,
+): Record<string, unknown> | null {
+  if (!isExitIndicators(indicators)) return null;
+  return {
+    bars_held: indicators.barsHeld,
+    max_holding_period_bars: indicators.maxHoldingDays,
+  };
+}
+
+function technicalPayload(indicators: TechnicalIndicators | ExitIndicators): Record<string, unknown> {
+  const i = indicators as TechnicalIndicators;
+  return {
+    rsi: round(i.rsi, 1),
+    rsi_previous_bar: round(i.rsiPrev, 1),
+    rsi_period: i.rsiPeriod,
+    rsi_oversold_threshold: i.rsiOversold,
+    rsi_overbought_threshold: i.rsiOverbought,
+    macd_line: round(i.macd, 2),
+    macd_signal_line: round(i.macdSignal, 2),
+    macd_histogram: round(i.macdHistogram, 2),
+    macd_histogram_previous_bar: round(i.macdHistogramPrev, 2),
+    close: round(i.close, 2),
+    close_previous_bar: round(i.closePrev, 2),
+  };
+}
+
 /** Exactly the numbers the rule used — nothing else is available to cite. */
 function promptPayload(input: ThesisInput): Record<string, unknown> {
   const { candidate } = input;
@@ -138,19 +173,10 @@ function promptPayload(input: ThesisInput): Record<string, unknown> {
     rule: candidate.rule,
     estimated_price: input.estimatedPrice,
     review_warnings: input.reviewWarnings,
-    indicators: {
-      rsi: round(candidate.indicators.rsi, 1),
-      rsi_previous_bar: round(candidate.indicators.rsiPrev, 1),
-      rsi_period: candidate.indicators.rsiPeriod,
-      rsi_oversold_threshold: candidate.indicators.rsiOversold,
-      rsi_overbought_threshold: candidate.indicators.rsiOverbought,
-      macd_line: round(candidate.indicators.macd, 2),
-      macd_signal_line: round(candidate.indicators.macdSignal, 2),
-      macd_histogram: round(candidate.indicators.macdHistogram, 2),
-      macd_histogram_previous_bar: round(candidate.indicators.macdHistogramPrev, 2),
-      close: round(candidate.indicators.close, 2),
-      close_previous_bar: round(candidate.indicators.closePrev, 2),
-    },
+    // A time stop consulted no indicators, so it is given none. Handing the
+    // model zeroed-out RSI and MACD fields would invite a thesis citing a
+    // crossing that never happened — the one thing the narration must never do.
+    indicators: exitPayload(candidate.indicators) ?? technicalPayload(candidate.indicators),
     decision_bar: candidate.barTime,
   };
 }
@@ -162,6 +188,24 @@ function promptPayload(input: ThesisInput): Record<string, unknown> {
  */
 export function templateThesis(input: ThesisInput): string {
   const { candidate } = input;
+
+  // A time stop has its own sentence because it has its own reason. Reusing the
+  // indicator phrasing would state an RSI and a MACD figure that played no part
+  // in the decision, in a record that is meant to explain why the trade fired.
+  if (isExitIndicators(candidate.indicators)) {
+    const { barsHeld, maxHoldingDays } = candidate.indicators;
+    const warnings =
+      input.reviewWarnings.length > 0
+        ? ` Broker pre-trade alerts: ${input.reviewWarnings.join(', ')}.`
+        : '';
+    return (
+      `Sell ${candidate.quantity} ${candidate.symbol} at an estimated ${input.estimatedPrice}. ` +
+      `The position has been held ${barsHeld} trading days, reaching the ${maxHoldingDays}-day ` +
+      `maximum holding period. No entry or exit rule fired; this exit is the holding ` +
+      `period alone.${warnings}`
+    );
+  }
+
   const i = candidate.indicators;
   const rsi = round(i.rsi, 1);
   const rsiPrev = round(i.rsiPrev, 1);

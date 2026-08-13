@@ -12,6 +12,7 @@ import {
   transitionSignal,
 } from '../db/signals.js';
 import { getAppSettings } from '../db/settings.js';
+import { listOpenLots } from '../db/trackRecord.js';
 import { generateThesis as defaultGenerateThesis } from './anthropic/thesis.js';
 import type { ThesisInput, ThesisResult } from './anthropic/thesis.js';
 import { paperPositions } from './paperPositions.js';
@@ -19,7 +20,7 @@ import { applyRiskCaps, type RiskRejection } from './risk.js';
 import type { Notifier } from './push/notify.js';
 import { buildReviewSnapshot } from './reviewSnapshot.js';
 import type { BrokerAdapter, Candle } from './robinhood/client.js';
-import { dedupeKeyFor, evaluateTechnical, requiredBars } from './strategy/index.js';
+import { dedupeKeyFor, evaluateExit, evaluateTechnical, requiredBars } from './strategy/index.js';
 import type { CandidateSignal } from './strategy/index.js';
 
 /**
@@ -127,6 +128,17 @@ export async function runPipeline(deps: PipelineDeps): Promise<PipelineResult> {
     settings.executionMode === 'paper' ? await paperPositions(prisma) : await broker.getPositions();
   const heldBySymbol = new Map(positions.map((p) => [p.symbol, p.sharesAvailableForSells]));
 
+  // When each symbol's oldest lot was opened, for the time stop. Paper only:
+  // a broker position carries no lot-open date, so in live mode the time stop
+  // stays silent rather than guessing an age from data it does not have.
+  const openedBySymbol = new Map<string, Date>();
+  if (settings.executionMode === 'paper') {
+    for (const lot of await listOpenLots(prisma)) {
+      const existing = openedBySymbol.get(lot.symbol);
+      if (!existing || lot.recordedAt < existing) openedBySymbol.set(lot.symbol, lot.recordedAt);
+    }
+  }
+
   const candidates: CandidateSignal[] = [];
 
   for (const symbol of config.symbolAllowlist) {
@@ -158,7 +170,35 @@ export async function runPipeline(deps: PipelineDeps): Promise<PipelineResult> {
       result.candidate ? 'candidate generated' : 'no candidate',
     );
 
-    if (result.candidate) candidates.push(result.candidate);
+    if (result.candidate) {
+      candidates.push(result.candidate);
+      continue;
+    }
+
+    // The time stop is a backstop, so it is consulted only when no rule fired.
+    // A crossing that already proposes an exit does not need a second opinion,
+    // and two exit candidates for one position would race each other.
+    const openedAt = openedBySymbol.get(symbol);
+    if (held !== undefined && openedAt !== undefined) {
+      const timeStop = evaluateExit(
+        symbol,
+        usable,
+        { openedAt, quantity: held },
+        config.strategy.maxHoldingDays,
+      );
+      if (timeStop) {
+        log.info(
+          {
+            symbol,
+            bar_time: timeStop.barTime,
+            rule: timeStop.rule,
+            indicators: timeStop.indicators,
+          },
+          'time stop proposes an exit',
+        );
+        candidates.push(timeStop);
+      }
+    }
   }
 
   if (candidates.length === 0) {
