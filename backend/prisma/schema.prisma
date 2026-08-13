@@ -96,6 +96,9 @@ model Signal {
   events      SignalEvent[]
   executions  Execution[]
   trackRecord TrackRecord[]
+  /// Lots this signal closed. A sell signal closes one row per entry lot it
+  /// consumed, so this is a list even though a lot has exactly one closer.
+  closedLots  TrackRecord[] @relation("ClosedBy")
 
   @@index([status, createdAt])
   @@index([symbol, createdAt])
@@ -142,10 +145,18 @@ model TrackRecord {
   exitPrice     Decimal?       @map("exit_price") @db.Decimal(18, 6)
   realizedPnl   Decimal?       @map("realized_pnl") @db.Decimal(18, 6)
   unrealizedPnl Decimal?       @map("unrealized_pnl") @db.Decimal(18, 6)
+  /// The quote a mark was computed against. Stored so an `unrealized_pnl` is
+  /// auditable rather than an unexplainable number — these rows can never be
+  /// corrected in place, so the input has to travel with the output.
+  markPrice     Decimal?       @map("mark_price") @db.Decimal(18, 6)
+  /// The sell signal whose approval closed this lot. Null on open and mark
+  /// rows. Makes a realized PnL traceable to the decision behind it.
+  closedBySignalId String?     @map("closed_by_signal_id") @db.Uuid
   status        PositionStatus
   recordedAt    DateTime       @default(now()) @map("recorded_at") @db.Timestamptz(6)
 
-  signal Signal @relation(fields: [signalId], references: [id], onDelete: Restrict)
+  signal         Signal  @relation(fields: [signalId], references: [id], onDelete: Restrict)
+  closedBySignal Signal? @relation("ClosedBy", fields: [closedBySignalId], references: [id], onDelete: Restrict)
 
   @@index([signalId, recordedAt])
   @@map("track_record")

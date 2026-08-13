@@ -13,6 +13,10 @@ export interface AppendTrackRecordInput {
   exitPrice?: string | null;
   realizedPnl?: string | null;
   unrealizedPnl?: string | null;
+  /** The quote an `unrealizedPnl` was computed against; travels with it. */
+  markPrice?: string | null;
+  /** The sell signal that closed this lot. Null on open and mark rows. */
+  closedBySignalId?: string | null;
   status: PositionStatus;
   recordedAt?: Date;
 }
@@ -34,6 +38,8 @@ export async function appendTrackRecord(
       realizedPnl: input.realizedPnl == null ? null : new Prisma.Decimal(input.realizedPnl),
       unrealizedPnl:
         input.unrealizedPnl == null ? null : new Prisma.Decimal(input.unrealizedPnl),
+      markPrice: input.markPrice == null ? null : new Prisma.Decimal(input.markPrice),
+      closedBySignalId: input.closedBySignalId ?? null,
       status: input.status,
       recordedAt: input.recordedAt ?? new Date(),
     },
@@ -111,4 +117,101 @@ export async function latestTrackRecord(
     where: { signalId },
     orderBy: { recordedAt: 'desc' },
   });
+}
+
+/** The open lots for one symbol. Same latest-row-then-filter rule as above. */
+export async function openLotsForSymbol(
+  symbol: string,
+  prisma: PrismaClient = getPrisma(),
+): Promise<OpenLot[]> {
+  const lots = await listOpenLots(prisma);
+  return lots.filter((lot) => lot.symbol === symbol);
+}
+
+export interface CloseLotsInput {
+  /** Entry signals whose lots this exit consumes, oldest first. */
+  signalIds: readonly string[];
+  exitPrice: string;
+  /** The sell signal being approved. */
+  closedBySignalId: string;
+  recordedAt?: Date;
+}
+
+/**
+ * Close one or more lots in a single transaction.
+ *
+ * All-or-nothing on purpose. These rows can never be deleted, so a half-applied
+ * close is permanent: some lots closed, some still open, and a realized PnL
+ * that describes neither state. Better to refuse the whole batch and leave the
+ * signal decidable — the same doctrine as the decision route's pre-flight.
+ */
+export async function closeLots(
+  input: CloseLotsInput,
+  prisma: PrismaClient = getPrisma(),
+): Promise<TrackRecord[]> {
+  const exitPrice = new Prisma.Decimal(input.exitPrice);
+  const recordedAt = input.recordedAt ?? new Date();
+
+  return prisma.$transaction(async (tx) => {
+    const closed: TrackRecord[] = [];
+    for (const signalId of input.signalIds) {
+      const latest = await tx.trackRecord.findFirst({
+        where: { signalId },
+        orderBy: [{ recordedAt: 'desc' }, { id: 'desc' }],
+      });
+      if (!latest || latest.status !== 'open') {
+        // Throwing rolls back the rows already appended in this transaction.
+        throw new Error(
+          `signal ${signalId} has no open lot to close (status: ${latest?.status ?? 'no rows'})`,
+        );
+      }
+
+      const signal = await tx.signal.findUniqueOrThrow({ where: { id: signalId } });
+      const quantity = new Prisma.Decimal(signal.quantity);
+      const realizedPnl = exitPrice.minus(latest.entryPrice).times(quantity);
+
+      closed.push(
+        await tx.trackRecord.create({
+          data: {
+            signalId,
+            entryPrice: latest.entryPrice,
+            exitPrice,
+            realizedPnl,
+            closedBySignalId: input.closedBySignalId,
+            status: 'closed',
+            recordedAt,
+          },
+        }),
+      );
+    }
+    return closed;
+  });
+}
+
+/**
+ * Whether a lot already has a mark row for the UTC day containing `when`.
+ *
+ * The guard that keeps the mark job idempotent: a restart, a manual run, or an
+ * overlapping firing must not append a second mark for the same day, because
+ * the curve sums that day's marks and a duplicate would double-count a lot.
+ */
+export async function hasMarkForDay(
+  signalId: string,
+  when: Date,
+  prisma: PrismaClient = getPrisma(),
+): Promise<boolean> {
+  const start = new Date(
+    Date.UTC(when.getUTCFullYear(), when.getUTCMonth(), when.getUTCDate()),
+  );
+  const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+
+  const existing = await prisma.trackRecord.findFirst({
+    where: {
+      signalId,
+      markPrice: { not: null },
+      recordedAt: { gte: start, lt: end },
+    },
+    select: { id: true },
+  });
+  return existing !== null;
 }
