@@ -42,22 +42,32 @@ is observed through logs and the database.
    so a crash-loop is the intended failure. If a deploy is restarting with no
    obvious cause, check this variable first.
 
-   The Robinhood credential is **not** a token you can paste from anywhere. The
-   MCP speaks OAuth 2.1 + PKCE, and the first token requires a human at
-   `robinhood.com/oauth` — which Railway has no way to do. Get the pair locally:
+   > **Blocked as of 2026-08-12: the `RH_OAUTH_*` pair cannot currently be
+   > obtained, so leave both empty and deploy without a broker credential.** The
+   > service boots fine without them; scheduled runs simply cannot reach a real
+   > broker.
+   >
+   > `npm run rh:authorize` does not work, and the failure is on Robinhood's
+   > side. Its registration endpoint is a stub: three POSTs with different client
+   > metadata all returned the same fixed `client_id` named "Robinhood Trading",
+   > with our `redirect_uris` echoed back but ignored. Our loopback redirect is
+   > therefore never registered, and `robinhood.com/oauth` responds by silently
+   > redirecting to the Robinhood home page — no consent screen, no error, and
+   > the script's listener waits forever. Everything else we send matches the
+   > server's advertised metadata, so there is nothing to fix on our side.
+   >
+   > Unblocking this needs a client provisioned by Robinhood against a redirect
+   > URI we control. Until then the only way to touch the real MCP is
+   > `RH_MCP_AUTH_TOKEN` with an access token pulled by hand from a logged-in
+   > browser session — good for a single manual run, useless for a deploy,
+   > because it expires and cannot renew itself.
 
-   ```bash
-   cd backend && npm run rh:authorize
-   ```
+   The shape the deploy *would* carry, once a credential exists: `client_id`
+   plus refresh token, with the service exchanging the refresh token for an
+   access token on boot and whenever one expires.
 
-   That prints a `client_id` and a refresh token; those two are what the deploy
-   carries. The service exchanges the refresh token for an access token on boot
-   and whenever one expires. `RH_MCP_AUTH_TOKEN` still works for a one-off manual
-   run with a pasted access token, but it expires and cannot renew itself, so it
-   is not a deploy credential.
-
-   > **Unresolved:** whether Robinhood rotates refresh tokens on use. If it does,
-   > the value in this variable goes stale after the first refresh and the
+   > **Also unresolved:** whether Robinhood rotates refresh tokens on use. If it
+   > does, the value in this variable goes stale after the first refresh and the
    > credential has to move to Postgres — an environment variable cannot hold
    > something that changes at runtime. `OAuthStateStore` exists to make that
    > swap a new implementation rather than a rewrite. Watch the first redeploy

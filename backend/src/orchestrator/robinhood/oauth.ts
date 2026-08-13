@@ -73,9 +73,26 @@ export class MemoryOAuthStateStore implements OAuthStateStore {
 export const RH_OAUTH_SCOPE = 'internal';
 
 /**
- * Loopback redirect. The authorization server must have this registered, which
- * dynamic client registration handles for us. Port is fixed so the value stays
- * stable across runs — a changing redirect_uri would invalidate the client.
+ * Loopback redirect.
+ *
+ * **This does not currently work, and the flow below cannot complete.** The
+ * earlier claim here — that dynamic client registration gets this redirect
+ * registered for us — is false. Probed 2026-08-12: POSTing three different
+ * client metadata documents to the registration endpoint returns the *same*
+ * fixed `client_id` every time, named "Robinhood Trading", with our
+ * `redirect_uris` echoed back but ignored. Registration is a stub that hands
+ * out one pre-provisioned public client whose allowed redirects we cannot
+ * influence.
+ *
+ * The visible symptom is not an error. `robinhood.com/oauth` silently
+ * redirects to the Robinhood home page, so the browser shows no consent screen
+ * and the loopback listener waits forever.
+ *
+ * Everything else we send matches the server's advertised metadata (scope
+ * `internal`, S256, the authorize endpoint) — the redirect URI is the sole
+ * problem, and nothing on our side can fix it. Obtaining an unattended refresh
+ * token needs a client provisioned by Robinhood with a redirect we control.
+ * Port is fixed so the value stays stable across runs if that ever arrives.
  */
 export const RH_REDIRECT_PORT = 8788;
 export const RH_REDIRECT_URL = `http://127.0.0.1:${RH_REDIRECT_PORT}/callback`;

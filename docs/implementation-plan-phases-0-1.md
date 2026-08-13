@@ -243,7 +243,22 @@ Run sequence (each stage logged with `run_id`):
 - [x] 1.4 `anthropic/thesis.ts` + fallback tests (mock SDK throw).
 - [x] 1.5 `pipeline.ts` + `executor.ts` + expiry; integration test (mock broker + local PG): pending signals w/ snapshots; kill-switch run → nothing; duplicate run → nothing new; cap violations rejected; approve → execution + open track_record with slippage fill.
 - [x] 1.6 `scheduler.ts` + wire into `index.ts`; `run-pipeline-once.ts --broker=mock|real`.
-- [ ] 1.7 Manual E2E vs real RH MCP (paper intent), then Railway deploy with `PIPELINE_CRON` live; watch first scheduled run. **← Phase 1 exit.**
+- [~] 1.7 Manual E2E vs real RH MCP (paper intent), then Railway deploy with `PIPELINE_CRON` live; watch first scheduled run. **← Phase 1 exit.**
+
+  **The real-MCP half is blocked on Robinhood, not on us (2026-08-12).** No
+  unattended broker credential can be obtained: the registration endpoint is a
+  stub that returns one fixed pre-provisioned `client_id` and ignores the
+  `redirect_uris` we send, so our loopback redirect is never registered and
+  `robinhood.com/oauth` silently redirects to the home page instead of showing a
+  consent screen. `npm run rh:authorize` therefore cannot complete. Details and
+  the probe that established it are in `docs/deploy-railway.md` and the header of
+  `src/orchestrator/robinhood/oauth.ts`.
+
+  The deploy half proceeds without it — the service boots with the `RH_OAUTH_*`
+  variables empty, and everything not requiring a broker (migrations, `/healthz`,
+  the whole owner API driving the iOS app) is exercised against the real
+  deployment. Watching a real scheduled run against a real broker waits on a
+  credential Robinhood has to issue.
 
 ## Where this left off (2026-08-04)
 
