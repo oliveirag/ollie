@@ -2,7 +2,8 @@
   "$schema": "https://railway.app/railway.schema.json",
   "build": {
     "builder": "NIXPACKS",
-    "buildCommand": "npm ci && npm run build"
+    "_comment_buildCommand": "Just the build. Nixpacks already runs `npm ci` in its own install phase, and repeating it here fails the build: npm ci wipes node_modules before reinstalling, but Railway mounts a build cache at /app/node_modules/.cache, and rmdir on a mount point is EBUSY.",
+    "buildCommand": "npm run build"
   },
   "deploy": {
     "startCommand": "npx prisma migrate deploy && node dist/index.js",
