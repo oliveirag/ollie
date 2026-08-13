@@ -21,6 +21,7 @@ import { registerDeviceRoutes } from './routes/devices.js';
 import { registerHealthRoutes } from './routes/health.js';
 import { registerSettingsRoutes } from './routes/settings.js';
 import { registerSignalRoutes } from './routes/signals.js';
+import { registerTrackRecordRoutes } from './routes/trackRecord.js';
 
 /**
  * The owner API (PRD §4.2-4.3, Phase 2).
@@ -139,6 +140,7 @@ export async function buildApp(deps: ApiDeps): Promise<OllieApp> {
       await scope.register(registerDashboardRoutes, { broker, logger });
       await scope.register(registerSettingsRoutes, { config });
       await scope.register(registerDeviceRoutes);
+      await scope.register(registerTrackRecordRoutes);
     },
     { prefix: '/v1' },
   );

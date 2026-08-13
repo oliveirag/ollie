@@ -344,3 +344,48 @@ export const HealthReportSchema = z
     checkedAt: z.string().datetime(),
   })
   .meta({ id: 'HealthReport' });
+
+export const CurvePointSchema = z
+  .object({
+    date: z.string().describe('UTC calendar day, YYYY-MM-DD'),
+    value: z
+      .number()
+      .nullable()
+      .describe(
+        'Cumulative realized PnL through this day plus the day\'s marks. ' +
+          'Null when withheld',
+      ),
+    withheld: z
+      .boolean()
+      .describe(
+        'True when a lot open on this day had no mark, so no honest total exists. ' +
+          'A partial sum would misstate a published curve, so the day is reported ' +
+          'as absent rather than approximated',
+      ),
+  })
+  .meta({ id: 'CurvePoint' });
+
+export const TrackRecordSchema = z
+  .object({
+    closed_trades: z.number().int(),
+    open_positions: z
+      .number()
+      .int()
+      .describe('Reported alongside win rate so the exclusion below is visible, not hidden'),
+    wins: z.number().int().describe('Strictly positive realized PnL; a scratch is not a win'),
+    win_rate: z
+      .number()
+      .nullable()
+      .describe(
+        'Wins over closed trades. Open positions are excluded from the denominator ' +
+          'because they have no outcome yet. Null with zero closed trades — no answer, ' +
+          'rather than a claimed 0%',
+      ),
+    average_return: z
+      .number()
+      .nullable()
+      .describe('Unweighted mean of realized_pnl / (entry_price x quantity) over closed trades'),
+    total_realized_pnl: z.string().describe('Decimal string, two places'),
+    curve: z.array(CurvePointSchema).describe('A PnL curve based at zero, not a portfolio value'),
+  })
+  .meta({ id: 'TrackRecord' });

@@ -215,3 +215,46 @@ export async function hasMarkForDay(
   });
   return existing !== null;
 }
+
+/**
+ * Every track-record row with the entry lot size it belongs to, oldest first.
+ *
+ * Quantity lives on the signal, not the row, and the return math needs both.
+ * The whole table is read because the aggregates are computed from the full
+ * history — the caps allow three signals a day, so a year is hundreds of rows
+ * and one scan.
+ */
+export async function listAllTrackRecordRows(
+  prisma: PrismaClient = getPrisma(),
+): Promise<TrackRecordStatsRow[]> {
+  const rows = await prisma.trackRecord.findMany({
+    orderBy: [{ recordedAt: 'asc' }, { id: 'asc' }],
+    include: { signal: { select: { quantity: true, symbol: true } } },
+  });
+
+  return rows.map((row) => ({
+    signalId: row.signalId,
+    symbol: row.signal.symbol,
+    status: row.status,
+    entryPrice: row.entryPrice.toString(),
+    quantity: row.signal.quantity.toString(),
+    exitPrice: row.exitPrice?.toString() ?? null,
+    realizedPnl: row.realizedPnl?.toString() ?? null,
+    unrealizedPnl: row.unrealizedPnl?.toString() ?? null,
+    markPrice: row.markPrice?.toString() ?? null,
+    recordedAt: row.recordedAt,
+  }));
+}
+
+export interface TrackRecordStatsRow {
+  signalId: string;
+  symbol: string;
+  status: PositionStatus;
+  entryPrice: string;
+  quantity: string;
+  exitPrice: string | null;
+  realizedPnl: string | null;
+  unrealizedPnl: string | null;
+  markPrice: string | null;
+  recordedAt: Date;
+}

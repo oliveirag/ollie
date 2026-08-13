@@ -539,6 +539,66 @@ components:
         - uptimeSeconds
         - checkedAt
       additionalProperties: false
+    CurvePoint:
+      type: object
+      properties:
+        date:
+          type: string
+          description: UTC calendar day, YYYY-MM-DD
+        value:
+          type: number
+          nullable: true
+          description: Cumulative realized PnL through this day plus the day's marks. Null when withheld
+        withheld:
+          type: boolean
+          description: True when a lot open on this day had no mark, so no honest total exists. A partial sum would misstate a published curve, so the day is reported as absent rather than approximated
+      required:
+        - date
+        - value
+        - withheld
+      additionalProperties: false
+    TrackRecord:
+      type: object
+      properties:
+        closed_trades:
+          type: integer
+          minimum: -9007199254740991
+          maximum: 9007199254740991
+        open_positions:
+          type: integer
+          minimum: -9007199254740991
+          maximum: 9007199254740991
+          description: Reported alongside win rate so the exclusion below is visible, not hidden
+        wins:
+          type: integer
+          minimum: -9007199254740991
+          maximum: 9007199254740991
+          description: Strictly positive realized PnL; a scratch is not a win
+        win_rate:
+          type: number
+          nullable: true
+          description: Wins over closed trades. Open positions are excluded from the denominator because they have no outcome yet. Null with zero closed trades — no answer, rather than a claimed 0%
+        average_return:
+          type: number
+          nullable: true
+          description: Unweighted mean of realized_pnl / (entry_price x quantity) over closed trades
+        total_realized_pnl:
+          type: string
+          description: Decimal string, two places
+        curve:
+          type: array
+          items:
+            $ref: "#/components/schemas/CurvePoint"
+          description: A PnL curve based at zero, not a portfolio value
+      required:
+        - closed_trades
+        - open_positions
+        - wins
+        - win_rate
+        - average_return
+        - total_realized_pnl
+        - curve
+      additionalProperties: false
     Device:
       type: object
       properties:
@@ -851,6 +911,28 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "401":
+          description: Missing or invalid owner token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /v1/track-record:
+    get:
+      operationId: getTrackRecord
+      summary: Performance to date and the equity curve
+      tags:
+        - track-record
+      description: "Computed from the append-only track-record rows at read time, never stored — a stored copy could drift from the rows it summarises, and drift in published performance is the one failure this product cannot survive.\\n\\nWin rate and average return are null until at least one trade has closed. Curve days on which an open lot had no mark are returned with `withheld: true` and a null value rather than a partial sum."
+      security:
+        - ownerToken: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrackRecord"
         "401":
           description: Missing or invalid owner token
           content:
