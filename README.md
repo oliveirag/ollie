@@ -14,7 +14,8 @@ Two strictly separated sides:
 Full product spec: [Ollie.md](Ollie.md).
 Build plans: [phases 0–1](docs/implementation-plan-phases-0-1.md) (done, pending live E2E) ·
 [phase 2](docs/implementation-plan-phase-2.md) (built, pending device E2E) ·
-[phase 3](docs/implementation-plan-phase-3.md) (planned).
+[phase 3](docs/implementation-plan-phase-3.md) (backend built).
+Running it: [sustained-run checklist](docs/sustained-run-checklist.md).
 Design reference: [docs/design/owner-app-design.html](docs/design/owner-app-design.html).
 
 ## Status
@@ -24,7 +25,7 @@ Design reference: [docs/design/owner-app-design.html](docs/design/owner-app-desi
 | 0 | Repo, Postgres, data model, immutable signal logging | complete |
 | 1 | Headless orchestrator: strategy, review snapshot, thesis, paper execute seam | complete (pending live E2E) |
 | 2 | iOS owner app (approve/reject, dashboard, kill switch) | built; device E2E pending |
-| 3 | Track record accrual | planned |
+| 3 | Track record accrual | backend built (3.1–3.6); app screen and the sustained run remain |
 | 4 | Subscriber Signal MCP server | not started |
 | 5 | Gated flips: live money, then autonomy within caps | not started |
 
