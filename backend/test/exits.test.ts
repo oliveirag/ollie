@@ -59,6 +59,15 @@ describe('the time stop', () => {
     expect(candidate!.barTime).toBe(BARS.at(-1)!.t);
   });
 
+  it('declares itself a time stop rather than a technical signal', () => {
+    const candidate = evaluateExit('AAPL', BARS, { openedAt: openedAt(0), quantity: '4' }, 30);
+
+    // It consulted no indicator. Persisting it as `technical` would put a claim
+    // about provenance into a permanent, uneditable row that is not true — in
+    // exactly the field a subscriber inspecting the record would read first.
+    expect(candidate!.signalType).toBe('time_stop');
+  });
+
   it('reports the closing price of the bar it fired on', () => {
     const candidate = evaluateExit('AAPL', BARS, { openedAt: openedAt(0), quantity: '4' }, 30);
 

@@ -49,7 +49,7 @@ export function evaluateExit(
   return {
     symbol,
     side: 'sell',
-    signalType: 'technical',
+    signalType: 'time_stop',
     quantity: lot.quantity,
     rule: 'max_holding_period',
     indicators: { barsHeld, maxHoldingDays },

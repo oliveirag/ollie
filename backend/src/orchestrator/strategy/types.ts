@@ -38,7 +38,7 @@ export interface ExitIndicators {
 export interface CandidateSignal {
   symbol: string;
   side: 'buy' | 'sell';
-  signalType: 'technical';
+  signalType: 'technical' | 'time_stop';
   /** Whole shares as a decimal string. */
   quantity: string;
   rule: SignalRule;

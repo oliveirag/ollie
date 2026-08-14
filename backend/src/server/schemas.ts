@@ -28,7 +28,14 @@ export const SignalSideSchema = z.enum(['buy', 'sell']).meta({ id: 'SignalSide' 
 export const SignalStatusSchema = z
   .enum(['pending', 'approved', 'rejected', 'expired'])
   .meta({ id: 'SignalStatus' });
-export const SignalTypeSchema = z.enum(['technical', 'rebalance']).meta({ id: 'SignalType' });
+export const SignalTypeSchema = z
+  .enum(['technical', 'rebalance', 'time_stop'])
+  .describe(
+    'time_stop is an exit proposed by the holding-period rule. It consults no ' +
+      'indicator, so its `indicators` payload carries bars_held and ' +
+      'max_holding_period_bars rather than RSI and MACD figures.',
+  )
+  .meta({ id: 'SignalType' });
 export const ExecModeSchema = z.enum(['paper', 'live']).meta({ id: 'ExecutionMode' });
 export const ThesisSourceSchema = z
   .enum(['llm', 'fallback_template'])

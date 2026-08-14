@@ -28,6 +28,8 @@ enum SignalSide {
 enum SignalType {
   technical
   rebalance
+  /// Exit proposed by the holding-period rule; reads position age, not price.
+  time_stop
 
   @@map("signal_type")
 }

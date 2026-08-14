@@ -1,0 +1,13 @@
+-- A time stop is not a technical signal.
+--
+-- The exit rule added in Phase 3 consults no indicator: it reads how long a lot
+-- has been open and nothing else, which is why it carries its own indicator
+-- payload (`barsHeld`, `maxHoldingDays`) rather than a zeroed-out RSI and MACD.
+-- Persisting it as `technical` would write a false claim about provenance into
+-- a permanent, uneditable row — in the field a subscriber inspecting the record
+-- would read first. PRD §9: the credibility of the record is the product.
+--
+-- Additive, and done before the sustained run begins. Afterwards it would be
+-- impossible to correct: the rows already written could never be relabelled,
+-- leaving a record that is only half honest about where its signals came from.
+ALTER TYPE "signal_type" ADD VALUE IF NOT EXISTS 'time_stop';
