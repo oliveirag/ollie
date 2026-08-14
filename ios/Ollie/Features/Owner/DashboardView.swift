@@ -25,19 +25,11 @@ struct DashboardView: View {
                             }
                         }
 
-                        VStack(alignment: .leading, spacing: 2) {
-                            HStack {
-                                Text("Realized")
-                                Spacer()
-                                MoneyText(value: dashboard.totals.realized_pnl, weight: .regular)
-                                    .foregroundStyle(.secondary)
-                            }
-                            // Permanent caption, not a temporary note: zero is
-                            // the true value until exits exist, and without
-                            // this line a correct number reads as a bug.
-                            Text("No closed lots yet — exits arrive in a later phase.")
-                                .font(.caption2)
-                                .foregroundStyle(.tertiary)
+                        HStack {
+                            Text("Realized")
+                            Spacer()
+                            MoneyText(value: dashboard.totals.realized_pnl, weight: .regular)
+                                .foregroundStyle(.secondary)
                         }
                     }
 

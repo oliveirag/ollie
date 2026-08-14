@@ -27,6 +27,9 @@ struct RootView: View {
             DashboardView()
                 .tabItem { Label("Positions", systemImage: "chart.xyaxis.line") }
 
+            TrackRecordView()
+                .tabItem { Label("Record", systemImage: "chart.line.uptrend.xyaxis") }
+
             ControlsView()
                 .tabItem { Label("Controls", systemImage: "slider.horizontal.3") }
         }

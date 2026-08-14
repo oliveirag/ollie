@@ -6,6 +6,8 @@ typealias SignalSummary = Components.Schemas.SignalSummary
 typealias SignalDetail = Components.Schemas.SignalDetail
 typealias Dashboard = Components.Schemas.Dashboard
 typealias OpenLot = Components.Schemas.OpenLot
+typealias TrackRecord = Components.Schemas.TrackRecord
+typealias CurvePoint = Components.Schemas.CurvePoint
 
 @MainActor
 @Observable
@@ -17,6 +19,7 @@ final class SignalStore {
     private(set) var liveTradingEnabled = false
 
     private(set) var dashboard: Dashboard?
+    private(set) var trackRecord: TrackRecord?
 
     private(set) var isLoading = false
     private(set) var lastRefreshed: Date?
@@ -34,6 +37,7 @@ final class SignalStore {
         pending = []
         decided = []
         dashboard = nil
+        trackRecord = nil
         lastRefreshed = nil
         error = nil
     }
@@ -55,6 +59,7 @@ final class SignalStore {
             try await loadSettings(client)
             try await loadSignals(client)
             await loadDashboard(client)
+            await loadTrackRecord(client)
             lastRefreshed = Date()
             error = nil
         } catch let ollie as OllieError {
@@ -111,6 +116,19 @@ final class SignalStore {
             }
         } catch {
             // Left as whatever it was; the view shows its own staleness.
+        }
+    }
+
+    /// Never throws, for the same reason the dashboard loader does not: the
+    /// record is instrumentation. A failure here must not blank the approvals
+    /// queue, which is the screen that matters when a signal is ticking.
+    private func loadTrackRecord(_ client: Client) async {
+        do {
+            if case .ok(let ok) = try await client.getTrackRecord(.init()) {
+                trackRecord = try ok.body.json
+            }
+        } catch {
+            // Left as whatever it was; the view shows its own empty state.
         }
     }
 

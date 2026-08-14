@@ -25,7 +25,8 @@
     "signal:write-test": "tsx scripts/write-test-signal.ts",
     "pipeline:once": "tsx scripts/run-pipeline-once.ts",
     "signal:decide": "tsx scripts/decide-signal.ts",
-    "openapi:write": "tsx scripts/write-openapi.ts"
+    "openapi:write": "tsx scripts/write-openapi.ts",
+    "seed:track-record": "tsx scripts/seed-track-record.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",

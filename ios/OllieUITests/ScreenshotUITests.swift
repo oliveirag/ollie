@@ -20,7 +20,7 @@ final class ScreenshotUITests: XCTestCase {
             "app did not reach the shell"
         )
 
-        for tab in ["Approvals", "Positions", "Controls"] {
+        for tab in ["Approvals", "Positions", "Record", "Controls"] {
             app.tabBars.buttons[tab].tap()
             // Let the tab settle; the dashboard fetches quotes on appear.
             Thread.sleep(forTimeInterval: 2.5)
