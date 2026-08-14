@@ -94,6 +94,36 @@ is observed through logs and the database.
    process boots, so a deploy that includes a migration applies it exactly once
    and fails the release if it cannot.
 
+
+## Clearing the record before it starts
+
+The record tables refuse `TRUNCATE` as of the `reject_truncate` migration, which
+closes the last way to erase history: the Phase 0 triggers are row-level and
+fire on UPDATE and DELETE, so before this a `TRUNCATE` wiped the whole record in
+one statement while every "immutable" guarantee looked intact.
+
+**Order matters.** The migration ships with the deploy, so a clean slate is far
+easier before that deploy than after:
+
+```bash
+# Before deploying the trigger — an ordinary truncate still works.
+railway run psql $DATABASE_URL \
+  -c 'TRUNCATE track_record, executions, signal_events, signals RESTART IDENTITY CASCADE'
+```
+
+Afterwards it takes a deliberate bypass, which is the intended friction rather
+than an obstacle to work around casually:
+
+```bash
+railway run psql $DATABASE_URL \
+  -c "SET session_replication_role = 'replica';
+      TRUNCATE track_record, executions, signal_events, signals RESTART IDENTITY CASCADE;
+      SET session_replication_role = 'origin';"
+```
+
+Once the sustained run begins, neither should ever be used again — at that point
+they are not a clean slate, they are editing the published record.
+
 ## Verifying a deploy
 
 ```bash

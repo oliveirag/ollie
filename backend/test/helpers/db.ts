@@ -18,9 +18,24 @@ export function testPrisma(): PrismaClient {
  */
 export async function resetDatabase(): Promise<void> {
   const db = testPrisma();
-  await db.$executeRawUnsafe(
-    'TRUNCATE TABLE "track_record", "executions", "signal_events", "signals", "devices" RESTART IDENTITY CASCADE',
-  );
+
+  // The record tables now refuse TRUNCATE (see the reject_truncate migration),
+  // which is the point — but a test database has to be resettable. Replica mode
+  // is the narrowest bypass available: triggers created in the default ORIGIN
+  // mode do not fire, it lasts only for this session, and it is restored below
+  // even if the truncate throws.
+  //
+  // This is why the guard is a trigger and not, say, a revoked privilege: the
+  // bypass has to be deliberate and visible, and it lives in test-only code
+  // that production never loads.
+  await db.$executeRawUnsafe("SET session_replication_role = 'replica'");
+  try {
+    await db.$executeRawUnsafe(
+      'TRUNCATE TABLE "track_record", "executions", "signal_events", "signals", "devices" RESTART IDENTITY CASCADE',
+    );
+  } finally {
+    await db.$executeRawUnsafe("SET session_replication_role = 'origin'");
+  }
   await db.appSettings.upsert({
     where: { id: 1 },
     update: { killSwitch: false, executionMode: 'paper' },
