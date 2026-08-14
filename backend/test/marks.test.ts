@@ -1,6 +1,7 @@
 import type { Logger } from 'pino';
 import pino from 'pino';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+import { buildConfig, type Config } from '../src/config/index.js';
 import { insertSignal } from '../src/db/signals.js';
 import { setKillSwitch } from '../src/db/settings.js';
 import { appendTrackRecord, closeLots, listTrackRecord } from '../src/db/trackRecord.js';
@@ -50,9 +51,17 @@ async function seedLot(symbol: string, quantity: string, entryPrice: string) {
   return signal;
 }
 
+const config = (): Config =>
+  buildConfig({
+    DATABASE_URL: process.env.DATABASE_URL,
+    SYMBOL_ALLOWLIST: 'AAPL',
+    LOG_LEVEL: 'silent',
+  } as NodeJS.ProcessEnv);
+
 const run = (quotes: Record<string, Quote>, now = DAY) =>
   runMarkToMarket({
     broker: new MockBrokerAdapter({ quotes }),
+    config: config(),
     prisma: db,
     logger,
     now: () => now,
@@ -118,6 +127,7 @@ describe('the daily mark', () => {
     } as unknown as MockBrokerAdapter;
     const result = await runMarkToMarket({
       broker: quoteless,
+      config: config(),
       prisma: db,
       logger,
       now: () => DAY,
@@ -144,15 +154,34 @@ describe('the daily mark', () => {
     expect(rows.map((r) => r.status)).toEqual(['open', 'closed']);
   });
 
-  it('marks even while the kill switch is engaged', async () => {
+  it('writes nothing while the database kill switch is engaged', async () => {
     const signal = await seedLot('AAPL', '2', '100.00');
     await setKillSwitch(true, db);
 
-    await run({ AAPL: quote('AAPL', '106.00') });
+    const result = await run({ AAPL: quote('AAPL', '106.00') });
 
-    // Deliberate exception to "the switch halts everything": marking observes,
-    // it does not act. The job holds no executor and cannot place an order. A
-    // halt that also blanked the curve would destroy history to stop trading.
-    expect(await listTrackRecord(signal.id, db)).toHaveLength(2);
+    // The switch means stop, with no exceptions. Marks are permanent rows, and
+    // an incident is exactly when you least want them accruing: a curve gap
+    // saying "halted" is more honest than marks taken in a known-bad state.
+    expect(await listTrackRecord(signal.id, db)).toHaveLength(1);
+    expect(result.status).toBe('halted_kill_switch');
+    expect(result.marked).toBe(0);
+  });
+
+  it('writes nothing while the environment override is engaged', async () => {
+    const signal = await seedLot('AAPL', '2', '100.00');
+
+    const result = await runMarkToMarket({
+      broker: new MockBrokerAdapter({ quotes: { AAPL: quote('AAPL', '106.00') } }),
+      config: { ...config(), killSwitchEnv: true },
+      prisma: db,
+      logger,
+      now: () => DAY,
+    });
+
+    // Both halves, same as the pipeline and the executor. Checking only the
+    // database flag would leave the redeploy-required override unenforced here.
+    expect(await listTrackRecord(signal.id, db)).toHaveLength(1);
+    expect(result.status).toBe('halted_kill_switch');
   });
 });

@@ -1,7 +1,9 @@
 import { Prisma, type PrismaClient } from '@prisma/client';
 import type { Logger } from 'pino';
 import { newRunLogger } from '../logger.js';
+import { getAppSettings } from '../db/settings.js';
 import { appendTrackRecord, hasMarkForDay, listOpenLots } from '../db/trackRecord.js';
+import type { Config } from '../config/index.js';
 import type { BrokerAdapter } from './robinhood/client.js';
 
 /**
@@ -13,16 +15,20 @@ import type { BrokerAdapter } from './robinhood/client.js';
  * *past* day. No read-time computation can recover that later, so it has to be
  * written down as it happens, one append-only row per open lot per trading day.
  *
- * **This job is exempt from the kill switch**, which is the first exception to
- * "either switch halts everything" and will look like a bug to anyone reading
- * the scheduler. The reasoning: marking observes, it does not act. This module
- * holds no executor and calls no order-capable broker method, so it cannot move
- * money by any path. A halt that also stopped marking would punch a permanent,
- * unfillable hole in the published curve — destroying history in order to stop
- * trading, when only the trading needed stopping.
+ * **The kill switch halts this job too**, both halves of it, exactly as it halts
+ * the pipeline and the executor. The Phase 3 plan originally proposed exempting
+ * it — marking observes rather than acts, and a halt leaves a permanent hole in
+ * the curve — and the owner overruled that on 2026-08-13. The argument that won:
+ * these rows are permanent and uneditable, and an incident is precisely when you
+ * least want them accruing. A gap that reads "we were halted" is more honest
+ * than a run of marks taken while the system was in a state bad enough to stop.
+ *
+ * The hole in the curve is real, and it is the point: it records that the switch
+ * was thrown.
  */
 export interface MarkDeps {
   broker: BrokerAdapter;
+  config: Config;
   logger: Logger;
   prisma?: PrismaClient;
   now?: () => Date;
@@ -30,6 +36,7 @@ export interface MarkDeps {
 
 export interface MarkResult {
   runId: string;
+  status: 'completed' | 'halted_kill_switch';
   marked: number;
   skippedAlreadyMarked: number;
   /** Symbols whose quote was unavailable, so their lots were left unmarked. */
@@ -40,10 +47,27 @@ export async function runMarkToMarket(deps: MarkDeps): Promise<MarkResult> {
   const log = newRunLogger('mark', deps.logger);
   const now = (deps.now ?? (() => new Date()))();
 
+  // Both halves, same as the pipeline: the database flag the app can flip and
+  // the environment override that needs a redeploy. Either one stops this.
+  const settings = await getAppSettings(deps.prisma);
+  if (deps.config.killSwitchEnv || settings.killSwitch) {
+    log.warn(
+      { kill_switch_env: deps.config.killSwitchEnv, kill_switch_db: settings.killSwitch },
+      'kill switch engaged; leaving today unmarked',
+    );
+    return {
+      runId: log.runId,
+      status: 'halted_kill_switch',
+      marked: 0,
+      skippedAlreadyMarked: 0,
+      gaps: [],
+    };
+  }
+
   const lots = await listOpenLots(deps.prisma);
   if (lots.length === 0) {
     log.info('no open lots to mark');
-    return { runId: log.runId, marked: 0, skippedAlreadyMarked: 0, gaps: [] };
+    return { runId: log.runId, status: 'completed', marked: 0, skippedAlreadyMarked: 0, gaps: [] };
   }
 
   const symbols = [...new Set(lots.map((lot) => lot.symbol))];
@@ -55,7 +79,7 @@ export async function runMarkToMarket(deps: MarkDeps): Promise<MarkResult> {
     quotes = await deps.broker.getQuotes(symbols);
   } catch (error) {
     log.error({ err: error, symbols }, 'quote fetch failed; marking nothing today');
-    return { runId: log.runId, marked: 0, skippedAlreadyMarked: 0, gaps: symbols };
+    return { runId: log.runId, status: 'completed', marked: 0, skippedAlreadyMarked: 0, gaps: symbols };
   }
 
   let marked = 0;
@@ -100,5 +124,5 @@ export async function runMarkToMarket(deps: MarkDeps): Promise<MarkResult> {
     { marked, skipped_already_marked: skippedAlreadyMarked, gaps: [...gaps] },
     'mark-to-market complete',
   );
-  return { runId: log.runId, marked, skippedAlreadyMarked, gaps: [...gaps] };
+  return { runId: log.runId, status: 'completed', marked, skippedAlreadyMarked, gaps: [...gaps] };
 }

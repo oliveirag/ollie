@@ -74,16 +74,15 @@ export function startScheduler(deps: SchedulerDeps): RunningScheduler {
     },
   );
 
-  // Deliberately not gated on the kill switch, unlike the two jobs above. This
-  // one observes rather than acts — see the header of marks.ts. Halting it
-  // would leave a permanent hole in the published curve to stop trading that
-  // the other two jobs have already stopped.
+  // Gated on the kill switch like everything else — see the header of marks.ts
+  // for why the exemption the plan proposed was rejected.
   const markJob = new Cron(
     config.markCron,
     { timezone: config.timezone, protect: true, name: 'mark' },
     () => {
       void runMarkToMarket({
         broker: deps.broker,
+        config,
         logger,
         ...(deps.prisma ? { prisma: deps.prisma } : {}),
       }).catch((error: unknown) => {
