@@ -5,7 +5,8 @@ import type { ZodType } from 'zod';
 import type { Logger } from 'pino';
 import { getConfig, type Config } from '../../config/index.js';
 import { logger as rootLogger } from '../../logger.js';
-import { MemoryOAuthStateStore, RhOAuthProvider } from './oauth.js';
+import { RhOAuthProvider } from './oauth.js';
+import { PrismaOAuthStateStore } from '../../db/oauthState.js';
 import {
   BrokerError,
   NoAgenticAccountError,
@@ -59,21 +60,18 @@ export interface McpBrokerOptions {
  */
 function buildConfiguredAuthProvider(config: Config): OAuthClientProvider | null {
   const { oauthClientId, oauthRefreshToken } = config.robinhood;
-  if (!oauthClientId || !oauthRefreshToken) return null;
 
-  return new RhOAuthProvider({
-    store: new MemoryOAuthStateStore({
-      clientId: oauthClientId,
-      tokens: {
-        access_token: '',
-        token_type: 'Bearer',
-        refresh_token: oauthRefreshToken,
-        // Zero lifetime forces a refresh on the first call rather than sending
-        // the empty access token above and taking a guaranteed 401.
-        expires_in: 0,
-      },
-    }),
-  });
+  // The database is the credential's home, because Robinhood rotates refresh
+  // tokens on use and the replacement has to be written somewhere the running
+  // process can reach. The environment is only a seed for the first boot; after
+  // that `bootstrapOAuthState` leaves the stored value alone.
+  //
+  // Still gated on the environment carrying *something*, so a deploy with no
+  // credential at all keeps failing loudly at startup rather than silently
+  // running brokerless.
+  if (!oauthClientId && !oauthRefreshToken) return null;
+
+  return new RhOAuthProvider({ store: new PrismaOAuthStateStore() });
 }
 
 /**

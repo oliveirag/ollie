@@ -177,6 +177,26 @@ model Device {
   @@map("devices")
 }
 
+/// Robinhood OAuth credentials. Single row (id pinned to 1), mutable, and with
+/// no immutability trigger: this is operational state, not part of the record.
+///
+/// It lives here rather than in the environment because **Robinhood rotates
+/// refresh tokens on use** — confirmed in production on 2026-08-14, when the
+/// first unattended run died with `InvalidGrantError` against a token an
+/// earlier refresh had already invalidated. A value that changes at runtime
+/// cannot live somewhere only a redeploy can write.
+model OAuthState {
+  id           Int      @id @default(1)
+  clientId     String   @map("client_id") @db.Text
+  clientSecret String?  @map("client_secret") @db.Text
+  /// The full OAuthTokens payload as the SDK last handed it back.
+  tokens       Json?    @db.JsonB
+  codeVerifier String?  @map("code_verifier") @db.Text
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("oauth_state")
+}
+
 /// Single row (id is pinned to 1). Lives in the database rather than the
 /// environment so the kill switch survives a restart and the iOS app can flip
 /// it in Phase 2 without a redeploy.

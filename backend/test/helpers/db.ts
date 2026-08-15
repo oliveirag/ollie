@@ -31,7 +31,7 @@ export async function resetDatabase(): Promise<void> {
   await db.$executeRawUnsafe("SET session_replication_role = 'replica'");
   try {
     await db.$executeRawUnsafe(
-      'TRUNCATE TABLE "track_record", "executions", "signal_events", "signals", "devices" RESTART IDENTITY CASCADE',
+      'TRUNCATE TABLE "track_record", "executions", "signal_events", "signals", "devices", "oauth_state" RESTART IDENTITY CASCADE',
     );
   } finally {
     await db.$executeRawUnsafe("SET session_replication_role = 'origin'");

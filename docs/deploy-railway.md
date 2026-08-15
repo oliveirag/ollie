@@ -74,12 +74,23 @@ is observed through logs and the database.
    > Trading", with the submitted `redirect_uris` echoed back but ignored. The
    > allowlist is fixed and shared, so matching it is the only option.
 
-   > **Also unresolved:** whether Robinhood rotates refresh tokens on use. If it
-   > does, the value in this variable goes stale after the first refresh and the
-   > credential has to move to Postgres — an environment variable cannot hold
-   > something that changes at runtime. `OAuthStateStore` exists to make that
-   > swap a new implementation rather than a rewrite. Watch the first redeploy
-   > after a token refresh for an unexpected `401`.
+   > **Resolved 2026-08-14: Robinhood does rotate refresh tokens on use, and the
+   > credential now lives in Postgres.** The first unattended run died with
+   > `InvalidGrantError` — the token in this variable had already been
+   > invalidated by an earlier refresh elsewhere, and nothing in the running
+   > service could write the replacement back.
+   >
+   > `RH_OAUTH_REFRESH_TOKEN` is now only a **seed**. On first boot
+   > `bootstrapOAuthState` copies it into the `oauth_state` table if that table
+   > is empty, and every refresh after that reads and writes the database. The
+   > environment value goes stale immediately and that is fine — bootstrap
+   > refuses to overwrite a stored token, because the environment holds whatever
+   > was pasted at deploy time while the database holds what the server last
+   > issued.
+   >
+   > Consequence worth knowing: re-running `npm run rh:authorize` and pasting a
+   > new value into Railway does nothing on its own once the table is populated.
+   > A genuinely dead credential has to be cleared from `oauth_state` first.
 
    `PORT` is injected by Railway; do not set it. Leave `LIVE_TRADING_ENABLED`
    false — it is the second of the two gates in front of real money and has no

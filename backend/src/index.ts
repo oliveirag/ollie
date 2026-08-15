@@ -1,6 +1,7 @@
 import { getConfig } from './config/index.js';
 import { disconnectPrisma, getPrisma } from './db/client.js';
 import { getAppSettings } from './db/settings.js';
+import { bootstrapOAuthState } from './db/oauthState.js';
 import { logger } from './logger.js';
 import { McpBrokerAdapter } from './orchestrator/robinhood/mcpClient.js';
 import { buildNotifier } from './orchestrator/push/notify.js';
@@ -33,6 +34,10 @@ async function main(): Promise<void> {
     { execution_mode: settings.executionMode, kill_switch: settings.killSwitch },
     'database reachable; runtime flags loaded',
   );
+
+  // Move a first-boot credential out of the environment before the scheduler
+  // can reach the broker. A no-op once the database holds a token.
+  await bootstrapOAuthState(config);
 
   const broker = new McpBrokerAdapter({ logger });
   const notifier = buildNotifier(config, logger);
