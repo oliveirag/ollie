@@ -84,3 +84,6 @@ ios/*.xcodeproj
 ios/*.xcworkspace
 ios/build/
 DerivedData/
+
+# Backtest bar cache: raw broker output, refetchable, sometimes large
+backend/.backtest-cache*.json
