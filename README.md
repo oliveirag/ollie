@@ -27,7 +27,7 @@ Design reference: [docs/design/owner-app-design.html](docs/design/owner-app-desi
 | 1 | Headless orchestrator: strategy, review snapshot, thesis, paper execute seam | complete (pending live E2E) |
 | 2 | iOS owner app (approve/reject, dashboard, kill switch) | built; device E2E pending |
 | 3 | Track record accrual | backend built (3.1–3.6); app screen and the sustained run remain |
-| 4 | Subscriber Signal MCP server | planned |
+| 4 | Subscriber Signal MCP server | planned; decisions confirmed 2026-09-14 |
 | 5 | Gated flips: live money, then autonomy within caps | not started |
 
 Phases 0–1 are backend-only and verified through logs, tests, and the database. There is no app yet.
