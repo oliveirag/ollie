@@ -87,6 +87,11 @@ model Signal {
   published   Boolean   @default(false)
   publishedAt DateTime? @map("published_at") @db.Timestamptz(6)
 
+  /// Phase 5 autonomy: when the sweep may approve this signal if the owner
+  /// has not. Stamped at creation while autonomy is on, null otherwise, and
+  /// frozen by the trigger like every other creation-time field.
+  autoDecideAt DateTime? @map("auto_decide_at") @db.Timestamptz(6)
+
   /// '{rule}:{symbol}:{side}:{barTime}'. The unique constraint is the
   /// race-proof backstop behind the pipeline's in-process dedupe check.
   dedupeKey String @unique @map("dedupe_key") @db.Text
@@ -97,6 +102,7 @@ model Signal {
 
   events      SignalEvent[]
   executions  Execution[]
+  liveOrders  LiveOrder[]
   trackRecord TrackRecord[]
   /// Lots this signal closed. A sell signal closes one row per entry lot it
   /// consumed, so this is a list even though a lot has exactly one closer.
@@ -154,6 +160,11 @@ model TrackRecord {
   /// The sell signal whose approval closed this lot. Null on open and mark
   /// rows. Makes a realized PnL traceable to the decision behind it.
   closedBySignalId String?     @map("closed_by_signal_id") @db.Uuid
+  /// Shares in this lot when it differs from the signal's quantity — a live
+  /// order that partially filled. Null means "the signal's quantity", which is
+  /// every paper lot and every row written before Phase 5. Nullable rather
+  /// than backfilled so no record row was ever updated.
+  quantity      Decimal?       @db.Decimal(18, 6)
   status        PositionStatus
   recordedAt    DateTime       @default(now()) @map("recorded_at") @db.Timestamptz(6)
 
@@ -162,6 +173,32 @@ model TrackRecord {
 
   @@index([signalId, recordedAt])
   @@map("track_record")
+}
+
+/// A live order as the broker reports it (Phase 5, decision 2). Operational
+/// state: refreshed on every poll, no immutability trigger, no subscriber
+/// grant. The fill it produces is an `executions` row, which is the record.
+model LiveOrder {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  signalId           String    @map("signal_id") @db.Uuid
+  brokerOrderId      String    @unique @map("broker_order_id") @db.Text
+  /// The signal's ref_id, as sent. A re-place is provably the same order.
+  refId              String    @map("ref_id") @db.Uuid
+  /// The broker's state string, verbatim.
+  state              String    @db.Text
+  cumulativeQuantity Decimal   @default(0) @map("cumulative_quantity") @db.Decimal(18, 6)
+  averagePrice       Decimal?  @map("average_price") @db.Decimal(18, 6)
+  placedAt           DateTime  @default(now()) @map("placed_at") @db.Timestamptz(6)
+  lastPolledAt       DateTime? @map("last_polled_at") @db.Timestamptz(6)
+  terminalAt         DateTime? @map("terminal_at") @db.Timestamptz(6)
+  /// The broker's latest order payload, untouched.
+  lastResponse       Json?     @map("last_response") @db.JsonB
+
+  signal Signal @relation(fields: [signalId], references: [id], onDelete: Restrict)
+
+  @@index([signalId])
+  @@index([terminalAt])
+  @@map("live_orders")
 }
 
 /// APNs device tokens. A plain mutable table with no immutability trigger:
@@ -259,6 +296,8 @@ model AppSettings {
   id            Int      @id @default(1)
   killSwitch    Boolean  @default(false) @map("kill_switch")
   executionMode ExecMode @default(paper) @map("execution_mode")
+  /// Runtime half of the autonomy gate (Phase 5); AUTONOMY_ENABLED is the other.
+  autonomy      Boolean  @default(false)
   updatedAt     DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@map("app_settings")

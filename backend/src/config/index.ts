@@ -78,6 +78,14 @@ const EnvSchema = z.object({
   KILL_SWITCH: bool.default(false),
   LIVE_TRADING_ENABLED: bool.default(false),
 
+  /** Phase 5. How often open live orders are read back from the broker. */
+  ORDER_POLL_CRON: z.string().default('* 9-16 * * 1-5'),
+  /** Deploy half of the autonomy gate; app_settings.autonomy is the other. */
+  AUTONOMY_ENABLED: bool.default(false),
+  /** Minutes the owner has to veto before the sweep approves. 0 = immediate. */
+  AUTONOMY_VETO_MINUTES: z.coerce.number().int().min(0).default(5),
+  AUTONOMY_SWEEP_CRON: z.string().default('* * * * *'),
+
   /**
    * Bearer credential for the owner API (Phase 2). Empty means "no API",
    * which is why the shape is validated here but the requirement is enforced
@@ -116,6 +124,12 @@ const EnvSchema = z.object({
   APPLE_APP_BUNDLE_ID: z.string().default('com.guilhermeoliveira.Ollie'),
   /** Advertised to subscribers as the MCP URL after minting a token. */
   SIGNAL_PUBLIC_URL: z.string().url().or(z.literal('')).default(''),
+  /**
+   * Accept `fake:` identity tokens instead of verifying against Apple. For
+   * the simulator and UI tests; the signal service refuses to start with this
+   * on in production.
+   */
+  SIWA_STUB: bool.default(false),
 });
 
 export type Env = z.infer<typeof EnvSchema>;
@@ -160,6 +174,10 @@ export interface Config {
   timezone: string;
   killSwitchEnv: boolean;
   liveTradingEnabled: boolean;
+  orderPollCron: string;
+  autonomyEnabled: boolean;
+  autonomyVetoMinutes: number;
+  autonomySweepCron: string;
   /** null when unset; the API refuses to start rather than run unauthenticated. */
   ownerApiToken: string | null;
   anthropic: { apiKey: string; model: string };
@@ -180,6 +198,7 @@ export interface Config {
     appleAudience: string;
     /** null when unset; the mint response then omits the URL. */
     publicUrl: string | null;
+    siwaStub: boolean;
   };
 }
 
@@ -258,6 +277,10 @@ export function buildConfig(source: NodeJS.ProcessEnv = process.env): Config {
     timezone: TIMEZONE,
     killSwitchEnv: env.KILL_SWITCH,
     liveTradingEnabled: env.LIVE_TRADING_ENABLED,
+    orderPollCron: env.ORDER_POLL_CRON,
+    autonomyEnabled: env.AUTONOMY_ENABLED,
+    autonomyVetoMinutes: env.AUTONOMY_VETO_MINUTES,
+    autonomySweepCron: env.AUTONOMY_SWEEP_CRON,
     ownerApiToken: env.OWNER_API_TOKEN || null,
     anthropic: { apiKey: env.ANTHROPIC_API_KEY, model: env.ANTHROPIC_MODEL },
     apns: {
@@ -285,6 +308,7 @@ export function buildConfig(source: NodeJS.ProcessEnv = process.env): Config {
       ),
       appleAudience: env.APPLE_APP_BUNDLE_ID,
       publicUrl: env.SIGNAL_PUBLIC_URL || null,
+      siwaStub: env.SIWA_STUB,
     },
   };
 }

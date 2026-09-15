@@ -1,0 +1,75 @@
+{
+  "_comment": "NOT CAPTURED. Hand-written from the get_equity_orders tool's documented shape and state list (new, queued, confirmed, unconfirmed, partially_filled, filled, cancelled, rejected, failed, voided) because no order has ever been placed from this account and the read was not available when Phase 5 was built. Replace with a real capture (`npm run introspect:mcp -- --orders`, once that flag exists) before the live flip; the schema only requires id, state, cumulative_quantity and average_price and passes everything else through.",
+  "filled": {
+    "orders": [
+      {
+        "id": "8f0c2c2e-6b6a-4c1e-9d2c-2a5e9f1b7c01",
+        "ref_id": "11111111-1111-4111-8111-111111111111",
+        "account_number": "100000003",
+        "symbol": "AAPL",
+        "side": "buy",
+        "type": "market",
+        "time_in_force": "gfd",
+        "state": "filled",
+        "quantity": "2.00000000",
+        "cumulative_quantity": "2.00000000",
+        "average_price": "182.68250000",
+        "created_at": "2026-10-01T13:36:02.114Z",
+        "updated_at": "2026-10-01T13:36:03.402Z"
+      }
+    ],
+    "next": null
+  },
+  "partial_then_cancelled": {
+    "orders": [
+      {
+        "id": "8f0c2c2e-6b6a-4c1e-9d2c-2a5e9f1b7c02",
+        "ref_id": "22222222-2222-4222-8222-222222222222",
+        "account_number": "100000003",
+        "symbol": "AAPL",
+        "side": "buy",
+        "type": "market",
+        "time_in_force": "gfd",
+        "state": "cancelled",
+        "quantity": "10.00000000",
+        "cumulative_quantity": "7.00000000",
+        "average_price": "182.70000000",
+        "created_at": "2026-10-01T19:59:58.000Z",
+        "updated_at": "2026-10-01T20:00:01.000Z"
+      }
+    ],
+    "next": null
+  },
+  "rejected": {
+    "orders": [
+      {
+        "id": "8f0c2c2e-6b6a-4c1e-9d2c-2a5e9f1b7c03",
+        "ref_id": "33333333-3333-4333-8333-333333333333",
+        "account_number": "100000003",
+        "symbol": "AAPL",
+        "side": "buy",
+        "type": "market",
+        "time_in_force": "gfd",
+        "state": "rejected",
+        "quantity": "2.00000000",
+        "cumulative_quantity": "0.00000000",
+        "average_price": null,
+        "reject_reason": "EQUITY_NOT_ENOUGH_BP",
+        "created_at": "2026-10-01T13:36:02.114Z",
+        "updated_at": "2026-10-01T13:36:02.301Z"
+      }
+    ],
+    "next": null
+  },
+  "confirmed": {
+    "orders": [
+      {
+        "id": "8f0c2c2e-6b6a-4c1e-9d2c-2a5e9f1b7c04",
+        "state": "confirmed",
+        "quantity": "2.00000000",
+        "cumulative_quantity": "0.00000000",
+        "average_price": null
+      }
+    ]
+  }
+}

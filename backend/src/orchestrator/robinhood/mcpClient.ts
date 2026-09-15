@@ -12,6 +12,7 @@ import {
   NoAgenticAccountError,
   estimateFillPrice,
   type BrokerAdapter,
+  type BrokerOrder,
   type Candle,
   type HistoricalsRequest,
   type PlaceOrderRequest,
@@ -25,7 +26,10 @@ import {
 } from './client.js';
 import {
   GetAccountsSchema,
+  GetEquityOrdersSchema,
   GetHistoricalsSchema,
+  PlaceEquityOrderSchema,
+  type RawEquityOrder,
   GetPositionsSchema,
   GetQuotesSchema,
   PortfolioSchema,
@@ -416,10 +420,59 @@ export class McpBrokerAdapter implements BrokerAdapter {
    * before getting here unless two independent gates are open. Implemented so
    * the seam is real rather than a comment promising one.
    */
-  async placeEquityOrder(_request: PlaceOrderRequest): Promise<PlaceResult> {
-    throw new BrokerError(
-      'placeEquityOrder is not enabled: Ollie is paper-only until Phase 5',
+  /**
+   * The real order. Market, regular hours, good-for-day — the same terms the
+   * review was run under, so the review snapshot describes this order and
+   * not a cousin of it. `ref_id` is the signal's idempotency key: the retry
+   * loop in `call` may resend on a transport error, and the broker treats a
+   * repeated key as the same order rather than a second fill.
+   */
+  async placeEquityOrder(request: PlaceOrderRequest): Promise<PlaceResult> {
+    const accountNumber = await this.getAccountNumber();
+    const { parsed, raw } = await this.call(
+      'place_equity_order',
+      {
+        account_number: accountNumber,
+        symbol: request.symbol,
+        side: request.side,
+        type: request.type ?? 'market',
+        quantity: request.quantity,
+        time_in_force: 'gfd',
+        market_hours: 'regular_hours',
+        ref_id: request.refId,
+      },
+      PlaceEquityOrderSchema,
     );
+    const order: RawEquityOrder =
+      'order' in parsed && parsed.order
+        ? (parsed.order as RawEquityOrder)
+        : (parsed as RawEquityOrder);
+    this.log.warn(
+      { symbol: request.symbol, side: request.side, quantity: request.quantity, order_id: order.id, state: order.state },
+      'LIVE ORDER PLACED',
+    );
+    return { brokerOrderId: order.id, state: order.state, raw };
+  }
+
+  async getEquityOrder(brokerOrderId: string): Promise<BrokerOrder | null> {
+    const accountNumber = await this.getAccountNumber();
+    const { parsed, raw } = await this.call(
+      'get_equity_orders',
+      { account_number: accountNumber, order_id: brokerOrderId },
+      GetEquityOrdersSchema,
+    );
+    // Exact id only. A filtered response that omits the requested order is
+    // "no such order", never "some other order" — attributing a different
+    // order's fill to this row would corrupt the record.
+    const order = parsed.orders.find((o) => o.id === brokerOrderId);
+    if (!order) return null;
+    return {
+      brokerOrderId: order.id,
+      state: order.state,
+      cumulativeQuantity: order.cumulative_quantity ?? '0',
+      averagePrice: order.average_price ?? null,
+      raw,
+    };
   }
 
   async close(): Promise<void> {

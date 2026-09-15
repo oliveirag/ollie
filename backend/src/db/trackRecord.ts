@@ -17,6 +17,8 @@ export interface AppendTrackRecordInput {
   markPrice?: string | null;
   /** The sell signal that closed this lot. Null on open and mark rows. */
   closedBySignalId?: string | null;
+  /** Lot size when it differs from the signal's quantity (a partial live fill). */
+  quantity?: string | null;
   status: PositionStatus;
   recordedAt?: Date;
 }
@@ -40,6 +42,7 @@ export async function appendTrackRecord(
         input.unrealizedPnl == null ? null : new Prisma.Decimal(input.unrealizedPnl),
       markPrice: input.markPrice == null ? null : new Prisma.Decimal(input.markPrice),
       closedBySignalId: input.closedBySignalId ?? null,
+      quantity: input.quantity == null ? null : new Prisma.Decimal(input.quantity),
       status: input.status,
       recordedAt: input.recordedAt ?? new Date(),
     },
@@ -57,7 +60,10 @@ export interface OpenLot {
   signalId: string;
   symbol: string;
   side: string;
+  /** The row's own size when a live fill set one, else the signal's. */
   quantity: string;
+  /** True when the row carries its own size (a partial live fill). */
+  quantityOverridden: boolean;
   entryPrice: string;
   recordedAt: Date;
 }
@@ -79,6 +85,7 @@ export async function listOpenLots(prisma: PrismaClient = getPrisma()): Promise<
       symbol: string;
       side: string;
       quantity: Prisma.Decimal;
+      quantity_overridden: boolean;
       entry_price: Prisma.Decimal;
       recorded_at: Date;
       status: string;
@@ -86,7 +93,9 @@ export async function listOpenLots(prisma: PrismaClient = getPrisma()): Promise<
   >`
     SELECT DISTINCT ON (tr.signal_id)
       tr.signal_id, tr.entry_price, tr.recorded_at, tr.status::text AS status,
-      s.symbol, s.side::text AS side, s.quantity
+      s.symbol, s.side::text AS side,
+      COALESCE(tr.quantity, s.quantity) AS quantity,
+      (tr.quantity IS NOT NULL) AS quantity_overridden
     FROM track_record tr
     JOIN signals s ON s.id = tr.signal_id
     ORDER BY tr.signal_id, tr.recorded_at DESC, tr.id DESC
@@ -103,6 +112,7 @@ export async function listOpenLots(prisma: PrismaClient = getPrisma()): Promise<
       symbol: row.symbol,
       side: row.side,
       quantity: row.quantity.toString(),
+      quantityOverridden: row.quantity_overridden,
       entryPrice: row.entry_price.toString(),
       recordedAt: row.recorded_at,
     }));
@@ -198,7 +208,8 @@ export async function closeLots(
       }
 
       const signal = await tx.signal.findUniqueOrThrow({ where: { id: signalId } });
-      const quantity = new Prisma.Decimal(signal.quantity);
+      // The lot's own size when a live fill set one; the signal's otherwise.
+      const quantity = new Prisma.Decimal(latest.quantity ?? signal.quantity);
       const realizedPnl = exitPrice.minus(latest.entryPrice).times(quantity);
 
       closed.push(
@@ -209,6 +220,7 @@ export async function closeLots(
             exitPrice,
             realizedPnl,
             closedBySignalId: input.closedBySignalId,
+            quantity: latest.quantity,
             status: 'closed',
             recordedAt,
           },
@@ -268,7 +280,7 @@ export async function listAllTrackRecordRows(
     symbol: row.signal.symbol,
     status: row.status,
     entryPrice: row.entryPrice.toString(),
-    quantity: row.signal.quantity.toString(),
+    quantity: (row.quantity ?? row.signal.quantity).toString(),
     exitPrice: row.exitPrice?.toString() ?? null,
     realizedPnl: row.realizedPnl?.toString() ?? null,
     unrealizedPnl: row.unrealizedPnl?.toString() ?? null,

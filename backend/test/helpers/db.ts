@@ -55,8 +55,8 @@ export async function resetDatabase(): Promise<void> {
   }
   await db.appSettings.upsert({
     where: { id: 1 },
-    update: { killSwitch: false, executionMode: 'paper' },
-    create: { id: 1, killSwitch: false, executionMode: 'paper' },
+    update: { killSwitch: false, executionMode: 'paper', autonomy: false },
+    create: { id: 1, killSwitch: false, executionMode: 'paper', autonomy: false },
   });
 }
 

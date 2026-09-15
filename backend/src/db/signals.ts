@@ -33,6 +33,8 @@ export interface InsertSignalInput {
   reviewSnapshot: unknown;
   executionMode: ExecMode;
   dedupeKey: string;
+  /** Phase 5: set while autonomy is on; the sweep may approve after this. */
+  autoDecideAt?: Date | null;
 }
 
 export type DecidedStatus = Extract<SignalStatus, 'approved' | 'rejected' | 'expired'>;
@@ -75,6 +77,7 @@ export async function insertSignal(
         reviewSnapshot: input.reviewSnapshot as Prisma.InputJsonValue,
         executionMode: input.executionMode,
         dedupeKey: input.dedupeKey,
+        autoDecideAt: input.autoDecideAt ?? null,
       },
     });
   } catch (error) {
@@ -219,6 +222,33 @@ export async function listDecidedSignals(
     orderBy: { decidedAt: 'desc' },
     take: limit,
   });
+}
+
+/** Pending signals whose veto window has closed, oldest first (Phase 5). */
+export async function listAutoDecidableSignals(
+  now: Date,
+  prisma: PrismaClient = getPrisma(),
+): Promise<Signal[]> {
+  return prisma.signal.findMany({
+    where: { status: 'pending', autoDecideAt: { not: null, lte: now } },
+    orderBy: { createdAt: 'asc' },
+  });
+}
+
+/**
+ * When the record went live: the first live-mode signal's publication. Read
+ * from `signals`, which both database roles can see, so the owner's and the
+ * subscriber's answer come from the same row. Null while the record is paper.
+ */
+export async function firstLivePublishedAt(
+  prisma: PrismaClient = getPrisma(),
+): Promise<Date | null> {
+  const first = await prisma.signal.findFirst({
+    where: { executionMode: 'live', published: true },
+    orderBy: { publishedAt: 'asc' },
+    select: { publishedAt: true },
+  });
+  return first?.publishedAt ?? null;
 }
 
 /** Pending signals whose approval window has elapsed, oldest first. */

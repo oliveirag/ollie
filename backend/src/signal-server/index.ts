@@ -3,7 +3,7 @@ import { PrismaClient } from '@prisma/client';
 import { buildConfig } from '../config/index.js';
 import { buildLogger } from '../logger.js';
 import { buildSignalApp } from './app.js';
-import { buildSiwaVerifier } from './siwa.js';
+import { buildSiwaVerifier, stubSiwaVerifier } from './siwa.js';
 import { assertWallHolds } from './wall.js';
 
 /**
@@ -53,11 +53,20 @@ async function main(): Promise<void> {
   await assertWallHolds(prisma);
   logger.info('database reachable as a role that cannot read the owner tables');
 
+  if (config.signalService.siwaStub && config.nodeEnv === 'production') {
+    throw new Error('SIWA_STUB=true is refused in production: identity would be unverified');
+  }
+  if (config.signalService.siwaStub) {
+    logger.warn('SIWA_STUB is on: identity tokens are NOT verified. Local use only.');
+  }
+
   const app = await buildSignalApp({
     config,
     logger,
     prisma,
-    siwa: buildSiwaVerifier({ audience: config.signalService.appleAudience }),
+    siwa: config.signalService.siwaStub
+      ? stubSiwaVerifier
+      : buildSiwaVerifier({ audience: config.signalService.appleAudience }),
   });
   await app.listen({ port: config.signalService.port, host: '0.0.0.0' });
   logger.info({ port: config.signalService.port }, 'signal service listening on /healthz, /v1 and /mcp');

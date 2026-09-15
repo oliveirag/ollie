@@ -2,7 +2,9 @@ import { Cron } from 'croner';
 import type { PrismaClient } from '@prisma/client';
 import type { Logger } from 'pino';
 import type { Config } from '../config/index.js';
+import { sweepAutonomy } from './autonomy.js';
 import { runMarkToMarket } from './marks.js';
+import { pollOpenOrders } from './orders.js';
 import { runPipeline, sweepExpiredSignals } from './pipeline.js';
 import { sweepUnpublishedSignals } from './publish.js';
 import type { Notifier } from './push/notify.js';
@@ -40,6 +42,8 @@ export interface RunningScheduler {
     expiry: Date | null;
     mark: Date | null;
     publish: Date | null;
+    orders: Date | null;
+    autonomy: Date | null;
   };
 }
 
@@ -112,9 +116,45 @@ export function startScheduler(deps: SchedulerDeps): RunningScheduler {
     },
   );
 
+  // Phase 5. Reads open live orders back and records fills. Observes, never
+  // acts, so it runs with the kill switch on — see orders.ts.
+  const ordersJob = new Cron(
+    config.orderPollCron,
+    { timezone: config.timezone, protect: true, name: 'orders' },
+    () => {
+      void pollOpenOrders({
+        broker: deps.broker,
+        logger,
+        ...(deps.prisma ? { prisma: deps.prisma } : {}),
+      }).catch((error: unknown) => {
+        log.error({ err: error }, 'order poll failed');
+      });
+    },
+  );
+
+  // Phase 5. Approves signals whose veto window closed, while both halves of
+  // the autonomy gate are on and the kill switch is off.
+  const autonomyJob = new Cron(
+    config.autonomySweepCron,
+    { timezone: config.timezone, protect: true, name: 'autonomy' },
+    () => {
+      void sweepAutonomy({
+        broker: deps.broker,
+        config,
+        logger,
+        ...(deps.prisma ? { prisma: deps.prisma } : {}),
+      }).catch((error: unknown) => {
+        log.error({ err: error }, 'autonomy sweep failed');
+      });
+    },
+  );
+
   log.info(
     {
       pipeline_cron: config.pipelineCron,
+      order_poll_cron: config.orderPollCron,
+      autonomy_cron: config.autonomySweepCron,
+      autonomy_enabled: config.autonomyEnabled,
       mark_cron: config.markCron,
       expiry_cron: config.expirySweepCron,
       publish_cron: config.publishSweepCron,
@@ -130,6 +170,8 @@ export function startScheduler(deps: SchedulerDeps): RunningScheduler {
       expiryJob.stop();
       markJob.stop();
       publishJob.stop();
+      ordersJob.stop();
+      autonomyJob.stop();
       log.info('scheduler stopped');
     },
     nextRuns() {
@@ -138,6 +180,8 @@ export function startScheduler(deps: SchedulerDeps): RunningScheduler {
         expiry: expiryJob.nextRun(),
         mark: markJob.nextRun(),
         publish: publishJob.nextRun(),
+        orders: ordersJob.nextRun(),
+        autonomy: autonomyJob.nextRun(),
       };
     },
   };

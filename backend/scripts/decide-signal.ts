@@ -92,6 +92,18 @@ async function main(): Promise<void> {
   const status: DecidedStatus = action === 'approve' ? 'approved' : 'rejected';
   const reason = flag('reason') ?? `${action}d via decide-signal CLI`;
 
+  // The per-approval confirmation (Phase 5, decision 4) holds on the
+  // break-glass path too: a live approval places a real order and has to say so.
+  if (
+    status === 'approved' &&
+    signal.executionMode === 'live' &&
+    !process.argv.includes('--confirm-live')
+  ) {
+    throw new Error(
+      `signal ${signalId} is a LIVE signal; approving it places a real order. Re-run with --confirm-live.`,
+    );
+  }
+
   const decided = await transitionSignal(signalId, status, reason);
   console.log(`\nsignal ${signalId} -> ${decided.status} (${reason})`);
 
@@ -106,8 +118,15 @@ async function main(): Promise<void> {
   const broker = new McpBrokerAdapter({ logger });
   try {
     const executor = executorFor(decided, { config, logger }, broker);
-    const { execution, trackRecord } = await executor.execute(decided);
+    const outcome = await executor.execute(decided);
 
+    if (outcome.kind === 'placed') {
+      console.log(`\nLIVE order placed: ${outcome.order.brokerOrderId} (${outcome.order.state})`);
+      console.log('the order poll records the fill and publishes the signal when the broker reports it.');
+      return;
+    }
+
+    const { execution, trackRecord } = outcome;
     console.log(`\n${execution.mode} fill recorded:`);
     console.table([
       {
