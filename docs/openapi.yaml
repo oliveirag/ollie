@@ -175,6 +175,14 @@ components:
         decide_reason:
           type: string
           nullable: true
+        published:
+          type: boolean
+          description: Whether this signal has reached the subscriber feed. Flipped once, after the approving fill is recorded, and never back.
+        published_at:
+          type: string
+          format: date-time
+          pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z))$
+          nullable: true
       required:
         - id
         - created_at
@@ -190,6 +198,8 @@ components:
         - expires_at
         - decided_at
         - decide_reason
+        - published
+        - published_at
       additionalProperties: false
     SignalList:
       type: object
@@ -277,6 +287,14 @@ components:
         decide_reason:
           type: string
           nullable: true
+        published:
+          type: boolean
+          description: Whether this signal has reached the subscriber feed. Flipped once, after the approving fill is recorded, and never back.
+        published_at:
+          type: string
+          format: date-time
+          pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z))$
+          nullable: true
         indicators:
           description: Computed strategy inputs at proposal time (rsi14, macd line/signal/hist, …)
         review:
@@ -320,6 +338,8 @@ components:
         - expires_at
         - decided_at
         - decide_reason
+        - published
+        - published_at
         - indicators
         - review
         - events

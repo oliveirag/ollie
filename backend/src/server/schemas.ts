@@ -41,7 +41,7 @@ export const ThesisSourceSchema = z
   .enum(['llm', 'fallback_template'])
   .meta({ id: 'ThesisSource' });
 
-const decimalString = z.string().describe(
+export const decimalString = z.string().describe(
   'Decimal number as a string. Never parse this into a float.\n\n' +
     'Stored prices are serialized verbatim from the database, so trailing zeros are not ' +
     'padded — "100" and "100.00" are the same value, and a fill of "182.6825" keeps all ' +
@@ -97,6 +97,13 @@ export const SignalSummarySchema = z.object({
     ),
   decided_at: z.string().datetime().nullable(),
   decide_reason: z.string().nullable(),
+  published: z
+    .boolean()
+    .describe(
+      'Whether this signal has reached the subscriber feed. Flipped once, after the ' +
+        'approving fill is recorded, and never back.',
+    ),
+  published_at: z.string().datetime().nullable(),
 }).meta({ id: 'SignalSummary' });
 
 export type SignalSummary = z.infer<typeof SignalSummarySchema>;
@@ -149,6 +156,8 @@ export function toSignalSummary(signal: Signal, expiryMinutes: number): SignalSu
         : null,
     decided_at: signal.decidedAt?.toISOString() ?? null,
     decide_reason: signal.decideReason ?? null,
+    published: signal.published,
+    published_at: signal.publishedAt?.toISOString() ?? null,
   };
 }
 

@@ -4,6 +4,7 @@ import type { Logger } from 'pino';
 import type { Config } from '../config/index.js';
 import { runMarkToMarket } from './marks.js';
 import { runPipeline, sweepExpiredSignals } from './pipeline.js';
+import { sweepUnpublishedSignals } from './publish.js';
 import type { Notifier } from './push/notify.js';
 import type { BrokerAdapter } from './robinhood/client.js';
 
@@ -34,7 +35,12 @@ export interface SchedulerDeps {
 export interface RunningScheduler {
   stop(): void;
   /** Next fire times, for the startup log. */
-  nextRuns(): { pipeline: Date | null; expiry: Date | null; mark: Date | null };
+  nextRuns(): {
+    pipeline: Date | null;
+    expiry: Date | null;
+    mark: Date | null;
+    publish: Date | null;
+  };
 }
 
 export function startScheduler(deps: SchedulerDeps): RunningScheduler {
@@ -91,11 +97,27 @@ export function startScheduler(deps: SchedulerDeps): RunningScheduler {
     },
   );
 
+  // Publishes any filled signal the decision route failed to flip. Not gated
+  // on the kill switch — see the header of publish.ts for why.
+  const publishJob = new Cron(
+    config.publishSweepCron,
+    { timezone: config.timezone, protect: true, name: 'publish' },
+    () => {
+      void sweepUnpublishedSignals({
+        logger,
+        ...(deps.prisma ? { prisma: deps.prisma } : {}),
+      }).catch((error: unknown) => {
+        log.error({ err: error }, 'publish sweep failed');
+      });
+    },
+  );
+
   log.info(
     {
       pipeline_cron: config.pipelineCron,
       mark_cron: config.markCron,
       expiry_cron: config.expirySweepCron,
+      publish_cron: config.publishSweepCron,
       timezone: config.timezone,
       next_pipeline_run: pipelineJob.nextRun()?.toISOString() ?? null,
     },
@@ -107,6 +129,7 @@ export function startScheduler(deps: SchedulerDeps): RunningScheduler {
       pipelineJob.stop();
       expiryJob.stop();
       markJob.stop();
+      publishJob.stop();
       log.info('scheduler stopped');
     },
     nextRuns() {
@@ -114,6 +137,7 @@ export function startScheduler(deps: SchedulerDeps): RunningScheduler {
         pipeline: pipelineJob.nextRun(),
         expiry: expiryJob.nextRun(),
         mark: markJob.nextRun(),
+        publish: publishJob.nextRun(),
       };
     },
   };

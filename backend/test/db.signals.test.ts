@@ -10,7 +10,8 @@ import {
   listExpiredPendingSignals,
   listPendingSignals,
   listSignalEvents,
-  markPublished,
+  publishSignal,
+  SignalAlreadyPublishedError,
   transitionSignal,
 } from '../src/db/signals.js';
 import { IMMUTABILITY_ERRCODE, isImmutabilityViolation } from '../src/db/client.js';
@@ -127,11 +128,13 @@ describe('decision transitions', () => {
 
   it('stamps publication once and never unstamps it', async () => {
     const signal = await seedSignal();
-    const published = await markPublished(signal.id, { prisma: db });
+    const published = await publishSignal(signal.id, { prisma: db });
     expect(published.published).toBe(true);
     expect(published.publishedAt).not.toBeNull();
 
-    await expect(markPublished(signal.id, { prisma: db })).rejects.toThrow(/already published/);
+    await expect(publishSignal(signal.id, { prisma: db })).rejects.toThrow(
+      SignalAlreadyPublishedError,
+    );
   });
 });
 
@@ -219,15 +222,61 @@ describe('immutability enforced by the database', () => {
     );
   });
 
+  // Publication is one-way and the pair moves together, or not at all
+  // (Phase 4, decision 2). Every illegal direction is pinned individually.
   it('refuses to unpublish a signal', async () => {
     const signal = await seedSignal();
-    await markPublished(signal.id, { prisma: db });
+    await publishSignal(signal.id, { prisma: db });
     await expectRejected(
       db.$executeRawUnsafe(
         `UPDATE signals SET published = false WHERE id = $1::uuid`,
         signal.id,
       ),
     );
+    await expectRejected(
+      db.$executeRawUnsafe(
+        `UPDATE signals SET published = false, published_at = NULL WHERE id = $1::uuid`,
+        signal.id,
+      ),
+    );
+  });
+
+  it('refuses to re-date a published signal', async () => {
+    const signal = await seedSignal();
+    await publishSignal(signal.id, { prisma: db });
+    await expectRejected(
+      db.$executeRawUnsafe(
+        `UPDATE signals SET published_at = now() - interval '1 day' WHERE id = $1::uuid`,
+        signal.id,
+      ),
+    );
+  });
+
+  it('refuses to publish without a published_at', async () => {
+    const signal = await seedSignal();
+    await expectRejected(
+      db.$executeRawUnsafe(`UPDATE signals SET published = true WHERE id = $1::uuid`, signal.id),
+    );
+  });
+
+  it('refuses a published_at on a signal that is not published', async () => {
+    const signal = await seedSignal();
+    await expectRejected(
+      db.$executeRawUnsafe(
+        `UPDATE signals SET published_at = now() WHERE id = $1::uuid`,
+        signal.id,
+      ),
+    );
+    expect((await getSignal(signal.id, db))!.publishedAt).toBeNull();
+  });
+
+  it('accepts the one legal publication statement', async () => {
+    const signal = await seedSignal();
+    await db.$executeRawUnsafe(
+      `UPDATE signals SET published = true, published_at = now() WHERE id = $1::uuid`,
+      signal.id,
+    );
+    expect((await getSignal(signal.id, db))!.published).toBe(true);
   });
 
   it('refuses UPDATE and DELETE on signal_events', async () => {
