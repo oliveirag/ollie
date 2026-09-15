@@ -1,5 +1,5 @@
-import { createHash, timingSafeEqual } from 'node:crypto';
 import type { FastifyReply, FastifyRequest } from 'fastify';
+import { secretsMatch } from '../secrets.js';
 
 /**
  * Owner authentication for Phase 2: a single pre-shared bearer token.
@@ -24,19 +24,7 @@ export class MissingOwnerTokenError extends Error {
   }
 }
 
-/**
- * Compare via fixed-width digests rather than the raw strings.
- * `timingSafeEqual` throws on a length mismatch, and that throw is itself an
- * oracle for the token's length — hashing first makes every comparison the
- * same 32 bytes regardless of what was presented.
- */
-function secretsMatch(presented: string, expected: string): boolean {
-  const a = createHash('sha256').update(presented).digest();
-  const b = createHash('sha256').update(expected).digest();
-  return timingSafeEqual(a, b);
-}
-
-const BEARER = /^Bearer (.+)$/;
+export const BEARER = /^Bearer (.+)$/;
 
 /**
  * Fastify `onRequest` hook guarding the /v1 surface. A missing, malformed, or

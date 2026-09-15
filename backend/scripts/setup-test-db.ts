@@ -12,6 +12,7 @@ import { execFileSync } from 'node:child_process';
 import { PrismaClient } from '@prisma/client';
 
 const DEFAULT_TEST_URL = 'postgresql://ollie:ollie@localhost:5432/ollie_test';
+const DEFAULT_SIGNAL_TEST_URL = 'postgresql://ollie_signal:ollie_signal@localhost:5432/ollie_test';
 
 async function main(): Promise<void> {
   const testUrl = new URL(process.env.TEST_DATABASE_URL ?? DEFAULT_TEST_URL);
@@ -41,6 +42,26 @@ async function main(): Promise<void> {
     stdio: 'inherit',
     env: { ...process.env, DATABASE_URL: testUrl.href },
   });
+
+  // The migration creates the subscriber service's role without a password —
+  // credentials are per-environment, never in a migration file. The suite
+  // connects as that role to prove its denials, so the throwaway test cluster
+  // gets one here, taken from the same URL the tests connect with. Local
+  // scratch credentials only, on the same footing as `ollie:ollie` above.
+  const signalUrl = new URL(process.env.SIGNAL_TEST_DATABASE_URL ?? DEFAULT_SIGNAL_TEST_URL);
+  const role = decodeURIComponent(signalUrl.username);
+  const password = decodeURIComponent(signalUrl.password);
+  if (!role || !password) {
+    throw new Error('SIGNAL_TEST_DATABASE_URL must carry a role and password');
+  }
+  const test = new PrismaClient({ datasourceUrl: testUrl.href });
+  try {
+    await test.$executeRawUnsafe(
+      `ALTER ROLE "${role.replace(/"/g, '""')}" WITH PASSWORD '${password.replace(/'/g, "''")}'`,
+    );
+  } finally {
+    await test.$disconnect();
+  }
 }
 
 main().catch((error: unknown) => {
