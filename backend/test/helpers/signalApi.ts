@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import pino from 'pino';
 import { buildConfig, type Config } from '../../src/config/index.js';
 import { buildSignalApp, type SignalAppDeps } from '../../src/signal-server/app.js';
-import { InvalidIdentityTokenError, type SiwaVerifier } from '../../src/signal-server/siwa.js';
+import { stubSiwaVerifier } from '../../src/signal-server/siwa.js';
 import { signalPrisma } from './db.js';
 
 /**
@@ -14,17 +14,8 @@ import { signalPrisma } from './db.js';
 export const TEST_INVITE_CODES = ['FRIENDS-1', 'FRIENDS-2'];
 export const TEST_PUBLIC_URL = 'https://signal.test';
 
-/**
- * A verifier that accepts `fake:<json>` tokens, so onboarding tests do not
- * mint JWTs. The real verifier is tested on its own against local keys.
- */
-export const stubSiwa: SiwaVerifier = {
-  async verify(identityToken) {
-    if (!identityToken.startsWith('fake:')) throw new InvalidIdentityTokenError('not a fake');
-    const parsed = JSON.parse(identityToken.slice(5)) as { sub: string; email?: string };
-    return { appleUserId: parsed.sub, email: parsed.email ?? null };
-  },
-};
+/** The same stub the dev server runs with SIWA_STUB=true. */
+export const stubSiwa = stubSiwaVerifier;
 
 export function fakeIdentityToken(sub: string, email?: string): string {
   return `fake:${JSON.stringify({ sub, ...(email ? { email } : {}) })}`;

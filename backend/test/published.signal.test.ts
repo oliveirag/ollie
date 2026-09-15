@@ -43,6 +43,7 @@ function maximalSignal(): Signal {
     publishedAt: new Date('2026-09-01T13:40:01.000Z'),
     dedupeKey: 'CANARY_DEDUPE',
     refId: '22222222-2222-4222-8222-222222222222',
+    autoDecideAt: new Date('2026-09-01T13:40:00.000Z'),
   };
 }
 

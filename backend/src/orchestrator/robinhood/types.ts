@@ -173,6 +173,47 @@ export const ReviewEquityOrderSchema = z
   })
   .passthrough();
 
+/**
+ * An equity order as `get_equity_orders` / `place_equity_order` report it.
+ *
+ * Only the fields the poll job reads are required; anything else passes
+ * through into `live_orders.last_response`. Modelled from the tool's
+ * documented states (new, queued, confirmed, unconfirmed, partially_filled,
+ * filled, cancelled, rejected, failed, voided) and the fixture in
+ * test/fixtures/mcp/equity-order.json, which is hand-written rather than
+ * captured — see its _comment. A payload that does not parse leaves the
+ * order open and logs; the poll never guesses a fill.
+ */
+export const EquityOrderSchema = z
+  .object({
+    id: z.string(),
+    state: z.string(),
+    symbol: z.string().optional(),
+    side: z.string().optional(),
+    quantity: DecimalString.optional(),
+    cumulative_quantity: DecimalString.optional(),
+    average_price: DecimalString.nullable().optional(),
+    ref_id: z.string().nullable().optional(),
+    created_at: z.string().optional(),
+    updated_at: z.string().optional(),
+  })
+  .passthrough();
+
+export const GetEquityOrdersSchema = z
+  .object({
+    orders: z.array(EquityOrderSchema),
+    next: z.string().nullable().optional(),
+  })
+  .passthrough();
+
+/** place_equity_order returns the order, bare or wrapped; both are accepted. */
+export const PlaceEquityOrderSchema = z.union([
+  z.object({ order: EquityOrderSchema }).passthrough(),
+  EquityOrderSchema,
+]);
+
+export type RawEquityOrder = z.infer<typeof EquityOrderSchema>;
+
 export type RawAccount = z.infer<typeof AccountSchema>;
 export type RawPortfolio = z.infer<typeof PortfolioSchema>;
 export type RawPosition = z.infer<typeof PositionSchema>;

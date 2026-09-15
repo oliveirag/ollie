@@ -16,6 +16,7 @@ export const OWNER_ONLY_TABLES = [
   'devices',
   'executions',
   'signal_events',
+  'live_orders',
 ] as const;
 
 export class WallBreachError extends Error {

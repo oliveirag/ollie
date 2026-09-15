@@ -1,7 +1,11 @@
 import type { PrismaClient } from '@prisma/client';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { getPublishedSignal, listPublishedSignals } from '../../db/signals.js';
+import {
+  firstLivePublishedAt,
+  getPublishedSignal,
+  listPublishedSignals,
+} from '../../db/signals.js';
 import {
   latestMarkForLot,
   listAllTrackRecordRows,
@@ -100,6 +104,7 @@ export async function readSubscriberTrackRecord(prisma: PrismaClient) {
     average_return: stats.averageReturn,
     total_realized_pnl: stats.totalRealizedPnl.toFixed(2),
     curve: stats.curve,
+    live_since: (await firstLivePublishedAt(prisma))?.toISOString() ?? null,
     positions,
   };
 }

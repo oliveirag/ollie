@@ -1,6 +1,11 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import type { Config } from '../../config/index.js';
-import { getAppSettings, setExecutionMode, setKillSwitch } from '../../db/settings.js';
+import {
+  getAppSettings,
+  setAutonomy,
+  setExecutionMode,
+  setKillSwitch,
+} from '../../db/settings.js';
 import { ErrorSchema, SettingsSchema, SettingsUpdateSchema } from '../schemas.js';
 
 /**
@@ -43,6 +48,9 @@ export const registerSettingsRoutes: FastifyPluginAsyncZod<SettingsRouteOptions>
         kill_switch: settings.killSwitch,
         execution_mode: settings.executionMode,
         live_trading_enabled: config.liveTradingEnabled,
+        autonomy: settings.autonomy,
+        autonomy_enabled: config.autonomyEnabled,
+        autonomy_veto_minutes: config.autonomyVetoMinutes,
       };
     },
   );
@@ -65,12 +73,29 @@ export const registerSettingsRoutes: FastifyPluginAsyncZod<SettingsRouteOptions>
           200: SettingsSchema,
           400: ErrorSchema.describe('The request failed schema validation'),
           401: ErrorSchema.describe('Missing or invalid owner token'),
-          409: ErrorSchema.describe('Live mode requested while LIVE_TRADING_ENABLED is false'),
+          409: ErrorSchema.describe(
+            'Live mode requested while LIVE_TRADING_ENABLED is false, or autonomy while ' +
+              'AUTONOMY_ENABLED is false',
+          ),
         },
       },
     },
     async (request, reply) => {
-      const { kill_switch: killSwitch, execution_mode: executionMode } = request.body;
+      const {
+        kill_switch: killSwitch,
+        execution_mode: executionMode,
+        autonomy,
+      } = request.body;
+
+      // Same shape as the live gate: the runtime half cannot open while the
+      // deploy half is shut.
+      if (autonomy === true && !config.autonomyEnabled) {
+        return reply.code(409).send({
+          error: 'autonomy_not_enabled',
+          detail:
+            'AUTONOMY_ENABLED is not set in the environment; autonomy needs a deploy, not a toggle',
+        });
+      }
 
       if (executionMode === 'live' && !config.liveTradingEnabled) {
         return reply.code(409).send({
@@ -91,12 +116,19 @@ export const registerSettingsRoutes: FastifyPluginAsyncZod<SettingsRouteOptions>
         await setExecutionMode(executionMode);
         request.log.warn({ execution_mode: executionMode }, 'execution mode changed via owner API');
       }
+      if (autonomy !== undefined) {
+        await setAutonomy(autonomy);
+        request.log.warn({ autonomy }, 'autonomy changed via owner API');
+      }
 
       const settings = await getAppSettings();
       return reply.code(200).send({
         kill_switch: settings.killSwitch,
         execution_mode: settings.executionMode,
         live_trading_enabled: config.liveTradingEnabled,
+        autonomy: settings.autonomy,
+        autonomy_enabled: config.autonomyEnabled,
+        autonomy_veto_minutes: config.autonomyVetoMinutes,
       });
     },
   );

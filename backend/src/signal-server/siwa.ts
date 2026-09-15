@@ -71,3 +71,28 @@ export function buildSiwaVerifier(options: SiwaVerifierOptions): SiwaVerifier {
     },
   };
 }
+
+/**
+ * A verifier that accepts `fake:{"sub":…,"email":…}` tokens. For the simulator
+ * and the UI tests only: Sign in with Apple needs a paid Apple Developer team
+ * and per-app configuration that a local run does not have (Phase 4, risk 3).
+ * The service refuses to enable it in production; see index.ts.
+ */
+export const stubSiwaVerifier: SiwaVerifier = {
+  async verify(identityToken) {
+    if (!identityToken.startsWith('fake:')) throw new InvalidIdentityTokenError('not a stub token');
+    let parsed: { sub?: unknown; email?: unknown };
+    try {
+      parsed = JSON.parse(identityToken.slice('fake:'.length)) as typeof parsed;
+    } catch {
+      throw new InvalidIdentityTokenError('unreadable stub token');
+    }
+    if (typeof parsed.sub !== 'string' || parsed.sub.length === 0) {
+      throw new InvalidIdentityTokenError('missing subject');
+    }
+    return {
+      appleUserId: parsed.sub,
+      email: typeof parsed.email === 'string' && parsed.email ? parsed.email : null,
+    };
+  },
+};
