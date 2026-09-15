@@ -166,8 +166,49 @@ private struct DecidedRow: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
+            if let order = signal.order?.value1 {
+                OrderStateLine(order: order)
+            }
         }
         .padding(.vertical, 2)
+    }
+}
+
+/// Where a live order stands (Phase 5). Approved-and-placed is not the same
+/// as filled, and a cancelled order with no fill is an approved signal that
+/// never became a position — both are said in words.
+struct OrderStateLine: View {
+    let order: Components.Schemas.Order
+
+    var body: some View {
+        Label {
+            Text(text).font(.caption)
+        } icon: {
+            Image(systemName: symbol)
+        }
+        .foregroundStyle(order.terminal_at == nil ? Color.secondary : (filled ? Theme.gain : Theme.loss))
+        .accessibilityIdentifier("order.state")
+    }
+
+    private var filled: Bool {
+        (Decimal(string: order.cumulative_quantity) ?? 0) > 0
+    }
+
+    private var text: String {
+        if order.terminal_at == nil {
+            return order.state == "partially_filled"
+                ? "Live order partially filled (\(order.cumulative_quantity)) — awaiting the rest"
+                : "Live order \(order.state) — awaiting fill"
+        }
+        if filled, let price = order.average_price {
+            return "Filled \(order.cumulative_quantity) @ \(price)"
+        }
+        return "Live order \(order.state) — no fill"
+    }
+
+    private var symbol: String {
+        if order.terminal_at == nil { return "hourglass" }
+        return filled ? "checkmark.seal" : "xmark.seal"
     }
 }
 

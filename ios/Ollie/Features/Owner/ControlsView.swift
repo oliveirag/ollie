@@ -68,6 +68,25 @@ struct ControlsView: View {
                            + "(LIVE_TRADING_ENABLED). Unlocking it needs a deploy, not a toggle.")
                 }
 
+                Section {
+                    Toggle(isOn: Binding(
+                        get: { store.autonomy },
+                        set: { on in Task { await setAutonomy(on) } }
+                    )) {
+                        Label("Auto-approve after \(store.autonomyVetoMinutes) min", systemImage: store.autonomyEnabled ? "timer" : "lock.fill")
+                    }
+                    .disabled(!store.autonomyEnabled || isWorking)
+                    .accessibilityIdentifier("controls.autonomy")
+                } header: {
+                    Text("Autonomy")
+                } footer: {
+                    // Same double gate as live mode: a deploy variable and this
+                    // toggle. The kill switch halts it like everything else.
+                    Text(store.autonomyEnabled
+                         ? "When on, a new signal you neither approve nor reject within \(store.autonomyVetoMinutes) minutes is approved for you, under the same caps. Rejecting inside the window always wins. The kill switch stops it."
+                         : "Autonomy is disabled at the environment level (AUTONOMY_ENABLED). Unlocking it needs a deploy, not a toggle.")
+                }
+
                 if let failure {
                     Section { ErrorRow(error: .server(failure)) }
                 }
@@ -91,6 +110,19 @@ struct ControlsView: View {
                      ? "Proposals resume on the next scheduled run."
                      : "Stops new proposals and refuses execution until you turn it back on.")
             }
+        }
+    }
+
+    private func setAutonomy(_ on: Bool) async {
+        isWorking = true
+        failure = nil
+        defer { isWorking = false }
+        do {
+            try await store.setAutonomy(on)
+        } catch let error as OllieError {
+            failure = error.errorDescription
+        } catch {
+            failure = error.localizedDescription
         }
     }
 

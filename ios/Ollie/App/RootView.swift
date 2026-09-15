@@ -1,25 +1,46 @@
 import SwiftUI
 
+/// Which side of the wall this launch is on.
+///
+/// The owner's pre-shared token in the Keychain means the owner shell,
+/// unchanged from Phase 2. Otherwise the subscriber flow: signed in already, or
+/// the welcome screen that leads there. The two sides share a binary and
+/// nothing else — different servers, different tokens, different stores.
 struct RootView: View {
-    @State private var store = SignalStore()
+    @State private var owner = SignalStore()
+    @State private var subscriber = SubscriberStore()
+    @State private var route: Route = .undecided
     @Environment(\.scenePhase) private var scenePhase
+
+    private enum Route { case undecided, owner, subscriber }
 
     var body: some View {
         Group {
-            if store.token == nil {
-                TokenEntryView { token in
-                    TokenStore.save(token)
-                    store.token = token
-                    Task { await store.refresh() }
-                }
+            if owner.token != nil {
+                ownerShell
+            } else if subscriber.token != nil || route == .subscriber {
+                SubscriberRootView(onLeave: { route = .undecided })
+                    .environment(subscriber)
+            } else if route == .owner {
+                TokenEntryView(
+                    onSave: { token in
+                        TokenStore.save(token)
+                        owner.token = token
+                        Task { await owner.refresh() }
+                    },
+                    onBack: { route = .undecided }
+                )
             } else {
-                shell
+                WelcomeView(
+                    onSubscribe: { route = .subscriber },
+                    onOwner: { route = .owner }
+                )
             }
         }
-        .environment(store)
+        .environment(owner)
     }
 
-    private var shell: some View {
+    private var ownerShell: some View {
         TabView {
             ApprovalsView()
                 .tabItem { Label("Approvals", systemImage: "tray.full") }
@@ -37,23 +58,68 @@ struct RootView: View {
         // PRD §4.3 wants the mode unmistakable everywhere, and a per-screen
         // badge is how one screen eventually ships without it.
         .safeAreaInset(edge: .top, spacing: 0) {
-            ModeRail(mode: store.mode)
+            ModeRail(mode: owner.mode)
         }
-        .tint(store.mode.accent)
-        .task { await store.refresh() }
+        .tint(owner.mode.accent)
+        .task { await owner.refresh() }
         .onChange(of: scenePhase) { _, phase in
             // Push is best-effort and the app must not depend on it, so
             // returning to the foreground always refetches. A missed
             // notification then costs one expired signal, never a silent one.
-            if phase == .active { Task { await store.refresh() } }
+            if phase == .active { Task { await owner.refresh() } }
         }
     }
 }
 
-/// First launch. The owner token is generated at deploy and pasted in once;
-/// there is no account to create because Phase 2 has exactly one user.
+/// First launch, before either side is chosen. Subscribing is the primary
+/// action; running Ollie is the one person who already has a token.
+struct WelcomeView: View {
+    let onSubscribe: () -> Void
+    let onOwner: () -> Void
+
+    var body: some View {
+        VStack(spacing: 28) {
+            Spacer()
+
+            VStack(spacing: 8) {
+                Image(systemName: "waveform.path.ecg")
+                    .font(.system(size: 44, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                Text("Ollie").font(.system(size: 34, weight: .bold))
+                Text("A public record of one rule-based strategy's signals, published only after they were acted on. Your agent decides what to do with them.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 28)
+            }
+
+            Spacer()
+
+            VStack(spacing: 12) {
+                Button(action: onSubscribe) {
+                    Text("Subscribe")
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 6)
+                }
+                .buttonStyle(.borderedProminent)
+                .accessibilityIdentifier("welcome.subscribe")
+
+                Button("I run Ollie", action: onOwner)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("welcome.owner")
+            }
+            .padding(.horizontal, 24)
+            .padding(.bottom, 24)
+        }
+    }
+}
+
+/// The owner's first launch. The token is generated at deploy and pasted in
+/// once; there is no account to create because the owner side has one user.
 struct TokenEntryView: View {
     let onSave: (String) -> Void
+    var onBack: (() -> Void)? = nil
 
     @State private var token = ""
 
@@ -78,6 +144,13 @@ struct TokenEntryView: View {
                 }
             }
             .navigationTitle("Ollie")
+            .toolbar {
+                if let onBack {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Back", action: onBack)
+                    }
+                }
+            }
         }
     }
 }

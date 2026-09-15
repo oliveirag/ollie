@@ -27,6 +27,8 @@
 	</dict>
 	<key>OllieBaseURL</key>
 	<string>$(OLLIE_BASE_URL)</string>
+	<key>OllieSignalBaseURL</key>
+	<string>$(OLLIE_SIGNAL_BASE_URL)</string>
 	<key>UILaunchScreen</key>
 	<dict/>
 	<key>UISupportedInterfaceOrientations</key>
