@@ -68,6 +68,12 @@ const EnvSchema = z.object({
 
   PIPELINE_CRON: z.string().default('35 9 * * 1-5'),
   EXPIRY_SWEEP_CRON: z.string().default('* * * * *'),
+  /**
+   * How often the orchestrator looks for an approved-and-filled signal the
+   * decision route failed to publish. Bounds the crash window (Phase 4,
+   * decision 1); normally finds nothing.
+   */
+  PUBLISH_SWEEP_CRON: z.string().default('*/5 * * * *'),
 
   KILL_SWITCH: bool.default(false),
   LIVE_TRADING_ENABLED: bool.default(false),
@@ -134,6 +140,7 @@ export interface Config {
   signalExpiryMinutes: number;
   pipelineCron: string;
   expirySweepCron: string;
+  publishSweepCron: string;
   markCron: string;
   /** Cron expressions above are interpreted in this zone; persistence is always UTC. */
   timezone: string;
@@ -223,6 +230,7 @@ export function buildConfig(source: NodeJS.ProcessEnv = process.env): Config {
     signalExpiryMinutes: env.SIGNAL_EXPIRY_MINUTES,
     pipelineCron: env.PIPELINE_CRON,
     expirySweepCron: env.EXPIRY_SWEEP_CRON,
+    publishSweepCron: env.PUBLISH_SWEEP_CRON,
     markCron: env.MARK_CRON,
     timezone: TIMEZONE,
     killSwitchEnv: env.KILL_SWITCH,

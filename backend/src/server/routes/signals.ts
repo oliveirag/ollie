@@ -8,6 +8,7 @@ import {
   listDecidedSignals,
   listPendingSignals,
   listSignalEvents,
+  publishSignal,
   SignalNotPendingError,
   transitionSignal,
   type DecidedStatus,
@@ -200,21 +201,10 @@ export const registerSignalRoutes: FastifyPluginAsyncZod<SignalRouteOptions> = a
         return reply.code(200).send({ signal: summary, execution: null });
       }
 
+      let execution;
       try {
         const executor = executorFor(decided, { config, logger }, broker);
-        const { execution } = await executor.execute(decided);
-
-        return reply.code(200).send({
-          signal: summary,
-          execution: {
-            id: execution.id,
-            mode: execution.mode,
-            fill_price: execution.fillPrice.toString(),
-            quantity: execution.quantity.toString(),
-            filled_at: execution.filledAt.toISOString(),
-            broker_order_id: execution.brokerOrderId,
-          },
-        });
+        ({ execution } = await executor.execute(decided));
       } catch (error) {
         // The narrow window the pre-flight cannot close: the kill switch was
         // flipped between the check and the fill. The signal is approved and
@@ -232,6 +222,33 @@ export const registerSignalRoutes: FastifyPluginAsyncZod<SignalRouteOptions> = a
           status: decided.status,
         });
       }
+
+      // Publish only now, with the execution row already durable, so a
+      // subscriber can never see a signal the owner's own book has not filled
+      // (Phase 4, decision 1). Same doctrine as push: a publish failure is
+      // logged and does not fail the approval — the fill is real, and the
+      // reconciliation sweep will flip the flag within one interval.
+      let published = decided;
+      try {
+        published = await publishSignal(id);
+      } catch (error) {
+        request.log.error(
+          { err: error, signal_id: id },
+          'fill recorded but publication failed; the publish sweep will retry',
+        );
+      }
+
+      return reply.code(200).send({
+        signal: toSignalSummary(published, config.signalExpiryMinutes),
+        execution: {
+            id: execution.id,
+            mode: execution.mode,
+            fill_price: execution.fillPrice.toString(),
+            quantity: execution.quantity.toString(),
+            filled_at: execution.filledAt.toISOString(),
+            broker_order_id: execution.brokerOrderId,
+          },
+      });
     },
   );
 };
