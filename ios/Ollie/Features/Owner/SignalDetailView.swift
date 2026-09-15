@@ -38,7 +38,12 @@ struct SignalDetailView: View {
                 isWorking: isDeciding,
                 onConfirm: { reason in await confirm(action, reason: reason) }
             )
-            .presentationDetents([.medium])
+            // Full height for a live approval: the real-money warning, the
+            // acknowledgement, and the confirm button must all be on screen at
+            // once, not below the fold of a half sheet.
+            .presentationDetents(
+                action == .approve && detail?.execution_mode == .live ? [.large] : [.medium]
+            )
         }
         .alert("Done", isPresented: .constant(outcome != nil)) {
             Button("OK") {

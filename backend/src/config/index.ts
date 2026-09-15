@@ -87,6 +87,13 @@ const EnvSchema = z.object({
   AUTONOMY_SWEEP_CRON: z.string().default('* * * * *'),
 
   /**
+   * `mock` runs the service against the fixture broker, whose orders fill on
+   * the first poll, so the live approval flow can be driven on a simulator
+   * with no brokerage account involved. Refused at boot in production.
+   */
+  BROKER: z.enum(['robinhood', 'mock']).default('robinhood'),
+
+  /**
    * Bearer credential for the owner API (Phase 2). Empty means "no API",
    * which is why the shape is validated here but the requirement is enforced
    * by the server: the CLIs and the scheduler have no business demanding an
@@ -178,6 +185,7 @@ export interface Config {
   autonomyEnabled: boolean;
   autonomyVetoMinutes: number;
   autonomySweepCron: string;
+  broker: Env['BROKER'];
   /** null when unset; the API refuses to start rather than run unauthenticated. */
   ownerApiToken: string | null;
   anthropic: { apiKey: string; model: string };
@@ -281,6 +289,7 @@ export function buildConfig(source: NodeJS.ProcessEnv = process.env): Config {
     autonomyEnabled: env.AUTONOMY_ENABLED,
     autonomyVetoMinutes: env.AUTONOMY_VETO_MINUTES,
     autonomySweepCron: env.AUTONOMY_SWEEP_CRON,
+    broker: env.BROKER,
     ownerApiToken: env.OWNER_API_TOKEN || null,
     anthropic: { apiKey: env.ANTHROPIC_API_KEY, model: env.ANTHROPIC_MODEL },
     apns: {
