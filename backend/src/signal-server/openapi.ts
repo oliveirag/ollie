@@ -2,7 +2,7 @@ import pino from 'pino';
 import { PrismaClient } from '@prisma/client';
 import { stringify } from 'yaml';
 import { buildConfig } from '../config/index.js';
-import { OPENAPI_HEADER, pruneUnreferencedSchemas, toOpenApi30 } from '../server/openapi.js';
+import { OPENAPI_HEADER, pruneUnreferencedSchemas, toOpenApi30 } from '../openapiDocument.js';
 import { buildSignalApp } from './app.js';
 
 /**
