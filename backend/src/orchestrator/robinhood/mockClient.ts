@@ -200,11 +200,25 @@ export class MockBrokerAdapter implements BrokerAdapter {
     if (!entry) return null;
     const step = entry.script.states[Math.min(entry.cursor, entry.script.states.length - 1)]!;
     entry.cursor += 1;
+
+    // A `filled` step with no numbers fills the whole order at the mock's own
+    // estimate — what `BROKER=mock` relies on, since it cannot know sizes in
+    // advance. Scripts that care about the numbers state them.
+    const filledWhole = step.state === 'filled';
+    const quote = this.state.quotes?.[entry.request.symbol] ?? {
+      symbol: entry.request.symbol,
+      ...DEFAULT_QUOTE,
+    };
     return {
       brokerOrderId,
       state: step.state,
-      cumulativeQuantity: step.cumulativeQuantity ?? '0',
-      averagePrice: step.averagePrice ?? null,
+      cumulativeQuantity: step.cumulativeQuantity ?? (filledWhole ? entry.request.quantity : '0'),
+      averagePrice:
+        step.averagePrice !== undefined
+          ? step.averagePrice
+          : filledWhole
+            ? estimateFillPrice(entry.request.side, quote)
+            : null,
       raw: { _mock: true, id: brokerOrderId, state: step.state },
     };
   }
