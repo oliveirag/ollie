@@ -1,0 +1,6 @@
+# Client only, public so the app module can call it. openapi.yaml beside this
+# file is a symlink to docs/openapi-subscriber.yaml — never copy it here.
+generate:
+  - types
+  - client
+accessModifier: public

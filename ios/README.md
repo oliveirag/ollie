@@ -1,7 +1,43 @@
-# Ollie — owner iOS app
+# Ollie — iOS app
 
-SwiftUI, iOS 17+. The owner's decision surface: approve or reject proposed
-trades, watch positions, and hit the kill switch (PRD §4.2–4.3).
+SwiftUI, iOS 17+. One binary, two sides that share nothing but the design
+system:
+
+- **Owner** (PRD §4.2–4.3): approve or reject proposed trades — with a second,
+  red confirmation when the signal is live money — watch positions, flip the
+  kill switch, and turn autonomy on or off. Launches when the owner token is in
+  the Keychain.
+- **Subscriber** (PRD §4.6): Sign in with Apple, the disclaimer, the one-time
+  agent token, the feed, and the track record. Talks only to the signal
+  service, never to the owner API.
+
+## Subscriber side without the Apple Developer membership
+
+Sign in with Apple needs a paid team and App ID configuration. Until those
+exist, Debug builds launched with `SUBSCRIBER_TEST_IDENTITY=1` show a
+"Continue with a test identity" button that sends a `fake:` identity token. The
+signal service accepts it only when started with `SIWA_STUB=true`, and refuses
+to start that way in production.
+
+```bash
+# 1. the signal service on :3100, as the restricted role, with the stub on
+cd backend
+SIGNAL_DATABASE_URL=postgresql://ollie_signal:ollie_signal@localhost:5432/ollie \
+SIWA_STUB=true SUBSCRIBER_INVITE_CODES=LOCAL-TEST \
+SIGNAL_PUBLIC_URL=http://localhost:3100 npm run dev:signal
+
+# 2. the onboarding UI tests
+cd ../ios
+export TEST_RUNNER_SUBSCRIBER_INVITE_CODE=LOCAL-TEST
+xcodebuild test -project Ollie.xcodeproj -scheme Ollie \
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -skipPackagePluginValidation \
+  -only-testing:OllieUITests/SubscriberOnboardingUITests
+```
+
+The `ollie_signal` role's password is set by `npm test`'s database setup
+(roles are cluster-wide, so it applies to the dev database too). The subscriber
+client is generated from `docs/openapi-subscriber.yaml` by the local
+`SignalAPI` package, through the same symlink arrangement as the owner client.
 
 ## Setup
 

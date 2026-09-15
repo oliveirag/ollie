@@ -27,6 +27,11 @@ packages:
   swift-openapi-generator:
     url: https://github.com/apple/swift-openapi-generator
     from: 1.13.0
+  # The subscriber API client (Phase 4). A local package because the generator
+  # plugin takes one document per target, and docs/openapi-subscriber.yaml is
+  # a second document. See SignalAPI/Package.swift.
+  SignalAPI:
+    path: SignalAPI
 
 targets:
   Ollie:
@@ -44,6 +49,8 @@ targets:
         product: OpenAPIRuntime
       - package: swift-openapi-urlsession
         product: OpenAPIURLSession
+      - package: SignalAPI
+        product: SignalAPI
     buildToolPlugins:
       - plugin: OpenAPIGenerator
         package: swift-openapi-generator
@@ -59,13 +66,16 @@ targets:
         SWIFT_VERSION: "5.10"
         TARGETED_DEVICE_FAMILY: "1"
         ENABLE_USER_SCRIPT_SANDBOXING: NO
+        CODE_SIGN_ENTITLEMENTS: Ollie/Resources/Ollie.entitlements
       configs:
         # `$()` splits the `//` so the build-settings parser does not read the
         # rest of the line as a comment. It expands to nothing.
         Debug:
           OLLIE_BASE_URL: http:/$()/localhost:3000
+          OLLIE_SIGNAL_BASE_URL: http:/$()/localhost:3100
         Release:
           OLLIE_BASE_URL: https:/$()/ollie.up.railway.app
+          OLLIE_SIGNAL_BASE_URL: https:/$()/ollie-signal.up.railway.app
     info:
       path: Ollie/Resources/Info.plist
       properties:
@@ -79,6 +89,9 @@ targets:
         # default, which is exactly the wrong direction for a build that
         # carries a trade-approving credential.
         OllieBaseURL: $(OLLIE_BASE_URL)
+        # The subscriber-facing signal service: a separate host on purpose
+        # (Phase 4, decision 4). Same per-configuration resolution as above.
+        OllieSignalBaseURL: $(OLLIE_SIGNAL_BASE_URL)
         NSAppTransportSecurity:
           # NSAllowsLocalNetworking, deliberately, rather than
           # NSAllowsArbitraryLoads. It permits cleartext only to local hosts —

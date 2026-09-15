@@ -17,6 +17,9 @@ final class SignalStore {
     private(set) var mode: TradingMode = .paper
     private(set) var killSwitch = false
     private(set) var liveTradingEnabled = false
+    private(set) var autonomy = false
+    private(set) var autonomyEnabled = false
+    private(set) var autonomyVetoMinutes = 0
 
     private(set) var dashboard: Dashboard?
     private(set) var trackRecord: TrackRecord?
@@ -72,14 +75,41 @@ final class SignalStore {
     private func loadSettings(_ client: Client) async throws {
         switch try await client.getSettings(.init()) {
         case .ok(let ok):
-            let settings = try ok.body.json
-            mode = settings.execution_mode == .live ? .live : .paper
-            killSwitch = settings.kill_switch
-            liveTradingEnabled = settings.live_trading_enabled
+            apply(try ok.body.json)
         case .unauthorized:
             throw OllieError.unauthorized
         case .undocumented(let status, _):
             throw OllieError.server("Settings returned \(status).")
+        }
+    }
+
+    private func apply(_ settings: Components.Schemas.Settings) {
+        mode = settings.execution_mode == .live ? .live : .paper
+        killSwitch = settings.kill_switch
+        liveTradingEnabled = settings.live_trading_enabled
+        autonomy = settings.autonomy
+        autonomyEnabled = settings.autonomy_enabled
+        autonomyVetoMinutes = settings.autonomy_veto_minutes
+    }
+
+    /// The runtime half of the autonomy gate (Phase 5). Not optimistic, for the
+    /// kill switch's reason: the displayed state is what the server confirmed.
+    func setAutonomy(_ on: Bool) async throws {
+        try await updateSettings(Components.Schemas.SettingsUpdateInput(autonomy: on))
+    }
+
+    private func updateSettings(_ body: Components.Schemas.SettingsUpdateInput) async throws {
+        switch try await client().updateSettings(.init(body: .json(body))) {
+        case .ok(let ok):
+            apply(try ok.body.json)
+        case .conflict(let conflict):
+            throw OllieError.server(try conflict.body.json.detail ?? "Refused.")
+        case .unauthorized:
+            throw OllieError.unauthorized
+        case .badRequest:
+            throw OllieError.server("The settings update failed validation.")
+        case .undocumented(let status, _):
+            throw OllieError.server("Settings update returned \(status).")
         }
     }
 
@@ -136,22 +166,7 @@ final class SignalStore {
     /// purpose is that its displayed state is true, so the UI shows what the
     /// server confirmed rather than what was requested.
     func setKillSwitch(_ on: Bool) async throws {
-        let body = Components.Schemas.SettingsUpdateInput(kill_switch: on)
-        switch try await client().updateSettings(.init(body: .json(body))) {
-        case .ok(let ok):
-            let settings = try ok.body.json
-            killSwitch = settings.kill_switch
-            mode = settings.execution_mode == .live ? .live : .paper
-            liveTradingEnabled = settings.live_trading_enabled
-        case .conflict(let conflict):
-            throw OllieError.server(try conflict.body.json.detail ?? "Refused.")
-        case .unauthorized:
-            throw OllieError.unauthorized
-        case .badRequest:
-            throw OllieError.server("The settings update failed validation.")
-        case .undocumented(let status, _):
-            throw OllieError.server("Settings update returned \(status).")
-        }
+        try await updateSettings(Components.Schemas.SettingsUpdateInput(kill_switch: on))
     }
 
     func detail(id: String) async throws -> SignalDetail {
@@ -172,12 +187,17 @@ final class SignalStore {
     struct DecisionResult {
         let status: String
         let fillPrice: String?
+        /// Set when a live approval placed an order; the fill comes later.
+        let orderState: String?
     }
 
-    func decide(id: String, approve: Bool, reason: String?) async throws -> DecisionResult {
+    /// `confirmLive` is the per-approval confirmation (Phase 5, decision 4).
+    /// Only the live decision sheet passes true, after its second tap.
+    func decide(id: String, approve: Bool, reason: String?, confirmLive: Bool = false) async throws -> DecisionResult {
         let body = Components.Schemas.DecisionRequestInput(
             action: approve ? .approve : .reject,
-            reason: reason?.isEmpty == false ? reason : nil
+            reason: reason?.isEmpty == false ? reason : nil,
+            confirm_live: confirmLive ? true : nil
         )
 
         let output = try await client().decideSignal(
@@ -192,7 +212,8 @@ final class SignalStore {
             await refresh()
             return DecisionResult(
                 status: decision.signal.status.rawValue,
-                fillPrice: decision.execution?.value1.fill_price
+                fillPrice: decision.execution?.value1.fill_price,
+                orderState: decision.order?.value1.state
             )
 
         case .conflict(let conflict):

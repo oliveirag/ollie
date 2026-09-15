@@ -164,11 +164,19 @@ struct SignalDetailView: View {
             let result = try await store.decide(
                 id: signalID,
                 approve: action == .approve,
-                reason: reason
+                reason: reason,
+                // Only reachable after the live sheet's acknowledgement, which
+                // gates its confirm button.
+                confirmLive: action == .approve && detail?.execution_mode == .live
             )
             pendingAction = nil
-            outcome = result.fillPrice.map { "Approved — filled at \($0)." }
-                ?? "Signal \(result.status)."
+            if let fill = result.fillPrice {
+                outcome = "Approved — filled at \(fill)."
+            } else if let state = result.orderState {
+                outcome = "Real order placed (\(state)). The fill is recorded when Robinhood reports it."
+            } else {
+                outcome = "Signal \(result.status)."
+            }
         } catch let error as OllieError {
             pendingAction = nil
             // A race is the system working, so the detail is refreshed rather

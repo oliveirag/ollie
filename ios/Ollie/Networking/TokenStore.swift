@@ -1,21 +1,29 @@
 import Foundation
 import Security
 
-/// The owner API bearer token, kept in the Keychain.
+/// Bearer tokens, kept in the Keychain.
 ///
-/// Phase 2 has exactly one user, so this pre-shared token stands in for Sign
-/// in with Apple (PRD §5); SIWA arrives in Phase 4 with the subscriber side.
-/// `kSecAttrAccessibleWhenUnlockedThisDeviceOnly` is deliberate: the token
-/// approves trades, so it should not ride an iCloud backup to another device.
+/// Two accounts since Phase 4: the owner's pre-shared API token (Phase 2;
+/// stands in for Sign in with Apple for the one known user) and the
+/// subscriber's app session token, minted by the signal service after Sign in
+/// with Apple. Which one is present decides which side of the app launches.
+///
+/// `kSecAttrAccessibleWhenUnlockedThisDeviceOnly` is deliberate for both: the
+/// owner token approves trades and the subscriber token can mint agent
+/// credentials, so neither should ride an iCloud backup to another device.
 enum TokenStore {
-    private static let service = "com.guilhermeoliveira.Ollie"
-    private static let account = "owner-api-token"
+    enum Account: String {
+        case owner = "owner-api-token"
+        case subscriber = "subscriber-app-token"
+    }
 
-    static func read() -> String? {
+    private static let service = "com.guilhermeoliveira.Ollie"
+
+    static func read(_ account: Account = .owner) -> String? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
+            kSecAttrAccount as String: account.rawValue,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne,
         ]
@@ -31,29 +39,29 @@ enum TokenStore {
     }
 
     @discardableResult
-    static func save(_ token: String) -> Bool {
+    static func save(_ token: String, account: Account = .owner) -> Bool {
         let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, let data = trimmed.data(using: .utf8) else { return false }
 
         // Delete-then-add rather than update: it is one code path for both the
         // first save and a rotation.
-        delete()
+        delete(account)
 
         let attributes: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
+            kSecAttrAccount as String: account.rawValue,
             kSecValueData as String: data,
             kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
         ]
         return SecItemAdd(attributes as CFDictionary, nil) == errSecSuccess
     }
 
-    static func delete() {
+    static func delete(_ account: Account = .owner) {
         SecItemDelete([
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
+            kSecAttrAccount as String: account.rawValue,
         ] as CFDictionary)
     }
 }
