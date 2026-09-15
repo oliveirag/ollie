@@ -108,6 +108,37 @@ export async function listOpenLots(prisma: PrismaClient = getPrisma()): Promise<
     }));
 }
 
+/**
+ * The newest mark row for a lot, or null if it has never been marked. What a
+ * subscriber sees as an open position's value (Phase 4, decision 7): the
+ * record's own daily answer, auditable via `mark_price`, never a live quote.
+ */
+export async function latestMarkForLot(
+  signalId: string,
+  prisma: PrismaClient = getPrisma(),
+): Promise<TrackRecord | null> {
+  return prisma.trackRecord.findFirst({
+    where: { signalId, markPrice: { not: null } },
+    orderBy: [{ recordedAt: 'desc' }, { id: 'desc' }],
+  });
+}
+
+/**
+ * When a lot was opened: its earliest row. `listOpenLots` reports the newest
+ * row's timestamp, which after a mark is the mark's date, not the entry's.
+ */
+export async function lotOpenedAt(
+  signalId: string,
+  prisma: PrismaClient = getPrisma(),
+): Promise<Date | null> {
+  const first = await prisma.trackRecord.findFirst({
+    where: { signalId },
+    orderBy: [{ recordedAt: 'asc' }, { id: 'asc' }],
+    select: { recordedAt: true },
+  });
+  return first?.recordedAt ?? null;
+}
+
 /** Latest row per signal is the current view; earlier rows are history. */
 export async function latestTrackRecord(
   signalId: string,

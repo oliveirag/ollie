@@ -197,6 +197,61 @@ model OAuthState {
   @@map("oauth_state")
 }
 
+/// A subscriber (Phase 4). Keyed by the Sign in with Apple subject, which is
+/// the stable identity; email is nullable because Apple's private relay may
+/// withhold or rotate it, and is erasable operational data. The owner keeps
+/// the pre-shared token and has no row here yet.
+model User {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// 'owner' | 'subscriber'. Text, not an enum, so a later owner-auth
+  /// migration does not need a type change.
+  role        String   @default("subscriber") @db.Text
+  appleUserId String   @unique @map("apple_user_id") @db.Text
+  email       String?  @db.Text
+  /// Which invite code admitted them: the soft-launch audit trail.
+  inviteCode  String?  @map("invite_code") @db.Text
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tokens      SubscriberToken[]
+  acceptances DisclaimerAcceptance[]
+
+  @@map("users")
+}
+
+/// Opaque bearer tokens, stored as sha256 hashes. The plaintext is shown once
+/// at mint and never persisted. `kind` separates the app session token from
+/// the agent-facing MCP token: neither surface accepts the other's.
+model SubscriberToken {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  kind       String    @db.Text
+  tokenHash  String    @unique @map("token_hash") @db.Text
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  lastUsedAt DateTime? @map("last_used_at") @db.Timestamptz(6)
+  /// Soft revoke: the row stays as history.
+  revokedAt  DateTime? @map("revoked_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId, kind])
+  @@map("subscriber_tokens")
+}
+
+/// Append-only, same trigger treatment as track_record: "this subscriber saw
+/// this exact disclaimer text at this time" is a claim about the past.
+model DisclaimerAcceptance {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId            String   @map("user_id") @db.Uuid
+  /// sha256 of the disclaimer text as served.
+  disclaimerVersion String   @map("disclaimer_version") @db.Text
+  acceptedAt        DateTime @default(now()) @map("accepted_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId, acceptedAt])
+  @@map("disclaimer_acceptances")
+}
+
 /// Single row (id is pinned to 1). Lives in the database rather than the
 /// environment so the kill switch survives a restart and the iOS app can flip
 /// it in Phase 2 without a redeploy.

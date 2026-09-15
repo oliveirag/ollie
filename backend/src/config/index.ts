@@ -102,6 +102,20 @@ const EnvSchema = z.object({
   APNS_KEY_ID: z.string().default(''),
   APNS_TEAM_ID: z.string().default(''),
   APNS_BUNDLE_ID: z.string().default(''),
+
+  /**
+   * The signal service (Phase 4). Validated for shape here; the service
+   * itself refuses to boot when SIGNAL_DATABASE_URL is unset, the same way the
+   * owner API refuses to boot tokenless. The orchestrator never reads these.
+   */
+  SIGNAL_SERVICE_PORT: positiveInt.default(3100),
+  SIGNAL_DATABASE_URL: z.string().url().or(z.literal('')).default(''),
+  /** Comma-separated. Empty means no one can complete a first sign-in. */
+  SUBSCRIBER_INVITE_CODES: z.string().default(''),
+  /** The SIWA audience. Defaults to the app's bundle id. */
+  APPLE_APP_BUNDLE_ID: z.string().default('com.guilhermeoliveira.Ollie'),
+  /** Advertised to subscribers as the MCP URL after minting a token. */
+  SIGNAL_PUBLIC_URL: z.string().url().or(z.literal('')).default(''),
 });
 
 export type Env = z.infer<typeof EnvSchema>;
@@ -157,6 +171,15 @@ export interface Config {
     oauthClientId: string;
     oauthRefreshToken: string;
     accountNumber: string | null;
+  };
+  signalService: {
+    port: number;
+    /** null when unset; the signal service refuses to start. */
+    databaseUrl: string | null;
+    inviteCodes: readonly string[];
+    appleAudience: string;
+    /** null when unset; the mint response then omits the URL. */
+    publicUrl: string | null;
   };
 }
 
@@ -251,6 +274,17 @@ export function buildConfig(source: NodeJS.ProcessEnv = process.env): Config {
       oauthClientId: env.RH_OAUTH_CLIENT_ID,
       oauthRefreshToken: env.RH_OAUTH_REFRESH_TOKEN,
       accountNumber: env.RH_ACCOUNT_NUMBER || null,
+    },
+    signalService: {
+      port: env.SIGNAL_SERVICE_PORT,
+      databaseUrl: env.SIGNAL_DATABASE_URL || null,
+      inviteCodes: Object.freeze(
+        env.SUBSCRIBER_INVITE_CODES.split(',')
+          .map((code) => code.trim())
+          .filter((code) => code.length > 0),
+      ),
+      appleAudience: env.APPLE_APP_BUNDLE_ID,
+      publicUrl: env.SIGNAL_PUBLIC_URL || null,
     },
   };
 }

@@ -1,38 +1,29 @@
 import { randomUUID } from 'node:crypto';
 import pino, { type Logger } from 'pino';
 import { getConfig } from './config/index.js';
+import { REDACT } from './redaction.js';
+
+export { REDACT };
 
 const isDev = process.env.NODE_ENV !== 'production';
 
 /**
- * PRD §11: every strategy input and output is logged, so redaction has to be
- * narrow — only secrets, never market data or decisions.
- *
- * `req.headers.authorization` is load-bearing since Phase 2: Fastify logs
- * request headers on every call, and that header carries the owner token.
- * Exported so a test can build a logger with the real configuration rather
- * than a lookalike that would pass while production leaked.
+ * A process logger with the shared redaction rules. The signal service builds
+ * its own through this rather than importing `logger` below, because that
+ * one reads the orchestrator's config at import time.
  */
-export const REDACT = {
-  paths: [
-    'authToken',
-    'apiKey',
-    '*.authToken',
-    '*.apiKey',
-    'headers.authorization',
-    'req.headers.authorization',
-  ],
-  censor: '[redacted]',
-} as const;
+export function buildLogger(service: string, level: string): Logger {
+  return pino({
+    level,
+    base: { service },
+    redact: { paths: [...REDACT.paths], censor: REDACT.censor },
+    ...(isDev
+      ? { transport: { target: 'pino-pretty', options: { colorize: true, translateTime: 'SYS:standard' } } }
+      : {}),
+  });
+}
 
-export const logger: Logger = pino({
-  level: getConfig().logLevel,
-  base: { service: 'ollie-orchestrator' },
-  redact: { paths: [...REDACT.paths], censor: REDACT.censor },
-  ...(isDev
-    ? { transport: { target: 'pino-pretty', options: { colorize: true, translateTime: 'SYS:standard' } } }
-    : {}),
-});
+export const logger: Logger = buildLogger('ollie-orchestrator', getConfig().logLevel);
 
 export type RunLogger = Logger & { runId: string };
 
