@@ -1,4 +1,4 @@
-import type { Signal } from '@prisma/client';
+import type { LiveOrder, Signal } from '@prisma/client';
 import { z } from 'zod';
 import { parseReviewSnapshot } from '../orchestrator/reviewSnapshot.js';
 
@@ -41,7 +41,7 @@ export const ThesisSourceSchema = z
   .enum(['llm', 'fallback_template'])
   .meta({ id: 'ThesisSource' });
 
-const decimalString = z.string().describe(
+export const decimalString = z.string().describe(
   'Decimal number as a string. Never parse this into a float.\n\n' +
     'Stored prices are serialized verbatim from the database, so trailing zeros are not ' +
     'padded — "100" and "100.00" are the same value, and a fill of "182.6825" keeps all ' +
@@ -64,6 +64,40 @@ export const ReviewAlertSchema = z
     details: z.unknown().describe('Broker-supplied payload; shape is not ours to declare'),
   })
   .meta({ id: 'ReviewAlert' });
+
+/** A live order's broker-side state, on the signal that placed it (Phase 5). */
+export const OrderSchema = z
+  .object({
+    broker_order_id: z.string(),
+    state: z
+      .string()
+      .describe(
+        "The broker's state, verbatim: new, queued, confirmed, unconfirmed, partially_filled, " +
+          'filled, cancelled, rejected, failed, voided',
+      ),
+    cumulative_quantity: decimalString,
+    average_price: decimalString.nullable(),
+    placed_at: z.string().datetime(),
+    terminal_at: z
+      .string()
+      .datetime()
+      .nullable()
+      .describe('Set once the order can no longer fill. Null while the poll is still watching it.'),
+  })
+  .meta({ id: 'Order' });
+
+export type OrderView = z.infer<typeof OrderSchema>;
+
+export function toOrderView(order: LiveOrder): OrderView {
+  return {
+    broker_order_id: order.brokerOrderId,
+    state: order.state,
+    cumulative_quantity: order.cumulativeQuantity.toString(),
+    average_price: order.averagePrice?.toString() ?? null,
+    placed_at: order.placedAt.toISOString(),
+    terminal_at: order.terminalAt?.toISOString() ?? null,
+  };
+}
 
 /**
  * List-view signal. Deliberately excludes `indicators` and the raw review
@@ -97,6 +131,24 @@ export const SignalSummarySchema = z.object({
     ),
   decided_at: z.string().datetime().nullable(),
   decide_reason: z.string().nullable(),
+  published: z
+    .boolean()
+    .describe(
+      'Whether this signal has reached the subscriber feed. Flipped once, after the ' +
+        'approving fill is recorded, and never back.',
+    ),
+  published_at: z.string().datetime().nullable(),
+  auto_decide_at: z
+    .string()
+    .datetime()
+    .nullable()
+    .describe(
+      'Phase 5: when the autonomy sweep may approve this signal if nobody has. Null when ' +
+        'autonomy was off at creation.',
+    ),
+  order: OrderSchema.nullable().describe(
+    'The live order this approval placed. Null for paper signals and for live signals not yet approved.',
+  ),
 }).meta({ id: 'SignalSummary' });
 
 export type SignalSummary = z.infer<typeof SignalSummarySchema>;
@@ -130,7 +182,11 @@ function readThesisSource(value: string): SignalSummary['thesis_source'] {
   return parsed.success ? parsed.data : null;
 }
 
-export function toSignalSummary(signal: Signal, expiryMinutes: number): SignalSummary {
+export function toSignalSummary(
+  signal: Signal,
+  expiryMinutes: number,
+  order: LiveOrder | null = null,
+): SignalSummary {
   return {
     id: signal.id,
     created_at: signal.createdAt.toISOString(),
@@ -149,6 +205,10 @@ export function toSignalSummary(signal: Signal, expiryMinutes: number): SignalSu
         : null,
     decided_at: signal.decidedAt?.toISOString() ?? null,
     decide_reason: signal.decideReason ?? null,
+    published: signal.published,
+    published_at: signal.publishedAt?.toISOString() ?? null,
+    auto_decide_at: signal.autoDecideAt?.toISOString() ?? null,
+    order: order ? toOrderView(order) : null,
   };
 }
 
@@ -187,6 +247,13 @@ export const DecisionRequestSchema = z
   .object({
     action: z.enum(['approve', 'reject']),
     reason: z.string().max(500).optional(),
+    confirm_live: z
+      .boolean()
+      .optional()
+      .describe(
+        'Phase 5: must be true to approve a live-mode signal — the per-approval confirmation ' +
+          'PRD §4.2 asks for. Only the live confirmation sheet sends it.',
+      ),
   })
   .meta({ id: 'DecisionRequest' });
 
@@ -205,7 +272,11 @@ export const DecisionResponseSchema = z
   .object({
     signal: SignalSummarySchema,
     execution: ExecutionSchema.nullable().describe(
-      'The fill, on approval. Null for a rejection — nothing is executed.',
+      'The fill, on a paper approval. Null for a rejection, and for a live approval whose ' +
+        'fill arrives later through the order poll.',
+    ),
+    order: OrderSchema.nullable().describe(
+      'The live order this approval placed. Null for paper approvals and rejections.',
     ),
   })
   .meta({ id: 'DecisionResponse' });
@@ -234,6 +305,7 @@ export function toSignalDetail(
   signal: Signal,
   events: Parameters<typeof toSignalEvent>[0][],
   expiryMinutes: number,
+  order: LiveOrder | null = null,
 ): SignalDetail {
   let review: SignalDetail['review'] = null;
   try {
@@ -248,7 +320,7 @@ export function toSignalDetail(
   }
 
   return {
-    ...toSignalSummary(signal, expiryMinutes),
+    ...toSignalSummary(signal, expiryMinutes, order),
     indicators: signal.indicators,
     review,
     events: events.map(toSignalEvent),
@@ -308,6 +380,22 @@ export const SettingsSchema = z
         'From the environment, read-only. The second of the two gates in front of real ' +
           'money; the app renders the mode toggle as locked while this is false.',
       ),
+    autonomy: z
+      .boolean()
+      .describe(
+        'Phase 5: the runtime half of the autonomy gate. Signals auto-approve after the veto ' +
+          'window only while both halves are on.',
+      ),
+    autonomy_enabled: z
+      .boolean()
+      .describe(
+        'AUTONOMY_ENABLED from the environment, read-only. The app renders the autonomy ' +
+          'toggle as locked while this is false.',
+      ),
+    autonomy_veto_minutes: z
+      .number()
+      .int()
+      .describe('How long the owner has to veto before the sweep approves. From the environment.'),
   })
   .meta({ id: 'Settings' });
 
@@ -315,10 +403,15 @@ export const SettingsUpdateSchema = z
   .object({
     kill_switch: z.boolean().optional(),
     execution_mode: ExecModeSchema.optional(),
+    autonomy: z.boolean().optional(),
   })
-  .refine((body) => body.kill_switch !== undefined || body.execution_mode !== undefined, {
-    message: 'provide at least one of kill_switch or execution_mode',
-  })
+  .refine(
+    (body) =>
+      body.kill_switch !== undefined ||
+      body.execution_mode !== undefined ||
+      body.autonomy !== undefined,
+    { message: 'provide at least one of kill_switch, execution_mode, or autonomy' },
+  )
   .meta({ id: 'SettingsUpdate' });
 
 export const HealthReportSchema = z
@@ -394,5 +487,13 @@ export const TrackRecordSchema = z
       .describe('Unweighted mean of realized_pnl / (entry_price x quantity) over closed trades'),
     total_realized_pnl: z.string().describe('Decimal string, two places'),
     curve: z.array(CurvePointSchema).describe('A PnL curve based at zero, not a portfolio value'),
+    live_since: z
+      .string()
+      .datetime()
+      .nullable()
+      .describe(
+        'When the first live-money signal was published. Everything before it settled on ' +
+          'paper. Null while the whole record is paper.',
+      ),
   })
   .meta({ id: 'TrackRecord' });

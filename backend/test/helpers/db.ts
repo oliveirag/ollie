@@ -3,11 +3,27 @@ import { PrismaClient } from '@prisma/client';
 export const TEST_DATABASE_URL =
   process.env.TEST_DATABASE_URL ?? 'postgresql://ollie:ollie@localhost:5432/ollie_test';
 
+/**
+ * The same test database, connected as the subscriber service's role. What
+ * this client can and cannot read is the data-tier proof of the
+ * owner/subscriber wall (Phase 4, decision 4); the password is set by
+ * scripts/setup-test-db.ts and exists only locally.
+ */
+export const SIGNAL_TEST_DATABASE_URL =
+  process.env.SIGNAL_TEST_DATABASE_URL ??
+  'postgresql://ollie_signal:ollie_signal@localhost:5432/ollie_test';
+
 let prisma: PrismaClient | null = null;
+let signalPrismaClient: PrismaClient | null = null;
 
 export function testPrisma(): PrismaClient {
   prisma ??= new PrismaClient({ datasourceUrl: TEST_DATABASE_URL });
   return prisma;
+}
+
+export function signalPrisma(): PrismaClient {
+  signalPrismaClient ??= new PrismaClient({ datasourceUrl: SIGNAL_TEST_DATABASE_URL });
+  return signalPrismaClient;
 }
 
 /**
@@ -31,15 +47,16 @@ export async function resetDatabase(): Promise<void> {
   await db.$executeRawUnsafe("SET session_replication_role = 'replica'");
   try {
     await db.$executeRawUnsafe(
-      'TRUNCATE TABLE "track_record", "executions", "signal_events", "signals", "devices", "oauth_state" RESTART IDENTITY CASCADE',
+      'TRUNCATE TABLE "track_record", "executions", "signal_events", "signals", "devices", "oauth_state", ' +
+        '"disclaimer_acceptances", "subscriber_tokens", "users" RESTART IDENTITY CASCADE',
     );
   } finally {
     await db.$executeRawUnsafe("SET session_replication_role = 'origin'");
   }
   await db.appSettings.upsert({
     where: { id: 1 },
-    update: { killSwitch: false, executionMode: 'paper' },
-    create: { id: 1, killSwitch: false, executionMode: 'paper' },
+    update: { killSwitch: false, executionMode: 'paper', autonomy: false },
+    create: { id: 1, killSwitch: false, executionMode: 'paper', autonomy: false },
   });
 }
 
@@ -47,6 +64,10 @@ export async function closeTestPrisma(): Promise<void> {
   if (prisma) {
     await prisma.$disconnect();
     prisma = null;
+  }
+  if (signalPrismaClient) {
+    await signalPrismaClient.$disconnect();
+    signalPrismaClient = null;
   }
 }
 

@@ -1,10 +1,9 @@
 # The signal record
 
 What a signal is, what each field means, and which parts of it are guaranteed
-not to change. This describes the internal record as of Phase 1. The
-subscriber-facing published contract is a **subset** of this, defined in Phase 4
-when the Signal MCP server is built — see [Publication](#publication) for what
-will and will not cross that line.
+not to change. This describes the internal record. The subscriber-facing
+published contract is a **subset** of this — see [Publication](#publication)
+for what does and does not cross that line.
 
 ## Lifecycle
 
@@ -38,7 +37,7 @@ these are enforced by database triggers, not by the application (see
 | `execution_mode` | `paper` \| `live` | Fixed at creation; the signal settles in the mode it was created in. |
 | `decided_at` | timestamptz, nullable | Required when leaving `pending`. |
 | `decide_reason` | text, nullable | Why. Set once, alongside the status change. |
-| `published` / `published_at` | boolean / timestamptz | One-way; a published signal cannot be unpublished. |
+| `published` / `published_at` | boolean / timestamptz | One-way, set together in one statement after the approving fill is recorded. The trigger refuses every other change to either column. |
 | `dedupe_key` | text, unique | `{rule}:{symbol}:{side}:{barTime}` — one signal per rule per bar. |
 | `ref_id` | uuid | Broker idempotency key, allocated at creation, unused until Phase 5. |
 
@@ -104,15 +103,37 @@ is the current view.
 
 ## Publication
 
-`published` and `published_at` exist now but nothing sets them: publication
-belongs to Phase 4. When the Signal MCP server is built, the published payload
-will be a **subset** of this record and the following will not cross the line:
+A signal is published **automatically when its approval's fill is recorded** —
+the decision route flips `published` in the same request, after the
+`executions` row is durable, and a reconciliation sweep (`PUBLISH_SWEEP_CRON`)
+flips any signal a crash left approved-and-filled-but-unpublished. A subscriber
+can therefore never see a signal the owner's own book has not already filled.
+Rejected and expired signals are never published. The flip is one-way and
+enforced by the `signals` update trigger: `published false → true` with
+`published_at null → set` in one statement is the only legal change to the pair,
+and a published row's pair is frozen for life.
+
+The published payload is produced by exactly one function,
+`toPublishedSignal` (`backend/src/published/signal.ts`), and every
+subscriber-facing surface — the REST feed and the MCP tools — goes through it.
+A redaction test asserts each forbidden field is absent from its output for a
+fully-populated signal.
+
+**What crosses:** `id`, `created_at`, `published_at`, `symbol`, `side`,
+`signal_type`, `quantity`, `thesis`, `thesis_source`, `indicators`, and the
+review snapshot's `estimated_price` only.
+
+**What never crosses:**
 
 - `ref_id` — a broker idempotency key for the owner's account.
-- `review_snapshot.raw` — the owner's account state and broker alerts.
+- `review_snapshot` beyond `estimated_price` — `raw` is the owner's account
+  state and `alerts` are the broker's checks against it.
 - `execution_mode` and everything in `executions` — the owner's fills.
+- `status`, `decided_at`, `decide_reason`, `dedupe_key` — the owner's decision
+  process; the fact of publication already says the signal was approved.
 
-What subscribers get is the generic, timestamped, non-personalized signal:
-symbol, side, quantity, thesis, indicators, and the accrued track record.
-Identical for every subscriber, with no personalization — which is the
-distinction PRD §9 turns on.
+What subscribers get is the generic, timestamped, non-personalized signal,
+plus the per-signal `track_record` rows behind it (entry, marks with
+`mark_price`, close with `closed_by_signal_id`, corrections) so every published
+aggregate can be recomputed. Identical for every subscriber, with no
+personalization — which is the distinction PRD §9 turns on.

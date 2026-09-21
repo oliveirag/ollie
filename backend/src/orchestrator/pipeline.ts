@@ -128,16 +128,23 @@ export async function runPipeline(deps: PipelineDeps): Promise<PipelineResult> {
     settings.executionMode === 'paper' ? await paperPositions(prisma) : await broker.getPositions();
   const heldBySymbol = new Map(positions.map((p) => [p.symbol, p.sharesAvailableForSells]));
 
-  // When each symbol's oldest lot was opened, for the time stop. Paper only:
-  // a broker position carries no lot-open date, so in live mode the time stop
-  // stays silent rather than guessing an age from data it does not have.
+  // When each symbol's oldest lot was opened, for the time stop. Since Phase 5
+  // the record is the lot ledger in both modes — a live fill opens a lot the
+  // same way a paper one does — so the time stop reads it in both. The
+  // long-only check above still asks the broker in live mode, because a share
+  // the owner sold by hand is not Ollie's to sell again.
   const openedBySymbol = new Map<string, Date>();
-  if (settings.executionMode === 'paper') {
-    for (const lot of await listOpenLots(prisma)) {
-      const existing = openedBySymbol.get(lot.symbol);
-      if (!existing || lot.recordedAt < existing) openedBySymbol.set(lot.symbol, lot.recordedAt);
-    }
+  for (const lot of await listOpenLots(prisma)) {
+    const existing = openedBySymbol.get(lot.symbol);
+    if (!existing || lot.recordedAt < existing) openedBySymbol.set(lot.symbol, lot.recordedAt);
   }
+
+  // Phase 5: a signal born under autonomy carries the instant the sweep may
+  // approve it. Stamped here, at creation, and frozen by the trigger.
+  const autoDecideAt =
+    config.autonomyEnabled && settings.autonomy
+      ? new Date(now.getTime() + config.autonomyVetoMinutes * 60_000)
+      : null;
 
   const candidates: CandidateSignal[] = [];
 
@@ -313,6 +320,7 @@ export async function runPipeline(deps: PipelineDeps): Promise<PipelineResult> {
           reviewSnapshot: snapshot,
           executionMode: settings.executionMode,
           dedupeKey: dedupeKeyFor(candidate),
+          autoDecideAt,
         },
         prisma,
       );

@@ -41,6 +41,9 @@ components:
         reason:
           type: string
           maxLength: 500
+        confirm_live:
+          description: "Phase 5: must be true to approve a live-mode signal — the per-approval confirmation PRD §4.2 asks for. Only the live confirmation sheet sends it."
+          type: boolean
       required:
         - action
     SettingsUpdateInput:
@@ -50,6 +53,8 @@ components:
           type: boolean
         execution_mode:
           $ref: "#/components/schemas/ExecutionModeInput"
+        autonomy:
+          type: boolean
     DeviceRegistrationInput:
       type: object
       properties:
@@ -119,6 +124,45 @@ components:
         - type
         - details
       additionalProperties: false
+    Order:
+      type: object
+      properties:
+        broker_order_id:
+          type: string
+        state:
+          type: string
+          description: "The broker's state, verbatim: new, queued, confirmed, unconfirmed, partially_filled, filled, cancelled, rejected, failed, voided"
+        cumulative_quantity:
+          type: string
+          description: |-
+            Decimal number as a string. Never parse this into a float.
+
+            Stored prices are serialized verbatim from the database, so trailing zeros are not padded — "100" and "100.00" are the same value, and a fill of "182.6825" keeps all four places. Computed aggregates are fixed at two. Format for display on the client; do not assume a decimal-place count.
+        average_price:
+          type: string
+          description: |-
+            Decimal number as a string. Never parse this into a float.
+
+            Stored prices are serialized verbatim from the database, so trailing zeros are not padded — "100" and "100.00" are the same value, and a fill of "182.6825" keeps all four places. Computed aggregates are fixed at two. Format for display on the client; do not assume a decimal-place count.
+          nullable: true
+        placed_at:
+          type: string
+          format: date-time
+          pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z))$
+        terminal_at:
+          type: string
+          format: date-time
+          pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z))$
+          nullable: true
+          description: Set once the order can no longer fill. Null while the poll is still watching it.
+      required:
+        - broker_order_id
+        - state
+        - cumulative_quantity
+        - average_price
+        - placed_at
+        - terminal_at
+      additionalProperties: false
     SignalSummary:
       type: object
       properties:
@@ -175,6 +219,25 @@ components:
         decide_reason:
           type: string
           nullable: true
+        published:
+          type: boolean
+          description: Whether this signal has reached the subscriber feed. Flipped once, after the approving fill is recorded, and never back.
+        published_at:
+          type: string
+          format: date-time
+          pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z))$
+          nullable: true
+        auto_decide_at:
+          type: string
+          format: date-time
+          pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z))$
+          nullable: true
+          description: "Phase 5: when the autonomy sweep may approve this signal if nobody has. Null when autonomy was off at creation."
+        order:
+          description: The live order this approval placed. Null for paper signals and for live signals not yet approved.
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/Order"
       required:
         - id
         - created_at
@@ -190,6 +253,10 @@ components:
         - expires_at
         - decided_at
         - decide_reason
+        - published
+        - published_at
+        - auto_decide_at
+        - order
       additionalProperties: false
     SignalList:
       type: object
@@ -277,6 +344,25 @@ components:
         decide_reason:
           type: string
           nullable: true
+        published:
+          type: boolean
+          description: Whether this signal has reached the subscriber feed. Flipped once, after the approving fill is recorded, and never back.
+        published_at:
+          type: string
+          format: date-time
+          pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z))$
+          nullable: true
+        auto_decide_at:
+          type: string
+          format: date-time
+          pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z))$
+          nullable: true
+          description: "Phase 5: when the autonomy sweep may approve this signal if nobody has. Null when autonomy was off at creation."
+        order:
+          description: The live order this approval placed. Null for paper signals and for live signals not yet approved.
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/Order"
         indicators:
           description: Computed strategy inputs at proposal time (rsi14, macd line/signal/hist, …)
         review:
@@ -320,6 +406,10 @@ components:
         - expires_at
         - decided_at
         - decide_reason
+        - published
+        - published_at
+        - auto_decide_at
+        - order
         - indicators
         - review
         - events
@@ -367,13 +457,19 @@ components:
         signal:
           $ref: "#/components/schemas/SignalSummary"
         execution:
-          description: The fill, on approval. Null for a rejection — nothing is executed.
+          description: The fill, on a paper approval. Null for a rejection, and for a live approval whose fill arrives later through the order poll.
           nullable: true
           allOf:
             - $ref: "#/components/schemas/Execution"
+        order:
+          description: The live order this approval placed. Null for paper approvals and rejections.
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/Order"
       required:
         - signal
         - execution
+        - order
       additionalProperties: false
     OpenLot:
       type: object
@@ -490,10 +586,24 @@ components:
         live_trading_enabled:
           type: boolean
           description: From the environment, read-only. The second of the two gates in front of real money; the app renders the mode toggle as locked while this is false.
+        autonomy:
+          type: boolean
+          description: "Phase 5: the runtime half of the autonomy gate. Signals auto-approve after the veto window only while both halves are on."
+        autonomy_enabled:
+          type: boolean
+          description: AUTONOMY_ENABLED from the environment, read-only. The app renders the autonomy toggle as locked while this is false.
+        autonomy_veto_minutes:
+          type: integer
+          minimum: -9007199254740991
+          maximum: 9007199254740991
+          description: How long the owner has to veto before the sweep approves. From the environment.
       required:
         - kill_switch
         - execution_mode
         - live_trading_enabled
+        - autonomy
+        - autonomy_enabled
+        - autonomy_veto_minutes
       additionalProperties: false
     HealthReport:
       type: object
@@ -592,6 +702,12 @@ components:
           items:
             $ref: "#/components/schemas/CurvePoint"
           description: A PnL curve based at zero, not a portfolio value
+        live_since:
+          type: string
+          format: date-time
+          pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z))$
+          nullable: true
+          description: When the first live-money signal was published. Everything before it settled on paper. Null while the whole record is paper.
       required:
         - closed_trades
         - open_positions
@@ -600,6 +716,7 @@ components:
         - average_return
         - total_realized_pnl
         - curve
+        - live_since
       additionalProperties: false
     Device:
       type: object
@@ -786,7 +903,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
         "409":
-          description: Already decided or expired, the kill switch is engaged, or live mode is not enabled
+          description: Already decided or expired, the kill switch is engaged, live mode is not enabled, or a live approval lacks confirm_live
           content:
             application/json:
               schema:
@@ -877,7 +994,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
         "409":
-          description: Live mode requested while LIVE_TRADING_ENABLED is false
+          description: Live mode requested while LIVE_TRADING_ENABLED is false, or autonomy while AUTONOMY_ENABLED is false
           content:
             application/json:
               schema:

@@ -19,6 +19,14 @@ extension TokenStore {
     /// test supplies it: `xcodebuild test TEST_RUNNER_OWNER_API_TOKEN=…`
     /// forwards the variable to the app under test with the prefix stripped.
     static func seedFromLaunchArgumentsIfNeeded() {
+        // `RESET_SUBSCRIBER=1` starts the subscriber side signed out, so the
+        // onboarding UI test begins from the welcome screen on every run
+        // rather than wherever the last run left the Keychain.
+        if ProcessInfo.processInfo.environment["RESET_SUBSCRIBER"] == "1" {
+            delete(.subscriber)
+            delete(.owner)
+        }
+
         let candidate = UserDefaults.standard.string(forKey: "OwnerAPIToken")
             ?? ProcessInfo.processInfo.environment["OWNER_API_TOKEN"]
 
@@ -27,6 +35,14 @@ extension TokenStore {
         else { return }
 
         save(token)
+    }
+
+    /// Whether the Debug-only "test identity" sign-in is offered. Sign in with
+    /// Apple needs a paid Apple Developer team and per-app configuration the
+    /// simulator does not have (Phase 4, risk 3); the backend accepts the
+    /// stand-in only with `SIWA_STUB=true`, which it refuses in production.
+    static var testIdentityEnabled: Bool {
+        ProcessInfo.processInfo.environment["SUBSCRIBER_TEST_IDENTITY"] == "1"
     }
 }
 #endif

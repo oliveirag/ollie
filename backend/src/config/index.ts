@@ -68,9 +68,30 @@ const EnvSchema = z.object({
 
   PIPELINE_CRON: z.string().default('35 9 * * 1-5'),
   EXPIRY_SWEEP_CRON: z.string().default('* * * * *'),
+  /**
+   * How often the orchestrator looks for an approved-and-filled signal the
+   * decision route failed to publish. Bounds the crash window (Phase 4,
+   * decision 1); normally finds nothing.
+   */
+  PUBLISH_SWEEP_CRON: z.string().default('*/5 * * * *'),
 
   KILL_SWITCH: bool.default(false),
   LIVE_TRADING_ENABLED: bool.default(false),
+
+  /** Phase 5. How often open live orders are read back from the broker. */
+  ORDER_POLL_CRON: z.string().default('* 9-16 * * 1-5'),
+  /** Deploy half of the autonomy gate; app_settings.autonomy is the other. */
+  AUTONOMY_ENABLED: bool.default(false),
+  /** Minutes the owner has to veto before the sweep approves. 0 = immediate. */
+  AUTONOMY_VETO_MINUTES: z.coerce.number().int().min(0).default(5),
+  AUTONOMY_SWEEP_CRON: z.string().default('* * * * *'),
+
+  /**
+   * `mock` runs the service against the fixture broker, whose orders fill on
+   * the first poll, so the live approval flow can be driven on a simulator
+   * with no brokerage account involved. Refused at boot in production.
+   */
+  BROKER: z.enum(['robinhood', 'mock']).default('robinhood'),
 
   /**
    * Bearer credential for the owner API (Phase 2). Empty means "no API",
@@ -96,6 +117,26 @@ const EnvSchema = z.object({
   APNS_KEY_ID: z.string().default(''),
   APNS_TEAM_ID: z.string().default(''),
   APNS_BUNDLE_ID: z.string().default(''),
+
+  /**
+   * The signal service (Phase 4). Validated for shape here; the service
+   * itself refuses to boot when SIGNAL_DATABASE_URL is unset, the same way the
+   * owner API refuses to boot tokenless. The orchestrator never reads these.
+   */
+  SIGNAL_SERVICE_PORT: positiveInt.default(3100),
+  SIGNAL_DATABASE_URL: z.string().url().or(z.literal('')).default(''),
+  /** Comma-separated. Empty means no one can complete a first sign-in. */
+  SUBSCRIBER_INVITE_CODES: z.string().default(''),
+  /** The SIWA audience. Defaults to the app's bundle id. */
+  APPLE_APP_BUNDLE_ID: z.string().default('com.guilhermeoliveira.Ollie'),
+  /** Advertised to subscribers as the MCP URL after minting a token. */
+  SIGNAL_PUBLIC_URL: z.string().url().or(z.literal('')).default(''),
+  /**
+   * Accept `fake:` identity tokens instead of verifying against Apple. For
+   * the simulator and UI tests; the signal service refuses to start with this
+   * on in production.
+   */
+  SIWA_STUB: bool.default(false),
 });
 
 export type Env = z.infer<typeof EnvSchema>;
@@ -134,11 +175,17 @@ export interface Config {
   signalExpiryMinutes: number;
   pipelineCron: string;
   expirySweepCron: string;
+  publishSweepCron: string;
   markCron: string;
   /** Cron expressions above are interpreted in this zone; persistence is always UTC. */
   timezone: string;
   killSwitchEnv: boolean;
   liveTradingEnabled: boolean;
+  orderPollCron: string;
+  autonomyEnabled: boolean;
+  autonomyVetoMinutes: number;
+  autonomySweepCron: string;
+  broker: Env['BROKER'];
   /** null when unset; the API refuses to start rather than run unauthenticated. */
   ownerApiToken: string | null;
   anthropic: { apiKey: string; model: string };
@@ -150,6 +197,16 @@ export interface Config {
     oauthClientId: string;
     oauthRefreshToken: string;
     accountNumber: string | null;
+  };
+  signalService: {
+    port: number;
+    /** null when unset; the signal service refuses to start. */
+    databaseUrl: string | null;
+    inviteCodes: readonly string[];
+    appleAudience: string;
+    /** null when unset; the mint response then omits the URL. */
+    publicUrl: string | null;
+    siwaStub: boolean;
   };
 }
 
@@ -223,10 +280,16 @@ export function buildConfig(source: NodeJS.ProcessEnv = process.env): Config {
     signalExpiryMinutes: env.SIGNAL_EXPIRY_MINUTES,
     pipelineCron: env.PIPELINE_CRON,
     expirySweepCron: env.EXPIRY_SWEEP_CRON,
+    publishSweepCron: env.PUBLISH_SWEEP_CRON,
     markCron: env.MARK_CRON,
     timezone: TIMEZONE,
     killSwitchEnv: env.KILL_SWITCH,
     liveTradingEnabled: env.LIVE_TRADING_ENABLED,
+    orderPollCron: env.ORDER_POLL_CRON,
+    autonomyEnabled: env.AUTONOMY_ENABLED,
+    autonomyVetoMinutes: env.AUTONOMY_VETO_MINUTES,
+    autonomySweepCron: env.AUTONOMY_SWEEP_CRON,
+    broker: env.BROKER,
     ownerApiToken: env.OWNER_API_TOKEN || null,
     anthropic: { apiKey: env.ANTHROPIC_API_KEY, model: env.ANTHROPIC_MODEL },
     apns: {
@@ -243,6 +306,18 @@ export function buildConfig(source: NodeJS.ProcessEnv = process.env): Config {
       oauthClientId: env.RH_OAUTH_CLIENT_ID,
       oauthRefreshToken: env.RH_OAUTH_REFRESH_TOKEN,
       accountNumber: env.RH_ACCOUNT_NUMBER || null,
+    },
+    signalService: {
+      port: env.SIGNAL_SERVICE_PORT,
+      databaseUrl: env.SIGNAL_DATABASE_URL || null,
+      inviteCodes: Object.freeze(
+        env.SUBSCRIBER_INVITE_CODES.split(',')
+          .map((code) => code.trim())
+          .filter((code) => code.length > 0),
+      ),
+      appleAudience: env.APPLE_APP_BUNDLE_ID,
+      publicUrl: env.SIGNAL_PUBLIC_URL || null,
+      siwaStub: env.SIWA_STUB,
     },
   };
 }

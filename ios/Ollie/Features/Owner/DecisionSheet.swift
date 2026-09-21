@@ -14,6 +14,15 @@ struct DecisionSheet: View {
 
     @Environment(\.dismiss) private var dismiss
     @State private var reason = ""
+    /// The live path's second tap (Phase 5, decision 4). The backend refuses a
+    /// live approval without `confirm_live`, and this is the only thing that
+    /// sends it.
+    @State private var acknowledgedLive = false
+
+    /// A live-mode signal being approved: a real order, and the sheet says so.
+    private var isLiveApproval: Bool {
+        action == .approve && detail?.execution_mode == .live
+    }
 
     var body: some View {
         NavigationStack {
@@ -40,6 +49,27 @@ struct DecisionSheet: View {
                     }
                 }
 
+                if isLiveApproval, let detail {
+                    Section {
+                        Label("This places a real order", systemImage: "exclamationmark.octagon.fill")
+                            .font(.headline)
+                            .foregroundStyle(TradingMode.live.accent)
+                        if let notional = Self.notional(detail) {
+                            HStack {
+                                Text("About").foregroundStyle(.secondary)
+                                MoneyText(value: notional, size: 17, prefix: "$")
+                                Text("at the proposal's estimate").foregroundStyle(.secondary)
+                            }
+                            .font(.subheadline)
+                        }
+                        Toggle("I understand this uses real money", isOn: $acknowledgedLive)
+                            .tint(TradingMode.live.accent)
+                            .accessibilityIdentifier("decision.acknowledgeLive")
+                    } footer: {
+                        Text("Ollie reviews the order again, places it, and records the fill when Robinhood reports it. The signal is published only after that fill.")
+                    }
+                }
+
                 Section {
                     TextField("Reason (optional)", text: $reason, axis: .vertical)
                         .lineLimit(1...3)
@@ -62,8 +92,9 @@ struct DecisionSheet: View {
                         }
                     }
                     .buttonStyle(.borderedProminent)
-                    .tint(action == .approve ? mode.accent : Theme.destructive)
-                    .disabled(isWorking)
+                    .tint(action == .approve ? (isLiveApproval ? TradingMode.live.accent : mode.accent) : Theme.destructive)
+                    .disabled(isWorking || (isLiveApproval && !acknowledgedLive))
+                    .accessibilityIdentifier("decision.confirm")
 
                     Button("Cancel", role: .cancel) { dismiss() }
                         .frame(maxWidth: .infinity)
@@ -78,7 +109,24 @@ struct DecisionSheet: View {
     private var confirmLabel: String {
         guard let detail else { return action == .approve ? "Approve" : "Reject" }
         let side = detail.side == .buy ? "buy" : "sell"
-        return action == .approve ? "Approve — \(mode.rawValue) \(side)" : "Reject"
+        guard action == .approve else { return "Reject" }
+        // The signal's own mode, not the account's: a paper signal approved
+        // after the flip still settles on paper, and the button must not say
+        // otherwise.
+        return isLiveApproval ? "Place real \(side) order" : "Approve — paper \(side)"
+    }
+
+    /// Quantity × the review estimate, as a string, without going through a
+    /// float for the money itself — Decimal parses and multiplies exactly.
+    private static func notional(_ detail: SignalDetail) -> String? {
+        guard let price = detail.review?.estimated_price ?? detail.estimated_price,
+              let p = Decimal(string: price),
+              let q = Decimal(string: detail.quantity)
+        else { return nil }
+        var product = p * q
+        var rounded = Decimal()
+        NSDecimalRound(&rounded, &product, 2, .plain)
+        return NSDecimalNumber(decimal: rounded).stringValue
     }
 
     /// The sheet reuses the list's order line, which is typed against the
@@ -99,7 +147,11 @@ struct DecisionSheet: View {
             thesis_source: detail.thesis_source.map { .init(value1: $0.value1) },
             expires_at: detail.expires_at,
             decided_at: detail.decided_at,
-            decide_reason: detail.decide_reason
+            decide_reason: detail.decide_reason,
+            published: detail.published,
+            published_at: detail.published_at,
+            auto_decide_at: detail.auto_decide_at,
+            order: detail.order.map { .init(value1: $0.value1) }
         )
     }
 }

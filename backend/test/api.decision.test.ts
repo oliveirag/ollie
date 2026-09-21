@@ -97,6 +97,28 @@ describe('POST /v1/signals/:id/decision — approve', () => {
     expect(await listExecutions(signal.id, db)).toHaveLength(1);
   });
 
+  it('publishes the signal once the fill is recorded, and only once', async () => {
+    const signal = await seedSignal();
+
+    const response = await decide(signal.id, { action: 'approve' });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.signal.published).toBe(true);
+    expect(body.signal.published_at).not.toBeNull();
+
+    // Ordering is the point (Phase 4, decision 1): the execution row exists
+    // before the flip, so published_at can never precede the fill.
+    const [execution] = await listExecutions(signal.id, db);
+    expect(new Date(body.signal.published_at).getTime()).toBeGreaterThanOrEqual(
+      execution!.filledAt.getTime(),
+    );
+
+    const stored = await getSignal(signal.id, db);
+    expect(stored!.published).toBe(true);
+    expect(stored!.publishedAt?.toISOString()).toBe(body.signal.published_at);
+  });
+
   it('records the transition in the append-only audit', async () => {
     const signal = await seedSignal();
     await decide(signal.id, { action: 'approve', reason: 'audit me' });
@@ -119,7 +141,7 @@ describe('POST /v1/signals/:id/decision — reject', () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.json()).toMatchObject({
-      signal: { status: 'rejected', decide_reason: 'thesis is thin' },
+      signal: { status: 'rejected', decide_reason: 'thesis is thin', published: false },
       execution: null,
     });
 

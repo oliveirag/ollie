@@ -41,3 +41,15 @@ export async function setExecutionMode(
     data: { executionMode: mode },
   });
 }
+
+/** Runtime half of the autonomy gate (Phase 5). The deploy half is AUTONOMY_ENABLED. */
+export async function setAutonomy(
+  on: boolean,
+  prisma: PrismaClient = getPrisma(),
+): Promise<AppSettings> {
+  await getAppSettings(prisma);
+  return prisma.appSettings.update({
+    where: { id: SETTINGS_ID },
+    data: { autonomy: on },
+  });
+}

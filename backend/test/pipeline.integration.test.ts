@@ -1,3 +1,5 @@
+import { execFileSync } from 'node:child_process';
+import { join } from 'node:path';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import type { Logger } from 'pino';
 import pino from 'pino';
@@ -282,7 +284,9 @@ describe('approval writes a paper fill', () => {
     const approved = (await getSignal(signal.id, db))!;
 
     const executor = new PaperExecutor({ config: config(), logger, prisma: db, now: clock });
-    const { execution, trackRecord } = await executor.execute(approved);
+    const outcome = await executor.execute(approved);
+    if (outcome.kind !== 'filled') throw new Error('a paper fill is always synchronous');
+    const { execution, trackRecord } = outcome;
 
     // 308.63 * (1 + 10/10000) = 308.938630, rounded to six places.
     expect(execution.fillPrice.toString()).toBe('308.93863');
@@ -311,9 +315,10 @@ describe('approval writes a paper fill', () => {
     await executor.execute(approved);
 
     const sellSignal = { ...approved, side: 'sell' as const };
-    const { execution } = await executor.execute(sellSignal);
+    const outcome = await executor.execute(sellSignal);
+    if (outcome.kind !== 'filled') throw new Error('a paper fill is always synchronous');
 
-    expect(execution.fillPrice.toString()).toBe('308.32137');
+    expect(outcome.execution.fillPrice.toString()).toBe('308.32137');
   });
 
   it('never touches the broker', async () => {
@@ -399,9 +404,10 @@ describe('expiry sweep', () => {
   });
 });
 
-// The PRD's hardest guarantee for Phase 1: there is no reachable path to a
-// real order. These assert it at the seam rather than trusting a comment.
-describe('live execution is unreachable', () => {
+// The PRD's hardest guarantee: no path to a real order except the one Phase 5
+// built, behind its gates. These assert it at the seam rather than trusting a
+// comment.
+describe('live execution is gated', () => {
   it('throws when the environment gate is closed', async () => {
     const { signals } = await runPipeline(deps());
     const signal = { ...signals[0]!, executionMode: 'live' as const };
@@ -426,19 +432,41 @@ describe('live execution is unreachable', () => {
     await expect(executor.execute(signal)).rejects.toThrow(/execution_mode is not live/);
   });
 
-  it('still throws with both gates open, because the path does not exist yet', async () => {
+  it('with both gates open, reviews again before placing — and a broker that refuses stays refused', async () => {
     await setExecutionMode('live', db);
     const { signals } = await runPipeline(deps());
     const signal = { ...signals[0]!, executionMode: 'live' as const };
 
+    // No scripted order book: the mock refuses to place, as it always has.
     const mock = broker();
     const executor = new LiveExecutor(
       { config: config({ LIVE_TRADING_ENABLED: 'true' }), logger, prisma: db },
       mock,
     );
 
-    await expect(executor.execute(signal)).rejects.toThrow(/not implemented until Phase 5/);
-    expect(mock.callsTo('placeEquityOrder')).toHaveLength(0);
+    const reviewsBefore = mock.callsTo('reviewEquityOrder').length;
+    await expect(executor.execute(signal)).rejects.toThrow(/refuses to place orders/);
+
+    // PRD §3.5: the execution-time review happened, then the place was tried.
+    expect(mock.callsTo('reviewEquityOrder')).toHaveLength(reviewsBefore + 1);
+    const methods = mock.calls.map((call) => call.method);
+    expect(methods.lastIndexOf('reviewEquityOrder')).toBeLessThan(
+      methods.lastIndexOf('placeEquityOrder'),
+    );
+  });
+
+  it('calls placeEquityOrder from exactly one place in src', () => {
+    const hits = execFileSync('grep', ['-rn', 'placeEquityOrder(', 'src'], {
+      cwd: join(__dirname, '..'),
+      encoding: 'utf8',
+    })
+      .trim()
+      .split('\n')
+      // Declarations and implementations are not call sites.
+      .filter((line) => !/async placeEquityOrder\(|^\S+:\d+:\s*placeEquityOrder\(request/.test(line));
+
+    expect(hits).toHaveLength(1);
+    expect(hits[0]).toMatch(/^src\/orchestrator\/executor\.ts:/);
   });
 
   it('refuses to settle a live signal through the paper executor', async () => {

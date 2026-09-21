@@ -1,4 +1,5 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
+import { firstLivePublishedAt } from '../../db/signals.js';
 import { listAllTrackRecordRows } from '../../db/trackRecord.js';
 import { computeTrackRecord } from '../../orchestrator/trackRecordStats.js';
 import { ErrorSchema, TrackRecordSchema } from '../schemas.js';
@@ -41,6 +42,7 @@ export const registerTrackRecordRoutes: FastifyPluginAsyncZod = async (app) => {
         average_return: stats.averageReturn,
         total_realized_pnl: stats.totalRealizedPnl.toFixed(2),
         curve: stats.curve,
+        live_since: (await firstLivePublishedAt())?.toISOString() ?? null,
       });
     },
   );

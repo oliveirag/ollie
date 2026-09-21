@@ -1,0 +1,874 @@
+# Generated from the zod route schemas. Do not edit by hand.
+#
+# Regenerate with:  npm run openapi:write
+# The drift test (test/openapi.drift.test.ts) fails if this file falls behind
+# the routes, which is how a Swift client and a Node handler stay in sync.
+#
+# Emitted as OpenAPI 3.0.3 with `nullable: true` rather than 3.1's
+# `anyOf: [X, {type: "null"}]`: swift-openapi-generator does not support the
+# 3.1 null type and drops nullable properties from the generated client
+# entirely. See toOpenApi30 in src/server/openapi.ts.
+openapi: 3.0.3
+info:
+  title: Ollie Signal API
+  version: 0.1.0
+  description: |-
+    Subscriber-facing API for the Ollie signal feed.
+
+    `POST /v1/session` is public and turns a Sign in with Apple identity token into an app session token; everything else under /v1 requires that token as a bearer. `/healthz` is public. The MCP endpoint at `/mcp` takes a separately minted MCP token and is not described by this document.
+
+    Nothing here can place, modify, or read an order on any brokerage account. Every response is identical for every subscriber.
+components:
+  securitySchemes:
+    subscriberToken:
+      type: http
+      scheme: bearer
+      description: The app session token from POST /v1/session. Per-subscriber, hashed at rest, revocable. Not accepted at /mcp, which takes an MCP token.
+  schemas:
+    SessionRequestInput:
+      type: object
+      properties:
+        identity_token:
+          type: string
+          minLength: 1
+          description: The Sign in with Apple identity token, verbatim from ASAuthorization
+        invite_code:
+          description: Required on the first sign-in while the soft launch is invite-gated
+          type: string
+          maxLength: 64
+      required:
+        - identity_token
+    AcceptDisclaimerRequestInput:
+      type: object
+      properties:
+        version:
+          type: string
+          description: The version the client displayed; must match the current one
+      required:
+        - version
+    SignalSide:
+      type: string
+      enum:
+        - buy
+        - sell
+    SignalStatus:
+      type: string
+      enum:
+        - pending
+        - approved
+        - rejected
+        - expired
+    SignalType:
+      type: string
+      enum:
+        - technical
+        - rebalance
+        - time_stop
+      description: time_stop is an exit proposed by the holding-period rule. It consults no indicator, so its `indicators` payload carries bars_held and max_holding_period_bars rather than RSI and MACD figures.
+    ThesisSource:
+      type: string
+      enum:
+        - llm
+        - fallback_template
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+        detail:
+          type: string
+        status:
+          $ref: "#/components/schemas/SignalStatus"
+      required:
+        - error
+      additionalProperties: false
+      description: Error response
+    CurvePoint:
+      type: object
+      properties:
+        date:
+          type: string
+          description: UTC calendar day, YYYY-MM-DD
+        value:
+          type: number
+          nullable: true
+          description: Cumulative realized PnL through this day plus the day's marks. Null when withheld
+        withheld:
+          type: boolean
+          description: True when a lot open on this day had no mark, so no honest total exists. A partial sum would misstate a published curve, so the day is reported as absent rather than approximated
+      required:
+        - date
+        - value
+        - withheld
+      additionalProperties: false
+    PublishedSignal:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+        created_at:
+          type: string
+          format: date-time
+          pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z))$
+          description: When the signal fired
+        published_at:
+          type: string
+          format: date-time
+          pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z))$
+          description: When it reached the feed — after the owner's own fill was recorded, never before
+        symbol:
+          type: string
+        side:
+          $ref: "#/components/schemas/SignalSide"
+        signal_type:
+          $ref: "#/components/schemas/SignalType"
+        quantity:
+          type: string
+          description: Whole shares the owner's strategy sized. Not a recommendation for anyone else's size.
+        thesis:
+          type: string
+          nullable: true
+        thesis_source:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/ThesisSource"
+        indicators:
+          description: Every input the rule read, thresholds included, so the decision can be replayed
+        estimated_price:
+          type: string
+          description: |-
+            Decimal number as a string. Never parse this into a float.
+
+            Stored prices are serialized verbatim from the database, so trailing zeros are not padded — "100" and "100.00" are the same value, and a fill of "182.6825" keeps all four places. Computed aggregates are fixed at two. Format for display on the client; do not assume a decimal-place count.
+          nullable: true
+      required:
+        - id
+        - created_at
+        - published_at
+        - symbol
+        - side
+        - signal_type
+        - quantity
+        - thesis
+        - thesis_source
+        - indicators
+        - estimated_price
+      additionalProperties: false
+    Subscriber:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+        email:
+          type: string
+          nullable: true
+          description: May be a private-relay address or null
+        created_at:
+          type: string
+          format: date-time
+          pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z))$
+      required:
+        - id
+        - email
+        - created_at
+      additionalProperties: false
+    Session:
+      type: object
+      properties:
+        token:
+          type: string
+          description: The app session bearer token. Store it in the Keychain; it is not shown again.
+        subscriber:
+          $ref: "#/components/schemas/Subscriber"
+      required:
+        - token
+        - subscriber
+      additionalProperties: false
+    Disclaimer:
+      type: object
+      properties:
+        version:
+          type: string
+          description: sha256 of the text. Send it back on accept.
+        text:
+          type: string
+          description: Markdown
+      required:
+        - version
+        - text
+      additionalProperties: false
+    Onboarding:
+      type: object
+      properties:
+        disclaimer:
+          $ref: "#/components/schemas/Disclaimer"
+        accepted_current_version:
+          type: boolean
+          description: Whether this subscriber has an acceptance row for the version above
+        has_mcp_token:
+          type: boolean
+          description: Whether an unrevoked MCP token exists
+        mcp_url:
+          type: string
+          nullable: true
+          description: Where to point an agent. Null only when the service has no public URL configured.
+      required:
+        - disclaimer
+        - accepted_current_version
+        - has_mcp_token
+        - mcp_url
+      additionalProperties: false
+    DisclaimerAcceptance:
+      type: object
+      properties:
+        version:
+          type: string
+        accepted_at:
+          type: string
+          format: date-time
+          pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z))$
+      required:
+        - version
+        - accepted_at
+      additionalProperties: false
+    McpToken:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+        created_at:
+          type: string
+          format: date-time
+          pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z))$
+        last_used_at:
+          type: string
+          format: date-time
+          pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z))$
+          nullable: true
+        revoked_at:
+          type: string
+          format: date-time
+          pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z))$
+          nullable: true
+      required:
+        - id
+        - created_at
+        - last_used_at
+        - revoked_at
+      additionalProperties: false
+    McpTokenMinted:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+        created_at:
+          type: string
+          format: date-time
+          pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z))$
+        last_used_at:
+          type: string
+          format: date-time
+          pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z))$
+          nullable: true
+        revoked_at:
+          type: string
+          format: date-time
+          pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z))$
+          nullable: true
+        token:
+          type: string
+          description: Shown exactly once. Only its hash is stored.
+        mcp_url:
+          type: string
+          nullable: true
+      required:
+        - id
+        - created_at
+        - last_used_at
+        - revoked_at
+        - token
+        - mcp_url
+      additionalProperties: false
+    McpTokenList:
+      type: object
+      properties:
+        tokens:
+          type: array
+          items:
+            $ref: "#/components/schemas/McpToken"
+      required:
+        - tokens
+      additionalProperties: false
+    Feed:
+      type: object
+      properties:
+        signals:
+          type: array
+          items:
+            $ref: "#/components/schemas/PublishedSignal"
+          description: Newest publication first
+        next_before:
+          type: string
+          format: date-time
+          pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z))$
+          nullable: true
+          description: Pass as `before` for the next page; null when this page was the last
+      required:
+        - signals
+        - next_before
+      additionalProperties: false
+    RecordRow:
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+            - open
+            - closed
+        entry_price:
+          type: string
+          description: |-
+            Decimal number as a string. Never parse this into a float.
+
+            Stored prices are serialized verbatim from the database, so trailing zeros are not padded — "100" and "100.00" are the same value, and a fill of "182.6825" keeps all four places. Computed aggregates are fixed at two. Format for display on the client; do not assume a decimal-place count.
+        exit_price:
+          type: string
+          description: |-
+            Decimal number as a string. Never parse this into a float.
+
+            Stored prices are serialized verbatim from the database, so trailing zeros are not padded — "100" and "100.00" are the same value, and a fill of "182.6825" keeps all four places. Computed aggregates are fixed at two. Format for display on the client; do not assume a decimal-place count.
+          nullable: true
+        realized_pnl:
+          type: string
+          description: |-
+            Decimal number as a string. Never parse this into a float.
+
+            Stored prices are serialized verbatim from the database, so trailing zeros are not padded — "100" and "100.00" are the same value, and a fill of "182.6825" keeps all four places. Computed aggregates are fixed at two. Format for display on the client; do not assume a decimal-place count.
+          nullable: true
+        unrealized_pnl:
+          type: string
+          description: |-
+            Decimal number as a string. Never parse this into a float.
+
+            Stored prices are serialized verbatim from the database, so trailing zeros are not padded — "100" and "100.00" are the same value, and a fill of "182.6825" keeps all four places. Computed aggregates are fixed at two. Format for display on the client; do not assume a decimal-place count.
+          nullable: true
+        mark_price:
+          type: string
+          description: |-
+            Decimal number as a string. Never parse this into a float.
+
+            Stored prices are serialized verbatim from the database, so trailing zeros are not padded — "100" and "100.00" are the same value, and a fill of "182.6825" keeps all four places. Computed aggregates are fixed at two. Format for display on the client; do not assume a decimal-place count.
+          nullable: true
+        closed_by_signal_id:
+          type: string
+          format: uuid
+          pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+          nullable: true
+          description: The published sell signal whose approval closed this lot
+        recorded_at:
+          type: string
+          format: date-time
+          pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z))$
+      required:
+        - status
+        - entry_price
+        - exit_price
+        - realized_pnl
+        - unrealized_pnl
+        - mark_price
+        - closed_by_signal_id
+        - recorded_at
+      additionalProperties: false
+    PublishedSignalDetail:
+      type: object
+      properties:
+        signal:
+          $ref: "#/components/schemas/PublishedSignal"
+        record:
+          type: array
+          items:
+            $ref: "#/components/schemas/RecordRow"
+          description: "Every track-record row for this signal, oldest first. Append-only: a later row supersedes an earlier one, never edits it."
+      required:
+        - signal
+        - record
+      additionalProperties: false
+    OpenPosition:
+      type: object
+      properties:
+        signal_id:
+          type: string
+          format: uuid
+          pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+        symbol:
+          type: string
+        side:
+          $ref: "#/components/schemas/SignalSide"
+        quantity:
+          type: string
+          description: |-
+            Decimal number as a string. Never parse this into a float.
+
+            Stored prices are serialized verbatim from the database, so trailing zeros are not padded — "100" and "100.00" are the same value, and a fill of "182.6825" keeps all four places. Computed aggregates are fixed at two. Format for display on the client; do not assume a decimal-place count.
+        entry_price:
+          type: string
+          description: |-
+            Decimal number as a string. Never parse this into a float.
+
+            Stored prices are serialized verbatim from the database, so trailing zeros are not padded — "100" and "100.00" are the same value, and a fill of "182.6825" keeps all four places. Computed aggregates are fixed at two. Format for display on the client; do not assume a decimal-place count.
+        opened_at:
+          type: string
+          format: date-time
+          pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z))$
+        latest_mark:
+          type: object
+          properties:
+            price:
+              type: string
+              description: |-
+                Decimal number as a string. Never parse this into a float.
+
+                Stored prices are serialized verbatim from the database, so trailing zeros are not padded — "100" and "100.00" are the same value, and a fill of "182.6825" keeps all four places. Computed aggregates are fixed at two. Format for display on the client; do not assume a decimal-place count.
+            unrealized_pnl:
+              type: string
+              description: |-
+                Decimal number as a string. Never parse this into a float.
+
+                Stored prices are serialized verbatim from the database, so trailing zeros are not padded — "100" and "100.00" are the same value, and a fill of "182.6825" keeps all four places. Computed aggregates are fixed at two. Format for display on the client; do not assume a decimal-place count.
+            as_of:
+              type: string
+              format: date-time
+              pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z))$
+              description: When the mark was taken — the prior close, not now
+            days_held:
+              type: integer
+              minimum: -9007199254740991
+              maximum: 9007199254740991
+              description: Calendar days from opened_at to as_of
+          required:
+            - price
+            - unrealized_pnl
+            - as_of
+            - days_held
+          additionalProperties: false
+          nullable: true
+          description: Null when the lot has never been marked. There is no live quote here by design.
+      required:
+        - signal_id
+        - symbol
+        - side
+        - quantity
+        - entry_price
+        - opened_at
+        - latest_mark
+      additionalProperties: false
+    SubscriberTrackRecord:
+      type: object
+      properties:
+        closed_trades:
+          type: integer
+          minimum: -9007199254740991
+          maximum: 9007199254740991
+        open_positions:
+          type: integer
+          minimum: -9007199254740991
+          maximum: 9007199254740991
+          description: Reported alongside win rate so the exclusion below is visible, not hidden
+        wins:
+          type: integer
+          minimum: -9007199254740991
+          maximum: 9007199254740991
+          description: Strictly positive realized PnL; a scratch is not a win
+        win_rate:
+          type: number
+          nullable: true
+          description: Wins over closed trades. Open positions are excluded from the denominator because they have no outcome yet. Null with zero closed trades — no answer, rather than a claimed 0%
+        average_return:
+          type: number
+          nullable: true
+          description: Unweighted mean of realized_pnl / (entry_price x quantity) over closed trades
+        total_realized_pnl:
+          type: string
+          description: Decimal string, two places
+        curve:
+          type: array
+          items:
+            $ref: "#/components/schemas/CurvePoint"
+          description: A PnL curve based at zero, not a portfolio value
+        live_since:
+          type: string
+          format: date-time
+          pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z))$
+          nullable: true
+          description: When the first live-money signal was published. Everything before it settled on paper. Null while the whole record is paper.
+        positions:
+          type: array
+          items:
+            $ref: "#/components/schemas/OpenPosition"
+          description: Open lots at daily-mark granularity. Same rows the curve is drawn from.
+      required:
+        - closed_trades
+        - open_positions
+        - wins
+        - win_rate
+        - average_return
+        - total_realized_pnl
+        - curve
+        - live_since
+        - positions
+      additionalProperties: false
+    SignalHealth:
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+            - ok
+            - degraded
+        database:
+          type: string
+          enum:
+            - up
+            - down
+        uptimeSeconds:
+          type: integer
+          minimum: -9007199254740991
+          maximum: 9007199254740991
+        checkedAt:
+          type: string
+          format: date-time
+          pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z))$
+      required:
+        - status
+        - database
+        - uptimeSeconds
+        - checkedAt
+      additionalProperties: false
+paths:
+  /healthz:
+    get:
+      operationId: getSignalHealth
+      summary: Liveness check
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SignalHealth"
+        "503":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SignalHealth"
+  /v1/session:
+    post:
+      operationId: createSession
+      summary: Sign in with Apple and receive an app session token
+      tags:
+        - onboarding
+      description: |-
+        Verifies the identity token against Apple's keys, then finds or creates the subscriber by Apple subject. A first sign-in needs a valid invite code while the soft launch is gated; a returning subscriber does not.
+
+        The token in the response is the only time it is shown.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SessionRequestInput"
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+        "400":
+          description: The request failed schema validation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: The identity token did not verify
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: First sign-in without a valid invite code
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /v1/onboarding:
+    get:
+      operationId: getOnboarding
+      summary: Where this subscriber is in onboarding, from rows
+      tags:
+        - onboarding
+      security:
+        - subscriberToken: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Onboarding"
+        "401":
+          description: Missing or invalid app token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /v1/disclaimer/accept:
+    post:
+      operationId: acceptDisclaimer
+      summary: Record that this subscriber accepted the disclaimer
+      tags:
+        - onboarding
+      description: "The version must be the one currently served. A mismatch means the text changed under the client: re-fetch onboarding, re-display, and accept the new version."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AcceptDisclaimerRequestInput"
+      security:
+        - subscriberToken: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DisclaimerAcceptance"
+        "400":
+          description: The request failed schema validation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Missing or invalid app token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: The version accepted is not the version served
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /v1/mcp-tokens:
+    post:
+      operationId: mintMcpToken
+      summary: Mint an agent-facing MCP token
+      tags:
+        - tokens
+      description: Refused with 409 until the current disclaimer version has been accepted — the credential cannot exist without the consent row predating it. The plaintext is returned once; only its hash is stored. Lost it? Revoke and mint again.
+      security:
+        - subscriberToken: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/McpTokenMinted"
+        "401":
+          description: Missing or invalid app token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: The current disclaimer has not been accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    get:
+      operationId: listMcpTokens
+      summary: This subscriber's MCP tokens, never the plaintext
+      tags:
+        - tokens
+      security:
+        - subscriberToken: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/McpTokenList"
+        "401":
+          description: Missing or invalid app token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /v1/mcp-tokens/{id}:
+    delete:
+      operationId: revokeMcpToken
+      summary: Revoke an MCP token
+      tags:
+        - tokens
+      description: Idempotent. The row remains as history with `revoked_at` set.
+      parameters:
+        - schema:
+            type: string
+            format: uuid
+            pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+          in: path
+          name: id
+          required: true
+      security:
+        - subscriberToken: []
+      responses:
+        "204":
+          description: Revoked, or already was
+        "400":
+          description: The request failed schema validation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Missing or invalid app token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No such token belongs to this subscriber
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /v1/feed:
+    get:
+      operationId: getFeed
+      summary: Published signals, newest first
+      tags:
+        - feed
+      description: Only signals the owner approved and whose fill was recorded appear here, and they appear only after that fill. Rejected and expired proposals are not signals. The payload is identical for every subscriber.
+      parameters:
+        - schema:
+            default: 50
+            type: integer
+            minimum: 1
+            maximum: 100
+          in: query
+          name: limit
+          required: false
+        - schema:
+            type: string
+            format: date-time
+            pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z))$
+          in: query
+          name: before
+          required: false
+          description: "Keyset cursor: return signals published strictly before this instant"
+      security:
+        - subscriberToken: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Feed"
+        "400":
+          description: The request failed schema validation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Missing or invalid app token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /v1/signals/{id}:
+    get:
+      operationId: getPublishedSignal
+      summary: One published signal and its full per-signal record
+      tags:
+        - feed
+      description: "The record rows are the recompute path: entry, every daily mark with the price it was taken at, the close, and any correction. An unpublished or unknown id returns the same 404, on purpose."
+      parameters:
+        - schema:
+            type: string
+            format: uuid
+            pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+          in: path
+          name: id
+          required: true
+      security:
+        - subscriberToken: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublishedSignalDetail"
+        "400":
+          description: The request failed schema validation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Missing or invalid app token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No published signal with that id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /v1/track-record:
+    get:
+      operationId: getSubscriberTrackRecord
+      summary: Performance to date, the curve, and open positions at daily marks
+      tags:
+        - feed
+      description: "Byte-for-byte the owner's numbers: the same pure function over the same append-only rows, computed at read time. Open positions carry their latest daily mark and its date — there is no live quote on this side of the wall, by design."
+      security:
+        - subscriberToken: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriberTrackRecord"
+        "401":
+          description: Missing or invalid app token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+servers:
+  - url: http://localhost:3100
+    description: Local development
+  - url: https://ollie-signal.up.railway.app
+    description: Railway

@@ -2,8 +2,9 @@ import { readFile } from 'node:fs/promises';
 import { parse } from 'yaml';
 import { describe, expect, it } from 'vitest';
 import { renderOpenApiYaml } from '../src/server/openapi.js';
-import { OPENAPI_PATH } from '../src/server/paths.js';
+import { OPENAPI_PATH, OPENAPI_SUBSCRIBER_PATH } from '../src/server/paths.js';
 import { pruneUnreferencedSchemas, toOpenApi30 } from '../src/server/openapi.js';
+import { renderSubscriberOpenApiYaml } from '../src/signal-server/openapi.js';
 
 /**
  * The contract test. `docs/openapi.yaml` is what the Swift client is generated
@@ -33,6 +34,50 @@ describe('openapi contract', () => {
     expect(rendered).toContain('/healthz');
     expect(rendered).toContain('/v1/signals');
     expect(rendered).toContain('ownerToken');
+  });
+});
+
+describe('subscriber openapi contract', () => {
+  it('matches the checked-in docs/openapi-subscriber.yaml', async () => {
+    const [rendered, checkedIn] = await Promise.all([
+      renderSubscriberOpenApiYaml(),
+      readFile(OPENAPI_SUBSCRIBER_PATH, 'utf8'),
+    ]);
+
+    expect(
+      rendered,
+      'docs/openapi-subscriber.yaml is out of date with the signal service routes. Run `npm run openapi:write`.',
+    ).toBe(checkedIn);
+  });
+
+  it('describes the subscriber surface and nothing owner-shaped', async () => {
+    const rendered = await renderSubscriberOpenApiYaml();
+
+    expect(rendered).toContain('/v1/session');
+    expect(rendered).toContain('/v1/feed');
+    expect(rendered).toContain('/v1/mcp-tokens');
+    expect(rendered).toContain('subscriberToken');
+    expect(rendered).toBe(rendered.replace('3.1.0', '3.0.3'));
+
+    // No decision, settings, device, or dashboard route on this side of the wall.
+    for (const forbidden of ['/decision', '/settings', '/devices', '/dashboard', 'ownerToken']) {
+      expect(rendered).not.toContain(forbidden);
+    }
+  });
+
+  it('emits no 3.1 null type the Swift generator would drop', async () => {
+    const document = parse(await renderSubscriberOpenApiYaml()) as Record<string, unknown>;
+    const nullTypes: string[] = [];
+    const walk = (node: unknown, path: string): void => {
+      if (Array.isArray(node)) return node.forEach((n, i) => walk(n, `${path}[${i}]`));
+      if (node === null || typeof node !== 'object') return;
+      for (const [key, value] of Object.entries(node)) {
+        if (key === 'type' && value === 'null') nullTypes.push(path);
+        walk(value, `${path}.${key}`);
+      }
+    };
+    walk(document, '$');
+    expect(nullTypes).toEqual([]);
   });
 });
 

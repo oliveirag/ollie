@@ -87,7 +87,33 @@ export interface PlaceOrderRequest extends ReviewOrderRequest {
 
 export interface PlaceResult {
   brokerOrderId: string;
+  /** The broker's state at placement; fills arrive later, via getEquityOrder. */
+  state: string;
   raw: unknown;
+}
+
+/** The broker's current view of one order, as the poll job reads it. */
+export interface BrokerOrder {
+  brokerOrderId: string;
+  state: string;
+  /** Decimal string. '0' until something fills. */
+  cumulativeQuantity: string;
+  /** Decimal string, or null while nothing has filled. */
+  averagePrice: string | null;
+  raw: unknown;
+}
+
+/** States after which an order will never fill further. */
+export const ORDER_TERMINAL_STATES: ReadonlySet<string> = new Set([
+  'filled',
+  'cancelled',
+  'rejected',
+  'failed',
+  'voided',
+]);
+
+export function isTerminalOrderState(state: string): boolean {
+  return ORDER_TERMINAL_STATES.has(state);
 }
 
 export interface HistoricalsRequest {
@@ -107,10 +133,13 @@ export interface BrokerAdapter {
   getPositions(): Promise<Position[]>;
   reviewEquityOrder(request: ReviewOrderRequest): Promise<ReviewResult>;
   /**
-   * Implemented for shape only. Nothing in Phases 0-1 calls this: the sole
-   * caller would be LiveExecutor, which throws before reaching it.
+   * The one write. Its sole caller is `LiveExecutor`, behind three gates, and
+   * a test asserts that by grep. `refId` is the broker idempotency key: a
+   * retried call with the same key is the same order, not a second one.
    */
   placeEquityOrder(request: PlaceOrderRequest): Promise<PlaceResult>;
+  /** Null when the broker knows no such order. */
+  getEquityOrder(brokerOrderId: string): Promise<BrokerOrder | null>;
   close(): Promise<void>;
 }
 

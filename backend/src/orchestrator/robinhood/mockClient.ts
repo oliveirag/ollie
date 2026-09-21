@@ -2,6 +2,7 @@ import {
   BrokerError,
   estimateFillPrice,
   type BrokerAdapter,
+  type BrokerOrder,
   type Candle,
   type HistoricalsRequest,
   type PlaceOrderRequest,
@@ -34,6 +35,21 @@ export interface MockBrokerState {
   reviewAlerts?: ReviewAlert[];
   /** Symbols whose review should fail, to exercise "no snapshot, no signal". */
   failReviewFor?: readonly string[];
+  /**
+   * Phase 5: scripted order lifecycles by symbol. Absent, `placeEquityOrder`
+   * throws as it always has, so no test reaches a "fill" it did not ask for.
+   * Present, placement returns the first state and each poll advances one
+   * step, repeating the last forever.
+   */
+  orderScripts?: Record<string, OrderScript>;
+}
+
+export interface OrderScript {
+  states: ReadonlyArray<{
+    state: string;
+    cumulativeQuantity?: string;
+    averagePrice?: string | null;
+  }>;
 }
 
 export interface MockCall {
@@ -152,14 +168,59 @@ export class MockBrokerAdapter implements BrokerAdapter {
     };
   }
 
+  private orders = new Map<string, { script: OrderScript; cursor: number; request: PlaceOrderRequest }>();
+
   /**
-   * Throws, always. The mock is used by the integration tests, and a mock that
-   * quietly succeeded here would let a test pass while proving the opposite of
-   * what it claims.
+   * Throws unless a test scripted an order book for the symbol. A mock that
+   * quietly succeeded here would let a test pass while proving the opposite
+   * of what it claims — so the default stays a refusal, and a scripted fill
+   * is something a test has to ask for by name.
    */
   async placeEquityOrder(request: PlaceOrderRequest): Promise<PlaceResult> {
     this.record('placeEquityOrder', request);
-    throw new BrokerError('MockBrokerAdapter refuses to place orders');
+    const script = this.state.orderScripts?.[request.symbol];
+    if (!script || script.states.length === 0) {
+      throw new BrokerError('MockBrokerAdapter refuses to place orders');
+    }
+
+    // Same ref_id, same order: the idempotency the real broker promises.
+    const existing = [...this.orders.entries()].find(([, o]) => o.request.refId === request.refId);
+    if (existing) {
+      return { brokerOrderId: existing[0], state: existing[1].script.states[0]!.state, raw: { _mock: true } };
+    }
+
+    const brokerOrderId = `mock-order-${this.orders.size + 1}`;
+    this.orders.set(brokerOrderId, { script, cursor: 1, request });
+    return { brokerOrderId, state: script.states[0]!.state, raw: { _mock: true, id: brokerOrderId } };
+  }
+
+  async getEquityOrder(brokerOrderId: string): Promise<BrokerOrder | null> {
+    this.record('getEquityOrder', { brokerOrderId });
+    const entry = this.orders.get(brokerOrderId);
+    if (!entry) return null;
+    const step = entry.script.states[Math.min(entry.cursor, entry.script.states.length - 1)]!;
+    entry.cursor += 1;
+
+    // A `filled` step with no numbers fills the whole order at the mock's own
+    // estimate — what `BROKER=mock` relies on, since it cannot know sizes in
+    // advance. Scripts that care about the numbers state them.
+    const filledWhole = step.state === 'filled';
+    const quote = this.state.quotes?.[entry.request.symbol] ?? {
+      symbol: entry.request.symbol,
+      ...DEFAULT_QUOTE,
+    };
+    return {
+      brokerOrderId,
+      state: step.state,
+      cumulativeQuantity: step.cumulativeQuantity ?? (filledWhole ? entry.request.quantity : '0'),
+      averagePrice:
+        step.averagePrice !== undefined
+          ? step.averagePrice
+          : filledWhole
+            ? estimateFillPrice(entry.request.side, quote)
+            : null,
+      raw: { _mock: true, id: brokerOrderId, state: step.state },
+    };
   }
 
   async close(): Promise<void> {

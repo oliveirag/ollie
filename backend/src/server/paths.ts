@@ -12,3 +12,5 @@ const here = dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = resolve(here, '../../..');
 
 export const OPENAPI_PATH = resolve(REPO_ROOT, 'docs/openapi.yaml');
+export const OPENAPI_SUBSCRIBER_PATH = resolve(REPO_ROOT, 'docs/openapi-subscriber.yaml');
+export const DISCLAIMER_PATH = resolve(REPO_ROOT, 'docs/disclaimer.md');

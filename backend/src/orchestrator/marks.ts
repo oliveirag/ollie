@@ -112,6 +112,9 @@ export async function runMarkToMarket(deps: MarkDeps): Promise<MarkResult> {
         entryPrice: lot.entryPrice,
         unrealizedPnl: unrealizedPnl.toString(),
         markPrice: price,
+        // Carried forward so a lot that filled short keeps its own size on
+        // every row; null when it matches the signal, as every paper lot does.
+        quantity: lot.quantityOverridden ? lot.quantity : null,
         status: 'open',
         recordedAt: now,
       },

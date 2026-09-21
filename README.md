@@ -15,8 +15,10 @@ Full product spec: [Ollie.md](Ollie.md).
 Build plans: [phases 0–1](docs/implementation-plan-phases-0-1.md) (done, pending live E2E) ·
 [phase 2](docs/implementation-plan-phase-2.md) (built, pending device E2E) ·
 [phase 3](docs/implementation-plan-phase-3.md) (built; sustained run in progress) ·
-[phase 4](docs/implementation-plan-phase-4.md) (planned).
-Running it: [sustained-run checklist](docs/sustained-run-checklist.md).
+[phase 4](docs/implementation-plan-phase-4.md) (built; deploy and soft launch gated) ·
+[phase 5](docs/implementation-plan-phase-5.md) (built; flips are owner actions).
+Running it: [sustained-run checklist](docs/sustained-run-checklist.md) ·
+[live-flip checklist](docs/live-flip-checklist.md).
 Design reference: [docs/design/owner-app-design.html](docs/design/owner-app-design.html).
 
 ## Status
@@ -27,17 +29,20 @@ Design reference: [docs/design/owner-app-design.html](docs/design/owner-app-desi
 | 1 | Headless orchestrator: strategy, review snapshot, thesis, paper execute seam | complete (pending live E2E) |
 | 2 | iOS owner app (approve/reject, dashboard, kill switch) | built; device E2E pending |
 | 3 | Track record accrual | backend built (3.1–3.6); app screen and the sustained run remain |
-| 4 | Subscriber Signal MCP server | planned |
-| 5 | Gated flips: live money, then autonomy within caps | not started |
+| 4 | Subscriber side: signal service, MCP server, onboarding, feed | built (4.1–4.6); 4.7 deploy and soft launch wait on the Apple Developer membership and the Phase 3 record |
+| 5 | Gated flips: live money, then autonomy within caps | built (5.1–5.5) and tested against a mock broker; 5.6, the flips themselves, is the owner's checklist |
 
-Phases 0–1 are backend-only and verified through logs, tests, and the database. There is no app yet.
+Sign in with Apple, push, and device runs need the paid Apple Developer membership. Until then the
+simulator onboards subscribers with a Debug-only test identity that the backend accepts only with
+`SIWA_STUB=true`, which it refuses in production.
 
 ## Repo layout
 
 ```text
-backend/     Node.js + TypeScript orchestrator — see backend/README.md
-ios/         SwiftUI owner app — see ios/README.md
-docs/        API contract, published signal schema, deploy runbook, build plans
+backend/     Node.js + TypeScript: the orchestrator (npm start) and the
+             subscriber-facing signal service (npm run start:signal) — see backend/README.md
+ios/         SwiftUI app, owner and subscriber sides — see ios/README.md
+docs/        Both API contracts, published signal schema, disclaimer, runbooks, build plans
 Ollie.md     Product requirements document
 ```
 
@@ -65,7 +70,9 @@ These are enforced in code, not by convention:
    Database triggers reject any update outside the allowed status transitions, and reject all deletes.
 3. **No signal without a `review_equity_order` snapshot.** Enforced by the pipeline and by a
    `NOT NULL` column.
-4. **`place_equity_order` is unreachable** in Phases 0–1. The only code path referencing it throws
-   unless two independent gates are both open.
+4. **`place_equity_order` has one call site**, in `LiveExecutor`, behind three gates: the
+   `LIVE_TRADING_ENABLED` deploy variable, the runtime execution mode, and `confirm_live` on the
+   approval itself. A test greps for it. The subscriber service cannot reach it at all — its import
+   graph and its database role are both tested.
 5. **Risk caps and the kill switch are enforced in the pipeline** from day one, so paper runs
    exercise the same guardrails live runs will.

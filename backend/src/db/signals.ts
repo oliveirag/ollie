@@ -33,6 +33,8 @@ export interface InsertSignalInput {
   reviewSnapshot: unknown;
   executionMode: ExecMode;
   dedupeKey: string;
+  /** Phase 5: set while autonomy is on; the sweep may approve after this. */
+  autoDecideAt?: Date | null;
 }
 
 export type DecidedStatus = Extract<SignalStatus, 'approved' | 'rejected' | 'expired'>;
@@ -75,6 +77,7 @@ export async function insertSignal(
         reviewSnapshot: input.reviewSnapshot as Prisma.InputJsonValue,
         executionMode: input.executionMode,
         dedupeKey: input.dedupeKey,
+        autoDecideAt: input.autoDecideAt ?? null,
       },
     });
   } catch (error) {
@@ -115,8 +118,22 @@ export async function transitionSignal(
   });
 }
 
-/** One-way publication stamp, used when a signal reaches the subscriber feed. */
-export async function markPublished(
+/** The signal was already published, or does not exist. Publication happens once. */
+export class SignalAlreadyPublishedError extends Error {
+  constructor(public readonly signalId: string) {
+    super(`signal ${signalId} is already published or does not exist`);
+    this.name = 'SignalAlreadyPublishedError';
+  }
+}
+
+/**
+ * The one-way publication flip (Phase 4, decision 1). Called by the decision
+ * route once the approving fill's execution row exists, and by the
+ * reconciliation sweep for anything that route failed to flip. The
+ * `published: false` predicate makes the two callers safe to overlap: exactly
+ * one of them lands the update and the other sees zero rows.
+ */
+export async function publishSignal(
   signalId: string,
   options: { now?: Date; prisma?: PrismaClient } = {},
 ): Promise<Signal> {
@@ -126,10 +143,56 @@ export async function markPublished(
     where: { id: signalId, published: false },
     data: { published: true, publishedAt },
   });
-  if (updated.count === 0) {
-    throw new Error(`signal ${signalId} is already published or does not exist`);
-  }
+  if (updated.count === 0) throw new SignalAlreadyPublishedError(signalId);
   return prisma.signal.findUniqueOrThrow({ where: { id: signalId } });
+}
+
+/**
+ * Approved signals whose fill exists but whose publication flip never landed:
+ * the crash window between the executor returning and the route publishing.
+ * The sweep closes it. Oldest first, so a backlog publishes in fill order.
+ */
+export async function listFilledUnpublishedSignals(
+  prisma: PrismaClient = getPrisma(),
+): Promise<Signal[]> {
+  return prisma.signal.findMany({
+    where: { status: 'approved', published: false, executions: { some: {} } },
+    orderBy: { decidedAt: 'asc' },
+  });
+}
+
+/**
+ * The subscriber feed's read: published signals, newest publication first,
+ * keyset-paginated on `published_at` so a page stays stable while new signals
+ * land ahead of it. `before` is exclusive.
+ */
+export async function listPublishedSignals(
+  options: { limit: number; before?: Date; since?: Date },
+  prisma: PrismaClient = getPrisma(),
+): Promise<Signal[]> {
+  return prisma.signal.findMany({
+    where: {
+      published: true,
+      ...(options.before || options.since
+        ? {
+            publishedAt: {
+              ...(options.before ? { lt: options.before } : {}),
+              ...(options.since ? { gte: options.since } : {}),
+            },
+          }
+        : {}),
+    },
+    orderBy: [{ publishedAt: 'desc' }, { id: 'desc' }],
+    take: options.limit,
+  });
+}
+
+/** One published signal, or null — an unpublished id reads as absent on purpose. */
+export async function getPublishedSignal(
+  signalId: string,
+  prisma: PrismaClient = getPrisma(),
+): Promise<Signal | null> {
+  return prisma.signal.findFirst({ where: { id: signalId, published: true } });
 }
 
 export async function getSignal(
@@ -159,6 +222,33 @@ export async function listDecidedSignals(
     orderBy: { decidedAt: 'desc' },
     take: limit,
   });
+}
+
+/** Pending signals whose veto window has closed, oldest first (Phase 5). */
+export async function listAutoDecidableSignals(
+  now: Date,
+  prisma: PrismaClient = getPrisma(),
+): Promise<Signal[]> {
+  return prisma.signal.findMany({
+    where: { status: 'pending', autoDecideAt: { not: null, lte: now } },
+    orderBy: { createdAt: 'asc' },
+  });
+}
+
+/**
+ * When the record went live: the first live-mode signal's publication. Read
+ * from `signals`, which both database roles can see, so the owner's and the
+ * subscriber's answer come from the same row. Null while the record is paper.
+ */
+export async function firstLivePublishedAt(
+  prisma: PrismaClient = getPrisma(),
+): Promise<Date | null> {
+  const first = await prisma.signal.findFirst({
+    where: { executionMode: 'live', published: true },
+    orderBy: { publishedAt: 'asc' },
+    select: { publishedAt: true },
+  });
+  return first?.publishedAt ?? null;
 }
 
 /** Pending signals whose approval window has elapsed, oldest first. */

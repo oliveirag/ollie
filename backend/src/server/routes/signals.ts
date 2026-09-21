@@ -1,6 +1,7 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import type { Config } from '../../config/index.js';
+import { latestOrderForSignal, latestOrdersForSignals } from '../../db/liveOrders.js';
 import { getAppSettings } from '../../db/settings.js';
 import { openLotsForSymbol } from '../../db/trackRecord.js';
 import {
@@ -8,6 +9,7 @@ import {
   listDecidedSignals,
   listPendingSignals,
   listSignalEvents,
+  publishSignal,
   SignalNotPendingError,
   transitionSignal,
   type DecidedStatus,
@@ -22,6 +24,7 @@ import {
   ErrorSchema,
   SignalDetailSchema,
   SignalListSchema,
+  toOrderView,
   toSignalDetail,
   toSignalSummary,
 } from '../schemas.js';
@@ -83,8 +86,12 @@ export const registerSignalRoutes: FastifyPluginAsyncZod<SignalRouteOptions> = a
       const signals =
         status === 'pending' ? await listPendingSignals() : await listDecidedSignals(limit);
 
+      const orders = await latestOrdersForSignals(signals.map((signal) => signal.id));
+
       return {
-        signals: signals.map((signal) => toSignalSummary(signal, config.signalExpiryMinutes)),
+        signals: signals.map((signal) =>
+          toSignalSummary(signal, config.signalExpiryMinutes, orders.get(signal.id) ?? null),
+        ),
       };
     },
   );
@@ -114,7 +121,10 @@ export const registerSignalRoutes: FastifyPluginAsyncZod<SignalRouteOptions> = a
       if (!signal) return reply.code(404).send({ error: 'signal_not_found' });
 
       const events = await listSignalEvents(signal.id);
-      return reply.code(200).send(toSignalDetail(signal, events, config.signalExpiryMinutes));
+      const order = await latestOrderForSignal(signal.id);
+      return reply
+        .code(200)
+        .send(toSignalDetail(signal, events, config.signalExpiryMinutes, order));
     },
   );
 
@@ -141,7 +151,8 @@ export const registerSignalRoutes: FastifyPluginAsyncZod<SignalRouteOptions> = a
           401: ErrorSchema.describe('Missing or invalid owner token'),
           404: ErrorSchema.describe('No signal with that id'),
           409: ErrorSchema.describe(
-            'Already decided or expired, the kill switch is engaged, or live mode is not enabled',
+            'Already decided or expired, the kill switch is engaged, live mode is not enabled, ' +
+              'or a live approval lacks confirm_live',
           ),
           500: ErrorSchema.describe('Approved, but the fill failed — see detail'),
         },
@@ -149,7 +160,7 @@ export const registerSignalRoutes: FastifyPluginAsyncZod<SignalRouteOptions> = a
     },
     async (request, reply) => {
       const { id } = request.params;
-      const { action, reason } = request.body;
+      const { action, reason, confirm_live: confirmLive } = request.body;
 
       const signal = await getSignal(id);
       if (!signal) return reply.code(404).send({ error: 'signal_not_found' });
@@ -175,7 +186,7 @@ export const registerSignalRoutes: FastifyPluginAsyncZod<SignalRouteOptions> = a
       // decidable. The executor re-checks both; that check, not this one, is
       // the authority.
       if (status === 'approved') {
-        const blocked = await preflightExecution(signal, config);
+        const blocked = await preflightExecution(signal, config, confirmLive === true);
         if (blocked) return reply.code(409).send(blocked);
       }
 
@@ -197,24 +208,13 @@ export const registerSignalRoutes: FastifyPluginAsyncZod<SignalRouteOptions> = a
 
       const summary = toSignalSummary(decided, config.signalExpiryMinutes);
       if (status === 'rejected') {
-        return reply.code(200).send({ signal: summary, execution: null });
+        return reply.code(200).send({ signal: summary, execution: null, order: null });
       }
 
+      let outcome;
       try {
         const executor = executorFor(decided, { config, logger }, broker);
-        const { execution } = await executor.execute(decided);
-
-        return reply.code(200).send({
-          signal: summary,
-          execution: {
-            id: execution.id,
-            mode: execution.mode,
-            fill_price: execution.fillPrice.toString(),
-            quantity: execution.quantity.toString(),
-            filled_at: execution.filledAt.toISOString(),
-            broker_order_id: execution.brokerOrderId,
-          },
-        });
+        outcome = await executor.execute(decided);
       } catch (error) {
         // The narrow window the pre-flight cannot close: the kill switch was
         // flipped between the check and the fill. The signal is approved and
@@ -232,6 +232,45 @@ export const registerSignalRoutes: FastifyPluginAsyncZod<SignalRouteOptions> = a
           status: decided.status,
         });
       }
+
+      // A live approval places an order and stops: the fill is the broker's to
+      // report, and the order poll records it and publishes (Phase 5).
+      if (outcome.kind === 'placed') {
+        return reply.code(200).send({
+          signal: toSignalSummary(decided, config.signalExpiryMinutes, outcome.order),
+          execution: null,
+          order: toOrderView(outcome.order),
+        });
+      }
+      const { execution } = outcome;
+
+      // Publish only now, with the execution row already durable, so a
+      // subscriber can never see a signal the owner's own book has not filled
+      // (Phase 4, decision 1). Same doctrine as push: a publish failure is
+      // logged and does not fail the approval — the fill is real, and the
+      // reconciliation sweep will flip the flag within one interval.
+      let published = decided;
+      try {
+        published = await publishSignal(id);
+      } catch (error) {
+        request.log.error(
+          { err: error, signal_id: id },
+          'fill recorded but publication failed; the publish sweep will retry',
+        );
+      }
+
+      return reply.code(200).send({
+        signal: toSignalSummary(published, config.signalExpiryMinutes),
+        execution: {
+            id: execution.id,
+            mode: execution.mode,
+            fill_price: execution.fillPrice.toString(),
+            quantity: execution.quantity.toString(),
+            filled_at: execution.filledAt.toISOString(),
+            broker_order_id: execution.brokerOrderId,
+          },
+        order: null,
+      });
     },
   );
 };
@@ -245,6 +284,7 @@ export const registerSignalRoutes: FastifyPluginAsyncZod<SignalRouteOptions> = a
 async function preflightExecution(
   signal: Signal,
   config: Config,
+  confirmLive: boolean,
 ): Promise<{ error: string; detail: string } | null> {
   const mode = signal.executionMode;
   if (config.killSwitchEnv) {
@@ -257,14 +297,21 @@ async function preflightExecution(
   }
 
   if (mode === 'live') {
-    // Phase 5. LiveExecutor throws even with both gates open, so surfacing the
-    // refusal here keeps the signal pending rather than burning its transition.
-    const reason = !config.liveTradingEnabled
-      ? 'LIVE_TRADING_ENABLED is not set'
-      : settings.executionMode !== 'live'
-        ? 'app_settings.execution_mode is not live'
-        : 'the live order path is not implemented until Phase 5';
-    return { error: 'live_mode_not_enabled', detail: reason };
+    // The executor's two gates, mirrored so a refusal leaves the signal
+    // pending rather than burning its transition — plus the third gate, which
+    // exists only here: the per-approval confirmation (Phase 5, decision 4).
+    if (!config.liveTradingEnabled) {
+      return { error: 'live_mode_not_enabled', detail: 'LIVE_TRADING_ENABLED is not set' };
+    }
+    if (settings.executionMode !== 'live') {
+      return { error: 'live_mode_not_enabled', detail: 'app_settings.execution_mode is not live' };
+    }
+    if (!confirmLive) {
+      return {
+        error: 'live_confirmation_required',
+        detail: 'approving a live signal places a real order; send confirm_live: true',
+      };
+    }
   }
 
   // A long-only exit needs something to close. The executor refuses too and

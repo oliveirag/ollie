@@ -86,8 +86,16 @@ describe('paperPositions', () => {
       },
       db,
     );
+    // A second later than the open. Both rows default to `new Date()`, and in
+    // the same millisecond "latest row per signal" falls to the uuid
+    // tiebreak — a coin flip, which is not what this test is about.
     await closeLots(
-      { signalIds: [signal.id], exitPrice: '110.00', closedBySignalId: exit.id },
+      {
+        signalIds: [signal.id],
+        exitPrice: '110.00',
+        closedBySignalId: exit.id,
+        recordedAt: new Date(Date.now() + 1000),
+      },
       db,
     );
 
