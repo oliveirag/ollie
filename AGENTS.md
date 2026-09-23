@@ -11,7 +11,11 @@ owner's own account and waits for human approval; subscriber side gets read-only
 - `backend/`: Node.js + TypeScript + Prisma + Postgres. The orchestrator (`npm start`) and the
   subscriber signal service (`npm run start:signal`). Read `backend/README.md`, especially
   "Things that will bite you", before changing backend code.
-- `ios/`: SwiftUI app (owner and subscriber sides), generated with XcodeGen.
+- `ios/`: SwiftUI app (owner and subscriber sides), generated with XcodeGen. Team `NL5855QHYU`,
+  automatic signing. For any UI, icon or symbol work, load the `apple-dev-resources` skill first.
+  Screens follow Apple's iOS 27 Figma kit (fileKey `LrqMNPpVF6rQhdnnEuxkcP`), symbols come from SF
+  Symbols (checked against the iOS 17 deployment target), and the app icon is an Icon Composer
+  `.icon` built on the App Icon Template (fileKey `0CvTzsKcWrX0k5hZfIKjxH`).
 - `docs/`: API contracts, signal schema, runbooks, phase build plans.
 
 ## Commands

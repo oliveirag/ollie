@@ -10,5 +10,10 @@
 	<array>
 		<string>Default</string>
 	</array>
+	<!-- Push Notifications. Xcode swaps "development" for "production" when
+	     the build is archived for distribution; a Debug device build gets
+	     sandbox tokens, which the backend must send to the sandbox host. -->
+	<key>aps-environment</key>
+	<string>development</string>
 </dict>
 </plist>

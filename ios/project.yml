@@ -14,6 +14,13 @@ options:
   createIntermediateGroups: true
   groupSortPosition: top
 
+# Paid Apple Developer Program team (Individual). Automatic signing registers
+# the App ID and its capabilities (Sign in with Apple, Push) on first build.
+settings:
+  base:
+    DEVELOPMENT_TEAM: NL5855QHYU
+    CODE_SIGN_STYLE: Automatic
+
 packages:
   # Apple's own OpenAPI toolchain. The Swift client is a build product
   # generated from docs/openapi.yaml, never checked-in source, so a backend
