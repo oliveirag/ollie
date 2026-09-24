@@ -28,7 +28,7 @@ Design reference: [docs/design/owner-app-design.html](docs/design/owner-app-desi
 | 0 | Repo, Postgres, data model, immutable signal logging | complete |
 | 1 | Headless orchestrator: strategy, review snapshot, thesis, paper execute seam | complete (pending live E2E) |
 | 2 | iOS owner app (approve/reject, dashboard, kill switch) | complete: push and approval proven on a real iPhone (2026-09-24) |
-| 3 | Track record accrual | backend built (3.1–3.6); app screen and the sustained run remain |
+| 3 | Track record accrual | built (3.1–3.7, record screen verified against a seeded multi-trade record); the 3.8 sustained run remains |
 | 4 | Subscriber side: signal service, MCP server, onboarding, feed | built (4.1–4.6); 4.7 deploy and soft launch wait on the Phase 3 record |
 | 5 | Gated flips: live money, then autonomy within caps | built (5.1–5.5) and tested against a mock broker; 5.6, the flips themselves, is the owner's checklist |
 
