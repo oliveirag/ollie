@@ -15,5 +15,10 @@
 	     sandbox tokens, which the backend must send to the sandbox host. -->
 	<key>aps-environment</key>
 	<string>development</string>
+	<!-- The backend sends signals as interruption-level time-sensitive, so they
+	     break through Focus. Without this entitlement iOS downgrades them to
+	     active and a 15-minute window can pass unseen. -->
+	<key>com.apple.developer.usernotifications.time-sensitive</key>
+	<true/>
 </dict>
 </plist>

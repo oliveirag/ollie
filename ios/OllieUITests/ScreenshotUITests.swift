@@ -10,6 +10,7 @@ import XCTest
 final class ScreenshotUITests: XCTestCase {
     func testCaptureEveryTab() throws {
         let app = XCUIApplication()
+        app.launchEnvironment["OLLIE_DISABLE_PUSH"] = "1"
         if let token = ProcessInfo.processInfo.environment["OWNER_API_TOKEN"] {
             app.launchEnvironment["OWNER_API_TOKEN"] = token
         }

@@ -18,6 +18,7 @@ final class ApprovalFlowUITests: XCTestCase {
 
     private func launchApp() -> XCUIApplication {
         let app = XCUIApplication()
+        app.launchEnvironment["OLLIE_DISABLE_PUSH"] = "1"
 
         // `TEST_RUNNER_OWNER_API_TOKEN=…` reaches this runner process, but the
         // app under test is launched separately and inherits nothing, so the

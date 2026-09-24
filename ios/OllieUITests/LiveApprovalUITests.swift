@@ -23,6 +23,7 @@ final class LiveApprovalUITests: XCTestCase {
 
     func testLiveApprovalNeedsTheRealMoneyAcknowledgement() throws {
         let app = XCUIApplication()
+        app.launchEnvironment["OLLIE_DISABLE_PUSH"] = "1"
         guard let token = ProcessInfo.processInfo.environment["OWNER_API_TOKEN"] else {
             XCTFail("export TEST_RUNNER_OWNER_API_TOKEN before running")
             return

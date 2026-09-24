@@ -2,6 +2,8 @@ import SwiftUI
 
 @main
 struct OllieApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+
     init() {
         #if DEBUG
         TokenStore.seedFromLaunchArgumentsIfNeeded()

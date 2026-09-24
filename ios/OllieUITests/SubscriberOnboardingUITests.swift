@@ -24,6 +24,7 @@ final class SubscriberOnboardingUITests: XCTestCase {
 
     private func launchApp() -> XCUIApplication {
         let app = XCUIApplication()
+        app.launchEnvironment["OLLIE_DISABLE_PUSH"] = "1"
         app.launchEnvironment["RESET_SUBSCRIBER"] = "1"
         app.launchEnvironment["SUBSCRIBER_TEST_IDENTITY"] = "1"
         app.launch()
@@ -117,6 +118,7 @@ final class SubscriberOnboardingUITests: XCTestCase {
             return
         }
         let app = XCUIApplication()
+        app.launchEnvironment["OLLIE_DISABLE_PUSH"] = "1"
         app.launchEnvironment["RESET_SUBSCRIBER"] = "1"
         app.launchEnvironment["SUBSCRIBER_TEST_IDENTITY"] = "1"
         app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]

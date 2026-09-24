@@ -11,6 +11,7 @@ struct RootView: View {
     @State private var subscriber = SubscriberStore()
     @State private var route: Route = .undecided
     @Environment(\.scenePhase) private var scenePhase
+    private let push = PushRegistrar.shared
 
     private enum Route { case undecided, owner, subscriber }
 
@@ -62,6 +63,10 @@ struct RootView: View {
         }
         .tint(owner.mode.accent)
         .task { await owner.refresh() }
+        // Keyed on the token so pasting it on first launch registers the
+        // device then, not on the next launch.
+        .task(id: owner.token) { await push.enable(ownerToken: owner.token) }
+        .onChange(of: push.lastPushAt) { Task { await owner.refresh() } }
         .onChange(of: scenePhase) { _, phase in
             // Push is best-effort and the app must not depend on it, so
             // returning to the foreground always refetches. A missed
