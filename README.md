@@ -27,14 +27,16 @@ Design reference: [docs/design/owner-app-design.html](docs/design/owner-app-desi
 | --- | --- | --- |
 | 0 | Repo, Postgres, data model, immutable signal logging | complete |
 | 1 | Headless orchestrator: strategy, review snapshot, thesis, paper execute seam | complete (pending live E2E) |
-| 2 | iOS owner app (approve/reject, dashboard, kill switch) | built; device E2E pending |
+| 2 | iOS owner app (approve/reject, dashboard, kill switch) | built; push proven on a real iPhone (2026-09-23), approving on device still to run |
 | 3 | Track record accrual | backend built (3.1–3.6); app screen and the sustained run remain |
-| 4 | Subscriber side: signal service, MCP server, onboarding, feed | built (4.1–4.6); 4.7 deploy and soft launch wait on the Apple Developer membership and the Phase 3 record |
+| 4 | Subscriber side: signal service, MCP server, onboarding, feed | built (4.1–4.6); 4.7 deploy and soft launch wait on the Phase 3 record |
 | 5 | Gated flips: live money, then autonomy within caps | built (5.1–5.5) and tested against a mock broker; 5.6, the flips themselves, is the owner's checklist |
 
-Sign in with Apple, push, and device runs need the paid Apple Developer membership. Until then the
-simulator onboards subscribers with a Debug-only test identity that the backend accepts only with
-`SIWA_STUB=true`, which it refuses in production.
+The paid Apple Developer membership is active (team `NL5855QHYU`), so device builds and push work:
+fill the four `APNS_*` values in `backend/.env` and the server's scheduled pipeline pushes each new
+signal to the owner's registered devices. `pipeline:once` does not push. Sign in with Apple is
+wired but not yet run on a device; the simulator onboards subscribers with a Debug-only test
+identity that the backend accepts only with `SIWA_STUB=true`, which it refuses in production.
 
 ## Repo layout
 
