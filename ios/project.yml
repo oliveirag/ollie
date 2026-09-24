@@ -81,7 +81,7 @@ targets:
           OLLIE_BASE_URL: http:/$()/localhost:3000
           OLLIE_SIGNAL_BASE_URL: http:/$()/localhost:3100
         Release:
-          OLLIE_BASE_URL: https:/$()/ollie.up.railway.app
+          OLLIE_BASE_URL: https:/$()/ollie-production.up.railway.app
           OLLIE_SIGNAL_BASE_URL: https:/$()/ollie-signal.up.railway.app
     info:
       path: Ollie/Resources/Info.plist

@@ -76,7 +76,7 @@ export const OPENAPI_INFO = {
 
 export const OPENAPI_SERVERS = [
   { url: 'http://localhost:3000', description: 'Local development' },
-  { url: 'https://ollie.up.railway.app', description: 'Railway' },
+  { url: 'https://ollie-production.up.railway.app', description: 'Railway' },
 ];
 
 /**
