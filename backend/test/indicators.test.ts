@@ -55,6 +55,10 @@ describe('rsi', () => {
     });
   });
 
+  it('rejects a non-positive period rather than returning nonsense', () => {
+    expect(() => rsi(WILDER_CLOSES, 0)).toThrow(RangeError);
+  });
+
   it('has no value before the period is satisfied', () => {
     const out = rsi(WILDER_CLOSES, 14);
     expect(out.slice(0, 14).every((v) => v === null)).toBe(true);
