@@ -96,6 +96,17 @@ describe('average return', () => {
   it('is null with nothing closed', () => {
     expect(computeTrackRecord([]).averageReturn).toBeNull();
   });
+
+  it('treats a zero basis as a zero return rather than dividing by it', () => {
+    const stats = computeTrackRecord([
+      // entryPrice '0' makes the basis 0; a realized gain still recorded.
+      closed('a', '10', '2026-08-01T00:00:00Z', '0'),
+      closed('b', '20', '2026-08-02T00:00:00Z', '100'),
+    ]);
+
+    // (0 + 20/(100*2)) / 2 = 0.05, not NaN or Infinity.
+    expect(stats.averageReturn).toBeCloseTo(0.05, 10);
+  });
 });
 
 describe('the equity curve', () => {
