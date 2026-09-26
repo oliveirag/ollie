@@ -64,7 +64,7 @@ components:
         - technical
         - rebalance
         - time_stop
-      description: time_stop is an exit proposed by the holding-period rule. It consults no indicator, so its `indicators` payload carries bars_held and max_holding_period_bars rather than RSI and MACD figures.
+      description: time_stop is an exit proposed by the holding-period rule. It consults no indicator, so its `indicators` payload carries barsHeld and maxHoldingDays rather than RSI and MACD figures.
     ThesisSource:
       type: string
       enum:

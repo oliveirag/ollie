@@ -32,8 +32,8 @@ export const SignalTypeSchema = z
   .enum(['technical', 'rebalance', 'time_stop'])
   .describe(
     'time_stop is an exit proposed by the holding-period rule. It consults no ' +
-      'indicator, so its `indicators` payload carries bars_held and ' +
-      'max_holding_period_bars rather than RSI and MACD figures.',
+      'indicator, so its `indicators` payload carries barsHeld and ' +
+      'maxHoldingDays rather than RSI and MACD figures.',
   )
   .meta({ id: 'SignalType' });
 export const ExecModeSchema = z.enum(['paper', 'live']).meta({ id: 'ExecutionMode' });
