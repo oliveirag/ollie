@@ -1,8 +1,21 @@
 import { describe, expect, it } from 'vitest';
-import { simulate } from '../src/backtest/simulate.js';
+import { simulate, type BacktestTrade } from '../src/backtest/simulate.js';
 import { summarize } from '../src/backtest/summarize.js';
 import type { Candle } from '../src/orchestrator/robinhood/client.js';
 import fixture from './fixtures/ohlcv/AAPL-daily-2026.json' with { type: 'json' };
+
+const closedTrade = (holdingBars: number): BacktestTrade => ({
+  symbol: 'AAPL',
+  quantity: '1',
+  entryBarTime: '2026-01-01T00:00:00Z',
+  entryPrice: '100',
+  entryRule: 'macd_bullish_cross',
+  exitBarTime: '2026-01-02T00:00:00Z',
+  exitPrice: '101',
+  exitRule: 'macd_bearish_cross',
+  realizedPnl: '1.00',
+  holdingBars,
+});
 
 const BARS: Candle[] = fixture.results[0]!.bars.map((bar) => ({
   t: bar.begins_at,
@@ -53,6 +66,20 @@ describe('summarizing a run', () => {
 
   it('reports the median holding period in bars', () => {
     expect(summarize(result).medianHoldingBars).toBe(9);
+  });
+
+  it('averages the two middle holding periods when the trade count is even', () => {
+    const summary = summarize({
+      ...result,
+      trades: [closedTrade(20), closedTrade(4), closedTrade(10), closedTrade(6)],
+    });
+
+    // Sorted: 4, 6, 10, 20 -> the two middle values average to 8.
+    expect(summary.medianHoldingBars).toBe(8);
+  });
+
+  it('reports no median holding period when nothing has closed', () => {
+    expect(summarize({ ...result, trades: [] }).medianHoldingBars).toBeNull();
   });
 
   it('scales entries to a 21-day trading month', () => {
