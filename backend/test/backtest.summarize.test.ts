@@ -102,6 +102,32 @@ describe('summarizing a run', () => {
     expect(summary.closedTrades).toBe(0);
     expect(summary.winRate).toBeNull();
   });
+
+  it('averages each closed trade’s return on its own entry basis', () => {
+    const summary = summarize({
+      ...result,
+      trades: [
+        { ...closedTrade(9), entryPrice: '100', quantity: '2', realizedPnl: '20.00' },
+        { ...closedTrade(9), entryPrice: '50', quantity: '1', realizedPnl: '5.00' },
+      ],
+    });
+
+    // 20/(100*2) = 0.10, 5/(50*1) = 0.10 -> average 0.10.
+    expect(summary.averageReturn).toBeCloseTo(0.1, 10);
+  });
+
+  it('treats a zero entry price as a zero return rather than dividing by it', () => {
+    const summary = summarize({
+      ...result,
+      trades: [
+        { ...closedTrade(9), entryPrice: '0', quantity: '10', realizedPnl: '50.00' },
+        { ...closedTrade(9), entryPrice: '100', quantity: '1', realizedPnl: '10.00' },
+      ],
+    });
+
+    // (0 + 10/(100*1)) / 2 = 0.05, not NaN or Infinity.
+    expect(summary.averageReturn).toBeCloseTo(0.05, 10);
+  });
 });
 
 describe('streak distribution', () => {
