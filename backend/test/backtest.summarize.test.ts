@@ -17,6 +17,19 @@ const closedTrade = (holdingBars: number): BacktestTrade => ({
   holdingBars,
 });
 
+const openTrade = (): BacktestTrade => ({
+  symbol: 'AAPL',
+  quantity: '1',
+  entryBarTime: '2026-01-01T00:00:00Z',
+  entryPrice: '100',
+  entryRule: 'macd_bullish_cross',
+  exitBarTime: null,
+  exitPrice: null,
+  exitRule: null,
+  realizedPnl: null,
+  holdingBars: null,
+});
+
 const BARS: Candle[] = fixture.results[0]!.bars.map((bar) => ({
   t: bar.begins_at,
   o: bar.open_price,
@@ -101,6 +114,17 @@ describe('summarizing a run', () => {
 
     expect(summary.closedTrades).toBe(0);
     expect(summary.winRate).toBeNull();
+  });
+
+  it('counts a still-open trade as an open position, not a closed one', () => {
+    const summary = summarize({
+      ...result,
+      trades: [closedTrade(9), openTrade(), openTrade()],
+    });
+
+    expect(summary.entries).toBe(3);
+    expect(summary.closedTrades).toBe(1);
+    expect(summary.openPositions).toBe(2);
   });
 
   it('averages each closed trade’s return on its own entry basis', () => {
