@@ -7,6 +7,9 @@ struct ControlsView: View {
     @State private var confirmingHalt = false
     @State private var isWorking = false
     @State private var failure: String?
+    /// Bumped only when the owner's own halt or resume lands, so the haptic
+    /// answers their tap and not a state change a refresh happened to bring in.
+    @State private var switchConfirmed = 0
 
     var body: some View {
         NavigationStack {
@@ -93,6 +96,7 @@ struct ControlsView: View {
             }
             .navigationTitle("Controls")
             .refreshable { await store.refresh() }
+            .sensoryFeedback(store.killSwitch ? .warning : .success, trigger: switchConfirmed)
             .confirmationDialog(
                 store.killSwitch ? "Resume Ollie?" : "Halt Ollie?",
                 isPresented: $confirmingHalt,
@@ -133,6 +137,7 @@ struct ControlsView: View {
 
         do {
             try await store.setKillSwitch(!store.killSwitch)
+            switchConfirmed += 1
         } catch let error as OllieError {
             failure = error.errorDescription
         } catch {

@@ -26,14 +26,28 @@ struct TokenHandoffView: View {
                             UIPasteboard.general.string = minted.token
                             copied = true
                         } label: {
-                            Label(copied ? "Copied" : "Copy token", systemImage: copied ? "checkmark" : "doc.on.doc")
+                            Label {
+                                Text(copied ? "Copied" : "Copy token")
+                            } icon: {
+                                Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                                    .contentTransition(.symbolEffect(.replace))
+                            }
                         }
                         .accessibilityIdentifier("handoff.copy")
+                        .sensoryFeedback(.success, trigger: copied) { _, new in new }
+                        // "Copied" is a confirmation, not a state. Left on
+                        // screen it stops saying anything, and a second copy
+                        // would get no answer at all.
+                        .task(id: copied) {
+                            guard copied else { return }
+                            try? await Task.sleep(for: .seconds(2))
+                            copied = false
+                        }
                     } header: {
                         Text("Your agent token")
                     } footer: {
                         Text("Shown once. Ollie keeps only a fingerprint of it. If you lose it, revoke it under Agent and create another.")
-                            .foregroundStyle(Theme.dynamic(dark: 0xE8A33D, light: 0xC07C16))
+                            .foregroundStyle(Theme.caution)
                     }
 
                     if let url = minted.mcpURL ?? store.mcpURL {

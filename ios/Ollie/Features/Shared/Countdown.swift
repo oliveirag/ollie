@@ -12,6 +12,7 @@ struct Countdown: View {
     var compact: Bool = false
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @ScaledMetric(relativeTo: .footnote) private var ringSize: CGFloat = 13
 
     var body: some View {
         // Half-second cadence so the seconds digit never visibly stalls on a
@@ -23,7 +24,7 @@ struct Countdown: View {
             HStack(spacing: 6) {
                 ring(fraction: fraction(remaining: remaining), color: urgency.color)
                 Text(Self.format(remaining))
-                    .font(.system(size: compact ? 13 : 15, weight: .semibold, design: .monospaced))
+                    .font(.system(compact ? .footnote : .subheadline, design: .monospaced, weight: .semibold))
                     .monospacedDigit()
                     .foregroundStyle(urgency.color)
             }
@@ -49,7 +50,7 @@ struct Countdown: View {
                 .stroke(color, style: StrokeStyle(lineWidth: 2, lineCap: .round))
                 .rotationEffect(.degrees(-90))
         }
-        .frame(width: compact ? 11 : 13, height: compact ? 11 : 13)
+        .frame(width: compact ? ringSize * 0.85 : ringSize, height: compact ? ringSize * 0.85 : ringSize)
     }
 
     /// Fraction of the *configured* window still left. The window is not on the
@@ -83,7 +84,7 @@ struct Countdown: View {
         var color: Color {
             switch self {
             case .calm: .secondary
-            case .warning: Theme.dynamic(dark: 0xE8A33D, light: 0xC07C16)
+            case .warning: Theme.caution
             case .critical: Theme.critical
             }
         }

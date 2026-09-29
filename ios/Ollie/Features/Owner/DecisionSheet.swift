@@ -92,7 +92,9 @@ struct DecisionSheet: View {
                         }
                     }
                     .buttonStyle(.borderedProminent)
-                    .tint(action == .approve ? (isLiveApproval ? TradingMode.live.accent : mode.accent) : Theme.destructive)
+                    // Reject is grey: a valid decision, not an error. Red stays reserved
+                    // for halting and the final minute (Theme).
+                    .tint(action == .approve ? (isLiveApproval ? TradingMode.live.accent : mode.accent) : Color(.systemGray))
                     .disabled(isWorking || (isLiveApproval && !acknowledgedLive))
                     .accessibilityIdentifier("decision.confirm")
 

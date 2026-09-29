@@ -86,11 +86,18 @@ struct EquityCurve: View {
         }
     }
 
-    private static func parse(_ day: String) -> Date? {
+    /// One formatter for every point on every redraw. Building a DateFormatter
+    /// per point is the classic way a chart starts to hitch on scroll.
+    private static let dayFormatter: DateFormatter = {
         let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyy-MM-dd"
         formatter.timeZone = TimeZone(identifier: "UTC")
-        return formatter.date(from: day)
+        return formatter
+    }()
+
+    private static func parse(_ day: String) -> Date? {
+        dayFormatter.date(from: day)
     }
 }
 

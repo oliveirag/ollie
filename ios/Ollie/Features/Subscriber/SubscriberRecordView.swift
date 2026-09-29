@@ -85,7 +85,7 @@ private struct OpenPositionRow: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
                 Image(systemName: position.side == .buy ? "arrowtriangle.up.fill" : "arrowtriangle.down.fill")
-                    .font(.system(size: 9))
+                    .font(.caption2)
                     .foregroundStyle(position.side == .buy ? Theme.gain : Theme.loss)
                 Text(position.symbol).font(.headline)
                 Text("\(position.quantity) @").foregroundStyle(.secondary)

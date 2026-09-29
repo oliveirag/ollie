@@ -88,9 +88,10 @@ struct WelcomeView: View {
 
             VStack(spacing: 8) {
                 Image(systemName: "waveform.path.ecg")
-                    .font(.system(size: 44, weight: .semibold))
+                    .font(.system(.largeTitle, weight: .semibold))
+                    .imageScale(.large)
                     .foregroundStyle(.secondary)
-                Text("Ollie").font(.system(size: 34, weight: .bold))
+                Text("Ollie").font(.largeTitle.bold())
                 Text("A public record of one rule-based strategy's signals, published only after they were acted on. Your agent decides what to do with them.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)

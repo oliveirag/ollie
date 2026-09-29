@@ -11,7 +11,14 @@ struct SignalDetailView: View {
     @State private var loadError: OllieError?
     @State private var pendingAction: DecisionAction?
     @State private var isDeciding = false
-    @State private var outcome: String?
+    @State private var outcome: Outcome?
+
+    /// What the decision came to. A refused approval must not arrive under a
+    /// "Done" title, and the haptic has to match the words.
+    private struct Outcome: Equatable {
+        let succeeded: Bool
+        let message: String
+    }
 
     var body: some View {
         Group {
@@ -45,13 +52,24 @@ struct SignalDetailView: View {
                 action == .approve && detail?.execution_mode == .live ? [.large] : [.medium]
             )
         }
-        .alert("Done", isPresented: .constant(outcome != nil)) {
+        .alert(
+            outcome?.succeeded == false ? "Not done" : "Done",
+            isPresented: .init(get: { outcome != nil }, set: { if !$0 { outcome = nil } })
+        ) {
             Button("OK") {
+                // A failed decision leaves the signal where it was, so the
+                // owner stays on it rather than being sent back to the list.
+                if outcome?.succeeded == true { dismiss() }
                 outcome = nil
-                dismiss()
             }
         } message: {
-            Text(outcome ?? "")
+            Text(outcome?.message ?? "")
+        }
+        // Fires on the same change that shows the alert, so the tap, the
+        // words and the buzz land together.
+        .sensoryFeedback(trigger: outcome) { _, new in
+            guard let new else { return nil }
+            return new.succeeded ? .success : .error
         }
     }
 
@@ -61,7 +79,7 @@ struct SignalDetailView: View {
             Section {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack {
-                        Text(detail.symbol).font(.system(size: 30, weight: .bold))
+                        Text(detail.symbol).font(.title.bold())
                         Spacer()
                         if detail.status == .pending, let expires = detail.expires_at {
                             Countdown(expiresAt: expires)
@@ -92,7 +110,7 @@ struct SignalDetailView: View {
                     ForEach(Array(alerts.enumerated()), id: \.offset) { _, alert in
                         Label(Self.humanize(alert._type), systemImage: "exclamationmark.triangle.fill")
                             .font(.subheadline)
-                            .foregroundStyle(Theme.dynamic(dark: 0xE8A33D, light: 0xC07C16))
+                            .foregroundStyle(Theme.caution)
                     }
                 }
             }
@@ -137,11 +155,19 @@ struct SignalDetailView: View {
 
             if detail.status == .pending {
                 Section {
-                    Button("Approve…") { pendingAction = .approve }
-                        .buttonStyle(.borderedProminent)
-                        .frame(maxWidth: .infinity)
-                    Button("Reject…", role: .destructive) { pendingAction = .reject }
-                        .frame(maxWidth: .infinity)
+                    Button { pendingAction = .approve } label: {
+                        Text("Approve…")
+                            .fontWeight(.semibold)
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    // Grey, not red: rejecting is a valid decision, and red is
+                    // reserved for halting and the final minute (Theme).
+                    Button { pendingAction = .reject } label: {
+                        Text("Reject…").frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(.secondary)
                 } footer: {
                     Text(store.killSwitch
                          ? "The kill switch is on — approving is refused until it is off."
@@ -176,11 +202,11 @@ struct SignalDetailView: View {
             )
             pendingAction = nil
             if let fill = result.fillPrice {
-                outcome = "Approved — filled at \(fill)."
+                outcome = Outcome(succeeded: true, message: "Approved — filled at \(fill).")
             } else if let state = result.orderState {
-                outcome = "Real order placed (\(state)). The fill is recorded when Robinhood reports it."
+                outcome = Outcome(succeeded: true, message: "Real order placed (\(state)). The fill is recorded when Robinhood reports it.")
             } else {
-                outcome = "Signal \(result.status)."
+                outcome = Outcome(succeeded: true, message: "Signal \(result.status).")
             }
         } catch let error as OllieError {
             pendingAction = nil
@@ -188,10 +214,12 @@ struct SignalDetailView: View {
             // than presented as a failure the owner has to interpret.
             loadError = error
             detail = try? await store.detail(id: signalID)
-            if !error.isRace { outcome = error.errorDescription }
+            if !error.isRace {
+                outcome = Outcome(succeeded: false, message: error.errorDescription ?? "The decision was not recorded.")
+            }
         } catch {
             pendingAction = nil
-            outcome = error.localizedDescription
+            outcome = Outcome(succeeded: false, message: error.localizedDescription)
         }
     }
 
@@ -228,7 +256,7 @@ private struct Field: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(label).font(.caption).foregroundStyle(.secondary)
-            Text(value).font(.system(size: 17, weight: .semibold))
+            Text(value).font(.headline)
         }
     }
 }

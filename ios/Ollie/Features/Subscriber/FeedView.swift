@@ -86,23 +86,24 @@ struct PublishedSignalRow: View {
 struct PublishedOrderLine: View {
     let signal: PublishedSignal
     var size: CGFloat = 17
+    @ScaledMetric(relativeTo: .body) private var scale: CGFloat = 1
 
     var body: some View {
         HStack(spacing: 6) {
             Image(systemName: signal.side == .buy ? "arrowtriangle.up.fill" : "arrowtriangle.down.fill")
-                .font(.system(size: size * 0.55))
+                .font(.system(size: size * 0.55 * scale))
                 .foregroundStyle(signal.side == .buy ? Theme.gain : Theme.loss)
 
             Text(signal.symbol)
-                .font(.system(size: size, weight: .bold))
+                .font(.system(size: size * scale, weight: .bold))
 
             Text("\(signal.side == .buy ? "Buy" : "Sell") \(signal.quantity)")
-                .font(.system(size: size * 0.88))
+                .font(.system(size: size * 0.88 * scale))
                 .foregroundStyle(.secondary)
 
             if let price = signal.estimated_price {
                 Text("@")
-                    .font(.system(size: size * 0.8))
+                    .font(.system(size: size * 0.8 * scale))
                     .foregroundStyle(.tertiary)
                 MoneyText(value: price, size: size * 0.88, weight: .medium)
             }

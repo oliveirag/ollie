@@ -155,6 +155,6 @@ private struct QuotesUnavailableNote: View {
         } icon: {
             Image(systemName: "wifi.exclamationmark")
         }
-        .foregroundStyle(Theme.dynamic(dark: 0xE8A33D, light: 0xC07C16))
+        .foregroundStyle(Theme.caution)
     }
 }

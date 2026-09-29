@@ -13,7 +13,7 @@ Two strictly separated sides:
 
 Full product spec: [Ollie.md](Ollie.md).
 Build plans: [phases 0–1](docs/implementation-plan-phases-0-1.md) (done, pending live E2E) ·
-[phase 2](docs/implementation-plan-phase-2.md) (built, pending device E2E) ·
+[phase 2](docs/implementation-plan-phase-2.md) (complete) ·
 [phase 3](docs/implementation-plan-phase-3.md) (built; sustained run in progress) ·
 [phase 4](docs/implementation-plan-phase-4.md) (built; deploy and soft launch gated) ·
 [phase 5](docs/implementation-plan-phase-5.md) (built; flips are owner actions).

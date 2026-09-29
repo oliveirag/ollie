@@ -24,6 +24,10 @@ enum Theme {
     static let loss = dynamic(dark: 0xE5605B, light: 0xC2413C)
     static let destructive = dynamic(dark: 0xE5484D, light: 0xC93A40)
 
+    /// Warnings that are not errors: a missed signal, a broker flag, a quote
+    /// outage, the countdown's last five minutes.
+    static let caution = dynamic(dark: 0xE8A33D, light: 0xC07C16)
+
     /// Reserved for the countdown's final minute and for halting. Never used
     /// for a rejection — rejecting is a valid decision, not an error.
     static let critical = destructive

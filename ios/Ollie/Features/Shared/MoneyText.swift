@@ -13,16 +13,19 @@ struct MoneyText: View {
     var size: CGFloat = 17
     var weight: Font.Weight = .semibold
     var prefix: String = ""
+    /// Sizes are given at the default text size and follow Dynamic Type from
+    /// there, so a record screen stays readable at the larger settings.
+    @ScaledMetric(relativeTo: .body) private var scale: CGFloat = 1
 
     var body: some View {
         let parts = Self.split(value)
 
         return (
             Text(prefix + parts.main)
-                .font(.system(size: size, weight: weight))
+                .font(.system(size: size * scale, weight: weight))
                 .monospacedDigit()
             + Text(parts.subCent)
-                .font(.system(size: size * 0.7, weight: weight))
+                .font(.system(size: size * 0.7 * scale, weight: weight))
                 .monospacedDigit()
                 .foregroundColor(.secondary)
         )
@@ -49,6 +52,7 @@ struct MoneyText: View {
 struct PnLText: View {
     let value: String
     var size: CGFloat = 17
+    @ScaledMetric(relativeTo: .body) private var scale: CGFloat = 1
 
     var body: some View {
         let negative = value.hasPrefix("-")
@@ -58,7 +62,7 @@ struct PnLText: View {
         HStack(spacing: 3) {
             if !zero {
                 Image(systemName: negative ? "arrowtriangle.down.fill" : "arrowtriangle.up.fill")
-                    .font(.system(size: size * 0.5))
+                    .font(.system(size: size * 0.5 * scale))
             }
             MoneyText(
                 value: magnitude,
