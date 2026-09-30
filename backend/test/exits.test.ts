@@ -95,4 +95,21 @@ describe('the time stop', () => {
     // Opened at bar 0: 39 bars follow, but 10 are fabricated, so 29 real ones.
     expect(evaluateExit('AAPL', withGaps, { openedAt: openedAt(0), quantity: '4' }, 30)).toBeNull();
   });
+
+  it('reports the last real bar when the most recent bar is interpolated', () => {
+    // Bars 58 and 59 are gap-fills; bar 57 is the last one that actually traded.
+    const withTrailingGap: Candle[] = BARS.map((bar, i) =>
+      i >= 58 ? { ...bar, interpolated: true } : bar,
+    );
+
+    const candidate = evaluateExit(
+      'AAPL',
+      withTrailingGap,
+      { openedAt: openedAt(0), quantity: '4' },
+      30,
+    );
+
+    expect(candidate!.barTime).toBe(BARS[57]!.t);
+    expect(candidate!.referenceClose).toBe('157');
+  });
 });
