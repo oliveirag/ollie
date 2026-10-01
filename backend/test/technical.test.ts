@@ -179,6 +179,13 @@ describe('input handling', () => {
     );
   });
 
+  it('takes the rsi warmup instead when it is the longer of the two', () => {
+    // rsiPeriod + 2 = 42, macdSlow + macdSignal = 8: rsi is the binding constraint here.
+    expect(requiredBars(config({ rsiPeriod: 40, macdFast: 2, macdSlow: 5, macdSignal: 3 }))).toBe(
+      42,
+    );
+  });
+
   it('ignores synthesized gap-fill bars entirely', () => {
     const bars = through('2026-07-02');
     const withGapFill: Candle[] = [
