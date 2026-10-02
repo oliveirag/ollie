@@ -123,6 +123,21 @@ describe('the approval window', () => {
   });
 });
 
+describe('unfilled orders', () => {
+  it('counts a signal still queued when the data runs out as unfilled, not a trade', () => {
+    // Bars through 2026-07-02, the crossing bar itself: the order queues for
+    // the next bar's open, but there is no next bar in this slice.
+    const crossingIndex = BARS.findIndex((bar) => bar.t.startsWith('2026-07-02'));
+    const { trades, signalsProposed, unfilled } = run({
+      bars: { AAPL: BARS.slice(0, crossingIndex + 1) },
+    });
+
+    expect(signalsProposed).toBe(1);
+    expect(unfilled).toBe(1);
+    expect(trades).toHaveLength(0);
+  });
+});
+
 describe('position coverage', () => {
   it('counts a lot as open from its entry bar through the bar before its exit', () => {
     const { days } = run();
