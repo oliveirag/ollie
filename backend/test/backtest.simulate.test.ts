@@ -136,6 +136,25 @@ describe('unfilled orders', () => {
     expect(unfilled).toBe(1);
     expect(trades).toHaveLength(0);
   });
+
+  it('drops a queued order when its symbol has no bar on the fill day', () => {
+    // AAPL stops at the crossing bar itself (2026-07-02); MSFT supplies the
+    // next calendar day (2026-07-06) so that day is still on the timeline,
+    // the way a halt or a listing gap would leave other symbols trading.
+    // AAPL's own history is unchanged on that day, so the same crossing is
+    // evaluated again and proposed a second time — it is this second order,
+    // still queued when the data ends, that is the other unfilled count.
+    const crossingIndex = BARS.findIndex((bar) => bar.t.startsWith('2026-07-02'));
+    const fillIndex = crossingIndex + 1;
+    const { trades, signalsProposed, unfilled } = run({
+      bars: { AAPL: BARS.slice(0, fillIndex), MSFT: [BARS[fillIndex]!] },
+      risk: { ...RISK, symbolAllowlist: ['AAPL', 'MSFT'] },
+    });
+
+    expect(signalsProposed).toBe(2);
+    expect(unfilled).toBe(2);
+    expect(trades).toHaveLength(0);
+  });
 });
 
 describe('position coverage', () => {
