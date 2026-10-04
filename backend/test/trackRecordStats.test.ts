@@ -169,4 +169,18 @@ describe('corrections', () => {
     expect(stats.totalRealizedPnl).toBe(-3);
     expect(stats.wins).toBe(0);
   });
+
+  it('leaves the original day on the curve as recorded, correcting only from the later day on', () => {
+    const stats = computeTrackRecord([
+      closed('a', '10', '2026-08-01T15:00:00Z'),
+      closed('a', '-3', '2026-08-05T15:00:00Z'),
+    ]);
+
+    // The curve is built from what was known through each day, so 08-01 is
+    // unaffected by a correction that did not exist yet.
+    expect(stats.curve).toEqual([
+      { date: '2026-08-01', value: 10, withheld: false },
+      { date: '2026-08-05', value: -3, withheld: false },
+    ]);
+  });
 });
