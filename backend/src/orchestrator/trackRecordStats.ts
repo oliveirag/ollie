@@ -122,7 +122,13 @@ function buildCurve(rows: readonly TrackRecordRow[]): CurvePoint[] {
       return { date, value: null, withheld: true };
     }
 
-    const unrealized = [...marksToday.values()].reduce((a, b) => a + b, 0);
+    // Only lots still open at end of day count toward unrealized — a lot
+    // marked earlier today and then closed today already has its result in
+    // `realized`, and summing its stale mark too would double-count it.
+    const unrealized = openLots.reduce(
+      (sum, row) => sum + (marksToday.get(row.signalId) ?? 0),
+      0,
+    );
     return { date, value: realized + unrealized, withheld: false };
   });
 }

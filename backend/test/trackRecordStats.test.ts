@@ -147,6 +147,17 @@ describe('the equity curve', () => {
     expect(day.value).toBeNull();
   });
 
+  it('does not double-count a lot marked and then closed on the same day', () => {
+    const stats = computeTrackRecord([
+      mark('a', '4', '2026-08-01T10:00:00Z'),
+      closed('a', '10', '2026-08-01T15:00:00Z'),
+    ]);
+
+    // The morning mark is stale by end of day; the afternoon close already
+    // carries the full realized result, so the point must be 10, not 14.
+    expect(stats.curve).toEqual([{ date: '2026-08-01', value: 10, withheld: false }]);
+  });
+
   it('is a pnl curve based at zero, not a portfolio value', () => {
     const stats = computeTrackRecord([closed('a', '10', '2026-08-01T15:00:00Z')]);
 
