@@ -109,6 +109,20 @@ describe('summarizing a run', () => {
     expect(summary.totalRealizedPnl).toBe('71.94');
   });
 
+  it('sums realized pnl across trades without floating-point drift', () => {
+    const summary = summarize({
+      ...result,
+      trades: [
+        { ...closedTrade(9), realizedPnl: '0.10' },
+        { ...closedTrade(9), realizedPnl: '0.20' },
+      ],
+    });
+
+    // 0.10 + 0.20 as JS floats gives 0.30000000000000004; decimal arithmetic
+    // must not.
+    expect(summary.totalRealizedPnl).toBe('0.30');
+  });
+
   it('reports no win rate rather than zero when nothing has closed', () => {
     const summary = summarize({ ...result, trades: [] });
 
