@@ -202,6 +202,39 @@ describe('template thesis', () => {
     expect(text).toContain('Broker pre-trade alerts: EQUITY_NOT_ENOUGH_BP.');
   });
 
+  it('describes a time stop by the holding period alone, citing no indicator', () => {
+    const text = templateThesis(
+      input({
+        candidate: candidate({
+          side: 'sell',
+          signalType: 'time_stop',
+          rule: 'max_holding_period',
+          indicators: { barsHeld: 30, maxHoldingDays: 30 },
+        }),
+      }),
+    );
+    expect(text).toBe(
+      'Sell 3 AAPL at an estimated 275.20. The position has been held 30 trading days, ' +
+        'reaching the 30-day maximum holding period. No entry or exit rule fired; this exit ' +
+        'is the holding period alone.',
+    );
+  });
+
+  it('surfaces broker pre-trade alerts on a time stop too', () => {
+    const text = templateThesis(
+      input({
+        candidate: candidate({
+          side: 'sell',
+          signalType: 'time_stop',
+          rule: 'max_holding_period',
+          indicators: { barsHeld: 30, maxHoldingDays: 30 },
+        }),
+        reviewWarnings: ['EQUITY_NOT_ENOUGH_BP'],
+      }),
+    );
+    expect(text).toContain('Broker pre-trade alerts: EQUITY_NOT_ENOUGH_BP.');
+  });
+
   it('omits the alerts sentence when the broker raised nothing', () => {
     expect(templateThesis(input())).not.toContain('Broker pre-trade alerts');
   });
