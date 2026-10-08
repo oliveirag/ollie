@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { estimateFillPrice } from '../src/orchestrator/robinhood/client.js';
+import { estimateFillPrice, isTerminalOrderState } from '../src/orchestrator/robinhood/client.js';
 import { toAlerts, unwrapToolResult } from '../src/orchestrator/robinhood/mcpClient.js';
 import { MockBrokerAdapter } from '../src/orchestrator/robinhood/mockClient.js';
 import {
@@ -123,6 +123,20 @@ describe('market fill estimate', () => {
     expect(estimateFillPrice('buy', { lastTradePrice: '1', askPrice: '308.570000' })).toBe(
       '308.570000',
     );
+  });
+});
+
+describe('isTerminalOrderState', () => {
+  it('treats filled, cancelled, rejected, failed and voided as terminal', () => {
+    for (const state of ['filled', 'cancelled', 'rejected', 'failed', 'voided']) {
+      expect(isTerminalOrderState(state)).toBe(true);
+    }
+  });
+
+  it('treats new, queued, confirmed, unconfirmed and partially_filled as not terminal', () => {
+    for (const state of ['new', 'queued', 'confirmed', 'unconfirmed', 'partially_filled']) {
+      expect(isTerminalOrderState(state)).toBe(false);
+    }
   });
 });
 
