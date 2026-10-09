@@ -130,6 +130,16 @@ describe('summarizing a run', () => {
     expect(summary.winRate).toBeNull();
   });
 
+  it('reports coverage and pace as zero rather than dividing by zero evaluable days', () => {
+    const summary = summarize({ ...result, trades: [], days: [] });
+
+    expect(summary.evaluableDays).toBe(0);
+    expect(summary.coverageFraction).toBe(0);
+    expect(summary.entriesPerMonth).toBe(0);
+    expect(summary.longestCoveredStreak).toBe(0);
+    expect(summary.coveredStreaks).toEqual([]);
+  });
+
   it('counts a still-open trade as an open position, not a closed one', () => {
     const summary = summarize({
       ...result,
