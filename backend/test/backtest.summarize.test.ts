@@ -123,6 +123,17 @@ describe('summarizing a run', () => {
     expect(summary.totalRealizedPnl).toBe('0.30');
   });
 
+  it('counts a breakeven trade as closed but not a win', () => {
+    const summary = summarize({
+      ...result,
+      trades: [closedTrade(9), { ...closedTrade(9), realizedPnl: '0.00' }],
+    });
+
+    expect(summary.closedTrades).toBe(2);
+    expect(summary.wins).toBe(1);
+    expect(summary.winRate).toBe(0.5);
+  });
+
   it('reports no win rate rather than zero when nothing has closed', () => {
     const summary = summarize({ ...result, trades: [] });
 
