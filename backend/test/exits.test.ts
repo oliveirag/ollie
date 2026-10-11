@@ -85,6 +85,19 @@ describe('the time stop', () => {
     expect(evaluateExit('AAPL', [], { openedAt: openedAt(0), quantity: '4' }, 30)).toBeNull();
   });
 
+  it('proposes nothing when every bar is interpolated', () => {
+    const allGaps: Candle[] = BARS.slice(0, 40).map((bar) => ({ ...bar, interpolated: true }));
+
+    expect(evaluateExit('AAPL', allGaps, { openedAt: openedAt(0), quantity: '4' }, 30)).toBeNull();
+  });
+
+  it('records the bars held and the holding period in indicators', () => {
+    // Opened on bar 0, series runs to bar 59: 59 real bars followed it.
+    const candidate = evaluateExit('AAPL', BARS, { openedAt: openedAt(0), quantity: '4' }, 30);
+
+    expect(candidate!.indicators).toEqual({ barsHeld: 59, maxHoldingDays: 30 });
+  });
+
   it('ignores interpolated bars when counting the holding period', () => {
     // A synthesized gap-fill bar never traded, so counting it would time-stop a
     // position a day early on any symbol with a hole in its history.
