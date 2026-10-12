@@ -349,6 +349,25 @@ describe('determinism', () => {
     expect(backwards.accepted.map((c) => c.symbol)).toEqual(['AAPL', 'MSFT']);
   });
 
+  it('breaks a tie between two candidates on the same symbol by rule name', () => {
+    // Same symbol, one slot: the secondary sort key decides, not arrival order.
+    const forwards = applyRiskCaps(
+      inputs({
+        candidates: [candidate({ rule: 'rsi_oversold' }), candidate({ rule: 'macd_bullish_cross' })],
+        config: { ...CONFIG, maxDailyTrades: 1 },
+      }),
+    );
+    const backwards = applyRiskCaps(
+      inputs({
+        candidates: [candidate({ rule: 'macd_bullish_cross' }), candidate({ rule: 'rsi_oversold' })],
+        config: { ...CONFIG, maxDailyTrades: 1 },
+      }),
+    );
+
+    expect(forwards.accepted.map((c) => c.rule)).toEqual(['macd_bullish_cross']);
+    expect(backwards.accepted.map((c) => c.rule)).toEqual(['macd_bullish_cross']);
+  });
+
   it('returns the same decision for the same inputs', () => {
     expect(applyRiskCaps(inputs())).toEqual(applyRiskCaps(inputs()));
   });
