@@ -56,6 +56,16 @@ describe('logger redaction', () => {
     expect(output).not.toContain(SECRET);
   });
 
+  it('redacts a Sign in with Apple identity_token and a bare token field', () => {
+    const output = logThrough({
+      identity_token: SECRET,
+      token: SECRET,
+      device: { identity_token: SECRET, token: SECRET },
+    });
+
+    expect(output).not.toContain(SECRET);
+  });
+
   it('leaves market data and decisions alone', () => {
     // The counterpart to the rule above: PRD §11 wants every strategy input
     // and output logged, so over-broad redaction would be its own failure.
