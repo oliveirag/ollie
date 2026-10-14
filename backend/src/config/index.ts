@@ -25,7 +25,7 @@ const EnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
 
   ANTHROPIC_API_KEY: z.string().default(''),
-  ANTHROPIC_MODEL: z.string().default('claude-opus-5'),
+  ANTHROPIC_MODEL: z.string().default('claude-opus-5-5'),
 
   RH_MCP_URL: z.string().url().default('https://agent.robinhood.com/mcp/trading'),
   RH_MCP_AUTH_TOKEN: z.string().default(''),

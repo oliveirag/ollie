@@ -50,7 +50,7 @@ const okResponse = (text: string) => ({
   id: 'msg_test',
   type: 'message' as const,
   role: 'assistant' as const,
-  model: 'claude-opus-5',
+  model: 'claude-opus-5-5',
   content: [{ type: 'text' as const, text, citations: null }],
   stop_reason: 'end_turn' as const,
   stop_sequence: null,
