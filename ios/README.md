@@ -11,6 +11,21 @@ system:
   agent token, the feed, and the track record. Talks only to the signal
   service, never to the owner API.
 
+## Testing without a device
+
+```bash
+ios/scripts/e2e.sh              # all UI tests, about 10 minutes
+ios/scripts/e2e.sh live         # or one suite: owner, live, subscriber
+```
+
+Runs every UI test on the iPhone 17 Pro simulator against a throwaway local
+stack: its own Postgres cluster on port 5433 (Homebrew `postgresql@16`, no
+Docker), the orchestrator and signal service with `BROKER=mock` and
+`SIWA_STUB=true`, and a fresh owner token and invite code per run.
+`backend/.env` is never loaded, so no real credential is in play, and Debug
+builds only talk to localhost. Needs ports 3000, 3100 and 5433 free. Logs and
+result bundles, including the per-tab screenshots, land in `ios/build/e2e/`.
+
 ## Subscriber side without the Apple Developer membership
 
 Sign in with Apple needs a paid team and App ID configuration. Until those
