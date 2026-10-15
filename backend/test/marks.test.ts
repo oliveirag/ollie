@@ -139,6 +139,42 @@ describe('the daily mark', () => {
     expect(result.gaps).toEqual(['AAPL']);
   });
 
+  it("carries forward the lot's own quantity when a partial live fill overrode it", async () => {
+    const signal = await insertSignal(
+      {
+        symbol: 'AAPL',
+        side: 'buy',
+        signalType: 'technical',
+        quantity: '2',
+        thesis: null,
+        thesisSource: 'llm',
+        indicators: {},
+        reviewSnapshot: { estimated_price: '100.00' },
+        executionMode: 'live',
+        dedupeKey: uniqueDedupeKey('AAPL'),
+      },
+      db,
+    );
+    // Only 1 of the signal's 2 shares filled; the open row carries its own size.
+    await appendTrackRecord(
+      {
+        signalId: signal.id,
+        entryPrice: '100.00',
+        quantity: '1',
+        status: 'open',
+        recordedAt: new Date('2026-08-01T00:00:00Z'),
+      },
+      db,
+    );
+
+    await run({ AAPL: quote('AAPL', '106.00') });
+
+    const mark = (await listTrackRecord(signal.id, db)).at(-1)!;
+    // The mark carries the lot's own 1 share forward, not the signal's 2.
+    expect(mark.quantity?.toString()).toBe('1');
+    expect(mark.unrealizedPnl?.toString()).toBe('6');
+  });
+
   it('stops marking a lot once it is closed', async () => {
     const entry = await seedLot('AAPL', '2', '100.00');
     const exit = await seedLot('AAPL', '2', '110.00');
