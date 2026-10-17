@@ -31,6 +31,12 @@ describe('buildConfig validation', () => {
       /SYMBOL_ALLOWLIST must name at least one symbol/,
     );
   });
+
+  it('throws when the owner API token is set but shorter than 32 characters', () => {
+    expect(() => buildConfig(env({ OWNER_API_TOKEN: 'too-short' }))).toThrow(
+      /OWNER_API_TOKEN: must be at least 32 characters/,
+    );
+  });
 });
 
 describe('symbol allowlist parsing', () => {
@@ -57,5 +63,15 @@ describe('derived fields', () => {
   it('parses comma-separated subscriber invite codes, dropping blanks', () => {
     const config = buildConfig(env({ SUBSCRIBER_INVITE_CODES: ' abc123 ,, def456' }));
     expect(config.signalService.inviteCodes).toEqual(['abc123', 'def456']);
+  });
+
+  it('reports the robinhood account number as null rather than an empty string when unset', () => {
+    expect(buildConfig(env()).robinhood.accountNumber).toBeNull();
+  });
+
+  it('reports the signal service database url and public url as null when unset', () => {
+    const config = buildConfig(env());
+    expect(config.signalService.databaseUrl).toBeNull();
+    expect(config.signalService.publicUrl).toBeNull();
   });
 });
