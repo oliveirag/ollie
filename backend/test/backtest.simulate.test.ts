@@ -170,3 +170,51 @@ describe('position coverage', () => {
     expect(covered).toHaveLength(9);
   });
 });
+
+describe('closing more than one lot', () => {
+  // The real AAPL fixture never carries two open lots at once, so this builds
+  // its own bars: a dip that fires an RSI oversold buy, a rebound that fires a
+  // separate MACD bullish cross buy before the first lot is closed, then a
+  // flat stretch that fires one MACD bearish cross sized to both lots.
+  function dipAndRebound(): Candle[] {
+    const closes = [
+      ...Array(40).fill(100),
+      ...Array.from({ length: 10 }, (_, i) => 100 - i * 2), // 100 down to 82
+      ...Array.from({ length: 10 }, (_, i) => 82 + i * 2), // 82 back up to 100
+      ...Array(20).fill(100),
+    ];
+    const start = Date.UTC(2026, 0, 1);
+    return closes.map((close, i) => ({
+      t: new Date(start + i * 86_400_000).toISOString(),
+      o: String(close),
+      h: String(close),
+      l: String(close),
+      c: String(close),
+      v: 1000,
+    }));
+  }
+
+  it('closes both lots FIFO from a single sell sized to the combined position', () => {
+    const { trades } = run({
+      bars: { AAPL: dipAndRebound() },
+      strategy: { ...STRATEGY, maxHoldingDays: 1000 }, // the time stop must not preempt the cross
+      slippageBps: 0, // isolate the FIFO split from the entry/exit price math
+    });
+
+    expect(trades).toHaveLength(2);
+
+    // The lot opened first is closed first, each at its own entry price.
+    expect(trades[0]!.entryRule).toBe('rsi_oversold');
+    expect(trades[0]!.entryPrice).toBe('96.000000');
+    expect(trades[0]!.realizedPnl).toBe('40.00');
+
+    expect(trades[1]!.entryRule).toBe('macd_bullish_cross');
+    expect(trades[1]!.entryPrice).toBe('94.000000');
+    expect(trades[1]!.realizedPnl).toBe('60.00');
+
+    // One sell order closed both: same exit bar, same exit rule and price.
+    expect(trades[0]!.exitBarTime).toBe(trades[1]!.exitBarTime);
+    expect(trades[0]!.exitRule).toBe('macd_bearish_cross');
+    expect(trades[1]!.exitRule).toBe('macd_bearish_cross');
+  });
+});
