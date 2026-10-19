@@ -16,49 +16,35 @@ struct TrackRecordView: View {
 
     var body: some View {
         NavigationStack {
-            List {
+            DSPage {
                 if let record = store.trackRecord {
                     if record.closed_trades == 0 && record.open_positions == 0 {
-                        Section {
-                            ContentUnavailableView(
-                                "No record yet",
-                                systemImage: "chart.line.uptrend.xyaxis",
-                                description: Text(
-                                    "Approved signals open lots, and the record starts accruing once one closes."
-                                )
+                        DSCard {
+                            DSEmptyState(
+                                title: "No record yet",
+                                message: "Approved signals open lots, and the record starts accruing once one closes.",
+                                icon: "chart.line.uptrend.xyaxis"
                             )
                         }
                     } else {
-                        Section("Performance") {
-                            LiveSinceRow(liveSince: record.live_since)
-                            StatRow(label: "Closed trades", value: "\(record.closed_trades)")
-                            StatRow(label: "Open positions", value: "\(record.open_positions)")
-                            WinRateRow(winRate: record.win_rate)
-                            AverageReturnRow(value: record.average_return)
-
-                            HStack {
-                                Text("Realized")
-                                Spacer()
-                                PnLText(value: record.total_realized_pnl)
-                            }
-                        }
-
-                        Section("Equity curve") {
-                            EquityCurve(points: curve(record))
-                        }
-
-                        if withheldCount(record.curve) > 0 {
-                            Section { WithheldNote(days: withheldCount(record.curve)) }
-                        }
+                        RecordSummary(
+                            liveSince: record.live_since,
+                            closedTrades: record.closed_trades,
+                            openPositions: record.open_positions,
+                            winRate: record.win_rate,
+                            averageReturn: record.average_return,
+                            realized: record.total_realized_pnl,
+                            curve: curve(record)
+                        )
                     }
                 } else if store.isLoading {
-                    Section { ProgressView() }
+                    ProgressView().frame(maxWidth: .infinity).padding(.top, DS.Space.xxxl)
                 } else {
-                    Section {
-                        ContentUnavailableView(
-                            "Record unavailable",
-                            systemImage: "exclamationmark.triangle",
-                            description: Text("Pull to refresh.")
+                    DSCard {
+                        DSEmptyState(
+                            title: "Record unavailable",
+                            message: "Pull to refresh.",
+                            icon: "exclamationmark.triangle"
                         )
                     }
                 }
@@ -71,9 +57,5 @@ struct TrackRecordView: View {
 
     private func curve(_ record: TrackRecord) -> [CurveDay] {
         record.curve.map { CurveDay(date: $0.date, value: $0.value, withheld: $0.withheld) }
-    }
-
-    private func withheldCount(_ points: [CurvePoint]) -> Int {
-        points.filter(\.withheld).count
     }
 }

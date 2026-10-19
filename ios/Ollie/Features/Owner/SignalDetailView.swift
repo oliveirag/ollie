@@ -32,6 +32,8 @@ struct SignalDetailView: View {
                 }
             } else {
                 ProgressView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(DS.Surface.page)
             }
         }
         .navigationTitle(detail?.symbol ?? "Signal")
@@ -75,11 +77,13 @@ struct SignalDetailView: View {
 
     @ViewBuilder
     private func content(_ detail: SignalDetail) -> some View {
-        List {
-            Section {
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack {
-                        Text(detail.symbol).font(.title.bold())
+        DSPage {
+            DSCard {
+                VStack(alignment: .leading, spacing: DS.Space.lg) {
+                    HStack(alignment: .center) {
+                        Text(detail.symbol)
+                            .dsFont(.h2)
+                            .foregroundStyle(DS.Text.primary)
                         Spacer()
                         if detail.status == .pending, let expires = detail.expires_at {
                             Countdown(expiresAt: expires)
@@ -88,65 +92,68 @@ struct SignalDetailView: View {
                         }
                     }
 
-                    HStack(spacing: 18) {
-                        Field("Side", detail.side == .buy ? "Buy" : "Sell")
-                        Field("Quantity", detail.quantity)
+                    HStack(alignment: .top, spacing: DS.Space.xxl) {
+                        DSFact("Side", detail.side == .buy ? "Buy" : "Sell")
+                        DSFact("Quantity", detail.quantity)
                         if let price = detail.review?.estimated_price ?? detail.estimated_price {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Est. price").font(.caption).foregroundStyle(.secondary)
-                                MoneyText(value: price, size: 17)
+                            VStack(alignment: .leading, spacing: DS.Space.xs) {
+                                Text("Est. price").dsFont(.caption).foregroundStyle(DS.Text.secondary)
+                                MoneyText(value: price)
+                                    .foregroundStyle(DS.Text.primary)
                             }
+                            .accessibilityElement(children: .combine)
                         }
                     }
                 }
-                .padding(.vertical, 4)
             }
 
-            // Broker warnings get their own section rather than a footnote:
+            // Broker warnings get their own block rather than a footnote:
             // "not enough buying power" is the kind of thing that should stop
             // a thumb, not reward a careful reader.
             if let alerts = detail.review?.alerts, !alerts.isEmpty {
-                Section("Broker review") {
+                VStack(alignment: .leading, spacing: DS.Space.sm) {
+                    DSSectionHeader("Broker review")
                     ForEach(Array(alerts.enumerated()), id: \.offset) { _, alert in
-                        Label(Self.humanize(alert._type), systemImage: "exclamationmark.triangle.fill")
-                            .font(.subheadline)
-                            .foregroundStyle(Theme.caution)
+                        DSNotice(title: Self.humanize(alert._type), icon: "exclamationmark.triangle")
                     }
                 }
             }
 
             if let thesis = detail.thesis {
-                Section("Thesis") {
-                    Text(thesis).font(.callout)
-                    if detail.thesis_source?.value1 == .fallback_template {
-                        TemplateThesisMark()
+                DSSection("Thesis") {
+                    VStack(alignment: .leading, spacing: DS.Space.md) {
+                        Text(thesis)
+                            .dsFont(.body)
+                            .foregroundStyle(DS.Text.primary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        if detail.thesis_source?.value1 == .fallback_template {
+                            TemplateThesisMark()
+                        }
                     }
                 }
             }
 
-            if let indicators = Self.readIndicators(detail.indicators) {
-                Section("Evidence") {
-                    ForEach(indicators, id: \.0) { name, value in
-                        HStack {
-                            Text(name).font(.subheadline)
-                            Spacer()
-                            Text(value)
-                                .font(.system(.subheadline, design: .monospaced))
-                                .monospacedDigit()
-                                .foregroundStyle(.secondary)
+            if let indicators = IndicatorReader.read(detail.indicators) {
+                DSSection("Evidence", padded: false) {
+                    DSRows(indicators, id: \.name) { item in
+                        DSValueRow(item.name) {
+                            Text(item.value)
+                                .dsFont(.code)
+                                .foregroundStyle(DS.Text.secondary)
                         }
                     }
                 }
             }
 
             if !detail.events.isEmpty {
-                Section("History") {
-                    ForEach(Array(detail.events.enumerated()), id: \.offset) { _, event in
-                        VStack(alignment: .leading, spacing: 2) {
+                DSSection("History", padded: false) {
+                    DSRows(detail.events, id: \.self) { event in
+                        VStack(alignment: .leading, spacing: DS.Space.xs) {
                             Text("\(event.from_status.rawValue) → \(event.to_status.rawValue)")
-                                .font(.subheadline)
+                                .dsFont(.bodySmall)
+                                .foregroundStyle(DS.Text.primary)
                             if let reason = event.reason {
-                                Text(reason).font(.caption).foregroundStyle(.secondary)
+                                Text(reason).dsFont(.caption).foregroundStyle(DS.Text.secondary)
                             }
                         }
                     }
@@ -154,24 +161,20 @@ struct SignalDetailView: View {
             }
 
             if detail.status == .pending {
-                Section {
-                    Button { pendingAction = .approve } label: {
-                        Text("Approve…")
-                            .fontWeight(.semibold)
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    // Grey, not red: rejecting is a valid decision, and red is
-                    // reserved for halting and the final minute (Theme).
-                    Button { pendingAction = .reject } label: {
-                        Text("Reject…").frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.bordered)
-                    .tint(.secondary)
-                } footer: {
+                VStack(alignment: .leading, spacing: DS.Space.sm) {
+                    // One primary per view. Reject is secondary, not red:
+                    // rejecting is a valid decision, and red is kept for
+                    // what cannot be undone.
+                    Button("Approve…") { pendingAction = .approve }
+                        .buttonStyle(.ds(.primary, size: .large))
+                    Button("Reject…") { pendingAction = .reject }
+                        .buttonStyle(.ds(.secondary, size: .large))
                     Text(store.killSwitch
-                         ? "The kill switch is on — approving is refused until it is off."
+                         ? "The kill switch is on. Approving is refused until it is off."
                          : "You'll confirm on the next screen.")
+                        .dsFont(.caption)
+                        .foregroundStyle(DS.Text.secondary)
+                        .padding(.horizontal, DS.Space.xs)
                 }
             }
         }
@@ -202,7 +205,7 @@ struct SignalDetailView: View {
             )
             pendingAction = nil
             if let fill = result.fillPrice {
-                outcome = Outcome(succeeded: true, message: "Approved — filled at \(fill).")
+                outcome = Outcome(succeeded: true, message: "Approved and filled at \(fill).")
             } else if let state = result.orderState {
                 outcome = Outcome(succeeded: true, message: "Real order placed (\(state)). The fill is recorded when Robinhood reports it.")
             } else {
@@ -225,39 +228,6 @@ struct SignalDetailView: View {
 
     private static func humanize(_ code: String) -> String {
         code.replacingOccurrences(of: "_", with: " ").capitalized
-    }
-
-    /// Indicators are an untyped jsonb blob by design — the strategy owns their
-    /// shape and it changes with the rules. Render whatever arrived, in a
-    /// stable order, rather than pinning a schema the backend never promised.
-    private static func readIndicators(_ container: OpenAPIRuntime.OpenAPIValueContainer?) -> [(String, String)]? {
-        guard let value = container?.value as? [String: Any], !value.isEmpty else { return nil }
-
-        return value.keys.sorted().compactMap { key in
-            guard let raw = value[key] else { return nil }
-            if let number = raw as? Double {
-                let rounded = (number * 10_000).rounded() / 10_000
-                return (key, String(rounded))
-            }
-            return (key, String(describing: raw))
-        }
-    }
-}
-
-private struct Field: View {
-    let label: String
-    let value: String
-
-    init(_ label: String, _ value: String) {
-        self.label = label
-        self.value = value
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(label).font(.caption).foregroundStyle(.secondary)
-            Text(value).font(.headline)
-        }
     }
 }
 

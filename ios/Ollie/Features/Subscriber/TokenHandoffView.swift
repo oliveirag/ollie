@@ -14,86 +14,94 @@ struct TokenHandoffView: View {
 
     var body: some View {
         NavigationStack {
-            List {
+            DSPage {
                 if let minted = store.minted {
-                    Section {
-                        Text(minted.token)
-                            .font(.system(.footnote, design: .monospaced))
-                            .textSelection(.enabled)
-                            .accessibilityIdentifier("handoff.token")
+                    VStack(alignment: .leading, spacing: DS.Space.sm) {
+                        DSSectionHeader("Your agent token")
+                        DSCard {
+                            VStack(alignment: .leading, spacing: DS.Space.md) {
+                                Text(minted.token)
+                                    .dsFont(.code)
+                                    .foregroundStyle(DS.Text.primary)
+                                    .textSelection(.enabled)
+                                    .accessibilityIdentifier("handoff.token")
 
-                        Button {
-                            UIPasteboard.general.string = minted.token
-                            copied = true
-                        } label: {
-                            Label {
-                                Text(copied ? "Copied" : "Copy token")
-                            } icon: {
-                                Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                                    .contentTransition(.symbolEffect(.replace))
+                                Button {
+                                    UIPasteboard.general.string = minted.token
+                                    copied = true
+                                } label: {
+                                    Label {
+                                        Text(copied ? "Copied" : "Copy token")
+                                    } icon: {
+                                        Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                                            .contentTransition(.symbolEffect(.replace))
+                                    }
+                                }
+                                .buttonStyle(.ds(.secondary))
+                                .accessibilityIdentifier("handoff.copy")
+                                .sensoryFeedback(.success, trigger: copied) { _, new in new }
+                                // "Copied" is a confirmation, not a state. Left on
+                                // screen it stops saying anything, and a second copy
+                                // would get no answer at all.
+                                .task(id: copied) {
+                                    guard copied else { return }
+                                    try? await Task.sleep(for: .seconds(2))
+                                    copied = false
+                                }
                             }
                         }
-                        .accessibilityIdentifier("handoff.copy")
-                        .sensoryFeedback(.success, trigger: copied) { _, new in new }
-                        // "Copied" is a confirmation, not a state. Left on
-                        // screen it stops saying anything, and a second copy
-                        // would get no answer at all.
-                        .task(id: copied) {
-                            guard copied else { return }
-                            try? await Task.sleep(for: .seconds(2))
-                            copied = false
-                        }
-                    } header: {
-                        Text("Your agent token")
-                    } footer: {
-                        Text("Shown once. Ollie keeps only a fingerprint of it. If you lose it, revoke it under Agent and create another.")
-                            .foregroundStyle(Theme.caution)
+                        DSNotice(
+                            title: "Shown once",
+                            message: "Ollie keeps only a fingerprint of it. If you lose it, revoke it under Agent and create another.",
+                            icon: "exclamationmark.triangle"
+                        )
                     }
 
                     if let url = minted.mcpURL ?? store.mcpURL {
-                        Section("MCP server") {
+                        DSSection("MCP server") {
                             Text(url)
-                                .font(.system(.footnote, design: .monospaced))
+                                .dsFont(.code)
+                                .foregroundStyle(DS.Text.primary)
                                 .textSelection(.enabled)
                                 .accessibilityIdentifier("handoff.url")
                         }
                     }
 
-                    Section("Point an agent at it") {
+                    DSSection("Point an agent at it") {
                         SetupSteps(url: minted.mcpURL ?? store.mcpURL ?? "<the MCP URL above>")
                     }
 
-                    Section {
-                        Button("Done — I've saved it") { store.completeHandoff() }
-                            .frame(maxWidth: .infinity)
-                            .accessibilityIdentifier("handoff.done")
-                    }
+                    Button("Done, I've saved it") { store.completeHandoff() }
+                        .buttonStyle(.ds(.primary, size: .large))
+                        .accessibilityIdentifier("handoff.done")
                 } else {
-                    // Signed in and consented, but no live agent token — after
+                    // Signed in and consented, but no live agent token: after
                     // revoking the last one, or on a new device.
-                    Section {
-                        ContentUnavailableView {
-                            Label("No agent token", systemImage: "key")
-                        } description: {
-                            Text("Create one to connect an agent to the feed. It is shown once.")
-                        } actions: {
+                    DSCard {
+                        VStack(alignment: .leading, spacing: DS.Space.lg) {
+                            DSEmptyState(
+                                title: "No agent token",
+                                message: "Create one to connect an agent to the feed. It is shown once.",
+                                icon: "key"
+                            )
                             Button {
                                 Task { await mint() }
                             } label: {
-                                if isWorking { ProgressView() } else { Text("Create agent token") }
+                                ZStack {
+                                    Text("Create agent token").opacity(isWorking ? 0 : 1)
+                                    if isWorking { ProgressView().tint(DS.Text.onAction) }
+                                }
                             }
-                            .buttonStyle(.borderedProminent)
+                            .buttonStyle(.ds(.primary))
                             .disabled(isWorking)
                             .accessibilityIdentifier("handoff.mint")
                         }
                     }
                     if let failure {
-                        Section { ErrorRow(error: .server(failure)) }
+                        ErrorRow(error: .server(failure))
                     }
-                    Section {
-                        Button("Sign out") { store.signOut() }
-                            .foregroundStyle(.secondary)
-                    }
+                    Button("Sign out") { store.signOut() }
+                        .buttonStyle(.ds(.ghost))
                 }
             }
             .navigationTitle("Connect your agent")
@@ -121,23 +129,17 @@ struct SetupSteps: View {
     let url: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: DS.Space.md) {
             Step(number: 1, text: "Add a remote MCP server in your agent and give it the URL above.")
-            Step(number: 2, text: "Attach the header  Authorization: Bearer <your token>.")
+            Step(number: 2, text: "Attach the header Authorization: Bearer <your token>.")
             Step(number: 3, text: "Ask your agent to call get_disclaimer, then list_signals. Nothing here can trade; what it does next is up to you and it.")
 
-            Text("Claude Code:")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .padding(.top, 4)
-            Text("claude mcp add --transport http ollie \(url) \\\n  --header \"Authorization: Bearer <token>\"")
-                .font(.system(.caption2, design: .monospaced))
-                .textSelection(.enabled)
-                .padding(8)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Theme.hairline, in: RoundedRectangle(cornerRadius: 6))
+            Text("Claude Code")
+                .dsFont(.caption)
+                .foregroundStyle(DS.Text.secondary)
+                .padding(.top, DS.Space.xs)
+            DSCodeBlock(text: "claude mcp add --transport http ollie \(url) \\\n  --header \"Authorization: Bearer <token>\"")
         }
-        .padding(.vertical, 4)
     }
 
     private struct Step: View {
@@ -145,12 +147,16 @@ struct SetupSteps: View {
         let text: String
 
         var body: some View {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: DS.Space.sm) {
                 Text("\(number).")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                Text(text).font(.subheadline)
+                    .dsFont(.bodySmall, weight: .bold)
+                    .foregroundStyle(DS.Text.secondary)
+                Text(text)
+                    .dsFont(.bodySmall)
+                    .foregroundStyle(DS.Text.primary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
+            .accessibilityElement(children: .combine)
         }
     }
 }

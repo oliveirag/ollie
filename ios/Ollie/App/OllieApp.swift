@@ -8,6 +8,7 @@ struct OllieApp: App {
         #if DEBUG
         TokenStore.seedFromLaunchArgumentsIfNeeded()
         #endif
+        DSAppearance.apply()
     }
 
     var body: some Scene {

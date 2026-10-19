@@ -11,46 +11,46 @@ struct FeedView: View {
 
     var body: some View {
         NavigationStack {
-            List {
+            DSPage {
                 if let error = store.error {
-                    Section { ErrorRow(error: error) }
+                    ErrorRow(error: error)
                 }
 
                 if store.feed.isEmpty {
-                    Section {
-                        ContentUnavailableView(
-                            "No signals yet",
-                            systemImage: "waveform.path.ecg",
-                            description: Text("A signal appears here only after the owner approved it and the fill was recorded.")
-                        )
+                    if store.isLoading && store.lastRefreshed == nil {
+                        ProgressView().frame(maxWidth: .infinity).padding(.top, DS.Space.xxxl)
+                    } else {
+                        DSCard {
+                            DSEmptyState(
+                                title: "No signals yet",
+                                message: "A signal appears here only after the owner approved it and the fill was recorded.",
+                                icon: "waveform.path.ecg"
+                            )
+                        }
+                        .accessibilityElement(children: .combine)
                         .accessibilityIdentifier("feed.empty")
                     }
                 } else {
-                    Section {
-                        ForEach(store.feed, id: \.id) { signal in
+                    DSSection(
+                        "Published signals",
+                        footer: "Same list for every subscriber. Sizes are the owner's, not a suggestion.",
+                        padded: false
+                    ) {
+                        DSRows(store.feed, id: \.id) { signal in
                             NavigationLink(value: signal.id) {
                                 PublishedSignalRow(signal: signal)
                             }
+                            .buttonStyle(DSRowButtonStyle())
                             .accessibilityIdentifier("feed.row")
                         }
-                    } header: {
-                        Text("Published signals")
-                    } footer: {
-                        Text("Same list for every subscriber. Sizes are the owner's, not a suggestion.")
                     }
                 }
             }
-            .listStyle(.insetGrouped)
             .navigationTitle("Feed")
             .navigationDestination(for: String.self) { id in
                 PublishedSignalDetailView(signalID: id)
             }
             .refreshable { await store.refresh() }
-            .overlay {
-                if store.isLoading && store.feed.isEmpty && store.lastRefreshed == nil {
-                    ProgressView()
-                }
-            }
         }
     }
 }
@@ -59,55 +59,41 @@ struct PublishedSignalRow: View {
     let signal: PublishedSignal
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .firstTextBaseline) {
-                PublishedOrderLine(signal: signal)
-                Spacer(minLength: 8)
-                Text(signal.published_at.formatted(date: .abbreviated, time: .shortened))
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-            }
+        VStack(alignment: .leading, spacing: DS.Space.sm) {
+            PublishedOrderLine(signal: signal)
             if let thesis = signal.thesis {
                 Text(thesis)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .dsFont(.bodySmall)
+                    .foregroundStyle(DS.Text.secondary)
                     .lineLimit(2)
+                    .multilineTextAlignment(.leading)
             }
+            Text("Published \(signal.published_at.formatted(date: .abbreviated, time: .shortened))")
+                .dsFont(.caption)
+                .foregroundStyle(DS.Text.tertiary)
             if signal.thesis_source?.value1 == .fallback_template {
                 TemplateThesisMark()
             }
         }
-        .padding(.vertical, 4)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
-/// Symbol, side, quantity, price — the order itself, in one scannable line.
-/// A twin of the owner's `OrderLine` over the subscriber's generated type.
+/// Symbol, side, quantity, price: the order itself, in one scannable line.
+/// A twin of the owner's `OrderLine` over the subscriber's generated type,
+/// drawn by the same `OrderLineContent`.
 struct PublishedOrderLine: View {
     let signal: PublishedSignal
-    var size: CGFloat = 17
-    @ScaledMetric(relativeTo: .body) private var scale: CGFloat = 1
+    var style: DSTextStyle = .body
 
     var body: some View {
-        HStack(spacing: 6) {
-            Image(systemName: signal.side == .buy ? "arrowtriangle.up.fill" : "arrowtriangle.down.fill")
-                .font(.system(size: size * 0.55 * scale))
-                .foregroundStyle(signal.side == .buy ? Theme.gain : Theme.loss)
-
-            Text(signal.symbol)
-                .font(.system(size: size * scale, weight: .bold))
-
-            Text("\(signal.side == .buy ? "Buy" : "Sell") \(signal.quantity)")
-                .font(.system(size: size * 0.88 * scale))
-                .foregroundStyle(.secondary)
-
-            if let price = signal.estimated_price {
-                Text("@")
-                    .font(.system(size: size * 0.8 * scale))
-                    .foregroundStyle(.tertiary)
-                MoneyText(value: price, size: size * 0.88, weight: .medium)
-            }
-        }
+        OrderLineContent(
+            symbol: signal.symbol,
+            isBuy: signal.side == .buy,
+            quantity: signal.quantity,
+            price: signal.estimated_price,
+            style: style
+        )
     }
 }
 
@@ -132,6 +118,8 @@ struct PublishedSignalDetailView: View {
                 }
             } else {
                 ProgressView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(DS.Surface.page)
             }
         }
         .navigationTitle(detail?.signal.symbol ?? "Signal")
@@ -149,89 +137,59 @@ struct PublishedSignalDetailView: View {
 
     @ViewBuilder
     private func content(_ detail: PublishedSignalDetail) -> some View {
-        List {
-            Section {
-                VStack(alignment: .leading, spacing: 12) {
-                    PublishedOrderLine(signal: detail.signal, size: 22)
-                    HStack(spacing: 18) {
-                        Field("Fired", detail.signal.created_at.formatted(date: .abbreviated, time: .shortened))
-                        Field("Published", detail.signal.published_at.formatted(date: .abbreviated, time: .shortened))
+        DSPage {
+            DSCard {
+                VStack(alignment: .leading, spacing: DS.Space.lg) {
+                    PublishedOrderLine(signal: detail.signal, style: .h4)
+                    HStack(alignment: .top, spacing: DS.Space.xxl) {
+                        DSFact("Fired", detail.signal.created_at.formatted(date: .abbreviated, time: .shortened))
+                        DSFact("Published", detail.signal.published_at.formatted(date: .abbreviated, time: .shortened))
                     }
-                    Field("Type", detail.signal.signal_type.rawValue.replacingOccurrences(of: "_", with: " "))
+                    DSFact("Type", detail.signal.signal_type.rawValue.replacingOccurrences(of: "_", with: " "))
                 }
-                .padding(.vertical, 4)
             }
 
             if let thesis = detail.signal.thesis {
-                Section("Thesis") {
-                    Text(thesis).font(.callout)
-                    if detail.signal.thesis_source?.value1 == .fallback_template {
-                        TemplateThesisMark()
-                    }
-                }
-            }
-
-            if let indicators = Self.readIndicators(detail.signal.indicators) {
-                Section("Evidence") {
-                    ForEach(indicators, id: \.0) { name, value in
-                        HStack {
-                            Text(name).font(.subheadline)
-                            Spacer()
-                            Text(value)
-                                .font(.system(.subheadline, design: .monospaced))
-                                .monospacedDigit()
-                                .foregroundStyle(.secondary)
+                DSSection("Thesis") {
+                    VStack(alignment: .leading, spacing: DS.Space.md) {
+                        Text(thesis)
+                            .dsFont(.body)
+                            .foregroundStyle(DS.Text.primary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        if detail.signal.thesis_source?.value1 == .fallback_template {
+                            TemplateThesisMark()
                         }
                     }
                 }
             }
 
-            Section {
-                if detail.record.isEmpty {
-                    Text("No record rows for this signal. An exit's rows live on the lot it closed.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(Array(detail.record.enumerated()), id: \.offset) { _, row in
-                        RecordRowView(row: row)
+            if let indicators = IndicatorReader.read(detail.signal.indicators) {
+                DSSection("Evidence", padded: false) {
+                    DSRows(indicators, id: \.name) { item in
+                        DSValueRow(item.name) {
+                            Text(item.value)
+                                .dsFont(.code)
+                                .foregroundStyle(DS.Text.secondary)
+                        }
                     }
                 }
-            } header: {
-                Text("Record")
-            } footer: {
-                Text("Every row, verbatim and append-only. A later row supersedes an earlier one; nothing is edited. Recompute the published numbers from these and you get the same answer.")
             }
-        }
-    }
 
-    private struct Field: View {
-        let label: String
-        let value: String
-        init(_ label: String, _ value: String) {
-            self.label = label
-            self.value = value
-        }
-        var body: some View {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(label).font(.caption).foregroundStyle(.secondary)
-                Text(value).font(.subheadline)
+            DSSection(
+                "Record",
+                footer: "Every row, verbatim and append-only. A later row supersedes an earlier one; nothing is edited. Recompute the published numbers from these and you get the same answer.",
+                padded: detail.record.isEmpty
+            ) {
+                if detail.record.isEmpty {
+                    Text("No record rows for this signal. An exit's rows live on the lot it closed.")
+                        .dsFont(.bodySmall)
+                        .foregroundStyle(DS.Text.secondary)
+                } else {
+                    DSRows(Array(detail.record.enumerated()), id: \.offset) { item in
+                        RecordRowView(row: item.element)
+                    }
+                }
             }
-        }
-    }
-
-    /// Indicators are an untyped blob by design — the strategy owns their
-    /// shape. Render whatever arrived, in a stable order.
-    private static func readIndicators(_ container: OpenAPIRuntime.OpenAPIValueContainer?) -> [(String, String)]? {
-        guard let value = container?.value as? [String: Any], !value.isEmpty else { return nil }
-        return value.keys.sorted().compactMap { key in
-            guard let raw = value[key] else { return nil }
-            if let number = raw as? Double {
-                let rounded = (number * 10_000).rounded() / 10_000
-                return (key, String(rounded))
-            }
-            if let text = raw as? String { return (key, text) }
-            if let flag = raw as? Bool { return (key, flag ? "true" : "false") }
-            return (key, String(describing: raw))
         }
     }
 }
@@ -240,25 +198,24 @@ struct RecordRowView: View {
     let row: RecordRow
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text(kind).font(.subheadline.weight(.semibold))
+        VStack(alignment: .leading, spacing: DS.Space.xs) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(kind).dsFont(.bodySmall, weight: .bold).foregroundStyle(DS.Text.primary)
                 Spacer()
                 Text(row.recorded_at.formatted(date: .abbreviated, time: .shortened))
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
+                    .dsFont(.caption)
+                    .foregroundStyle(DS.Text.tertiary)
             }
-            HStack(spacing: 14) {
+            HStack(alignment: .firstTextBaseline, spacing: DS.Space.md) {
                 Labeled("Entry", row.entry_price)
                 if let mark = row.mark_price { Labeled("Mark", mark) }
                 if let exit = row.exit_price { Labeled("Exit", exit) }
                 Spacer()
                 if let pnl = row.realized_pnl ?? row.unrealized_pnl {
-                    PnLText(value: pnl, size: 15)
+                    PnLText(value: pnl, style: .bodySmall)
                 }
             }
         }
-        .padding(.vertical, 2)
     }
 
     private var kind: String {
@@ -274,9 +231,10 @@ struct RecordRowView: View {
             self.value = value
         }
         var body: some View {
-            HStack(spacing: 4) {
-                Text(label).font(.caption).foregroundStyle(.secondary)
-                MoneyText(value: value, size: 14, weight: .medium)
+            HStack(alignment: .firstTextBaseline, spacing: DS.Space.xs) {
+                Text(label).dsFont(.caption).foregroundStyle(DS.Text.secondary)
+                MoneyText(value: value, style: .bodySmall, weight: .regular)
+                    .foregroundStyle(DS.Text.primary)
             }
         }
     }

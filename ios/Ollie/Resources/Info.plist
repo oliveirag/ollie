@@ -29,8 +29,16 @@
 	<string>$(OLLIE_BASE_URL)</string>
 	<key>OllieSignalBaseURL</key>
 	<string>$(OLLIE_SIGNAL_BASE_URL)</string>
+	<key>UIAppFonts</key>
+	<array>
+		<string>JetBrainsMono-Regular.ttf</string>
+		<string>JetBrainsMono-Bold.ttf</string>
+	</array>
 	<key>UILaunchScreen</key>
-	<dict/>
+	<dict>
+		<key>UIColorName</key>
+		<string>LaunchBackground</string>
+	</dict>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>

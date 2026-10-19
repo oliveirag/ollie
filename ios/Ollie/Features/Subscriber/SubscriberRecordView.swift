@@ -10,60 +10,49 @@ struct SubscriberRecordView: View {
 
     var body: some View {
         NavigationStack {
-            List {
+            DSPage {
                 if let record = store.record {
                     if record.closed_trades == 0 && record.open_positions == 0 {
-                        Section {
-                            ContentUnavailableView(
-                                "No record yet",
-                                systemImage: "chart.line.uptrend.xyaxis",
-                                description: Text("The record starts accruing once a published signal opens a lot.")
+                        DSCard {
+                            DSEmptyState(
+                                title: "No record yet",
+                                message: "The record starts accruing once a published signal opens a lot.",
+                                icon: "chart.line.uptrend.xyaxis"
                             )
                         }
                     } else {
-                        Section("Performance") {
-                            LiveSinceRow(liveSince: record.live_since)
-                            StatRow(label: "Closed trades", value: "\(record.closed_trades)")
-                            StatRow(label: "Open positions", value: "\(record.open_positions)")
-                            WinRateRow(winRate: record.win_rate)
-                            AverageReturnRow(value: record.average_return)
-                            HStack {
-                                Text("Realized")
-                                Spacer()
-                                PnLText(value: record.total_realized_pnl)
-                            }
-                        }
-
-                        Section("Equity curve") {
-                            EquityCurve(points: record.curve.map {
+                        RecordSummary(
+                            liveSince: record.live_since,
+                            closedTrades: record.closed_trades,
+                            openPositions: record.open_positions,
+                            winRate: record.win_rate,
+                            averageReturn: record.average_return,
+                            realized: record.total_realized_pnl,
+                            curve: record.curve.map {
                                 CurveDay(date: $0.date, value: $0.value, withheld: $0.withheld)
-                            })
-                        }
-
-                        if withheld(record) > 0 {
-                            Section { WithheldNote(days: withheld(record)) }
-                        }
+                            }
+                        )
 
                         if !record.positions.isEmpty {
-                            Section {
-                                ForEach(record.positions, id: \.signal_id) { position in
+                            DSSection(
+                                "Open positions",
+                                footer: "Valued at the latest daily mark, never a live quote. Your own agent has your own market data.",
+                                padded: false
+                            ) {
+                                DSRows(record.positions, id: \.signal_id) { position in
                                     OpenPositionRow(position: position)
                                 }
-                            } header: {
-                                Text("Open positions")
-                            } footer: {
-                                Text("Valued at the latest daily mark, never a live quote. Your own agent has your own market data.")
                             }
                         }
                     }
                 } else if store.isLoading {
-                    Section { ProgressView() }
+                    ProgressView().frame(maxWidth: .infinity).padding(.top, DS.Space.xxxl)
                 } else {
-                    Section {
-                        ContentUnavailableView(
-                            "Record unavailable",
-                            systemImage: "exclamationmark.triangle",
-                            description: Text("Pull to refresh.")
+                    DSCard {
+                        DSEmptyState(
+                            title: "Record unavailable",
+                            message: "Pull to refresh.",
+                            icon: "exclamationmark.triangle"
                         )
                     }
                 }
@@ -72,46 +61,41 @@ struct SubscriberRecordView: View {
             .refreshable { await store.refresh() }
         }
     }
-
-    private func withheld(_ record: SubscriberTrackRecord) -> Int {
-        record.curve.filter(\.withheld).count
-    }
 }
 
 private struct OpenPositionRow: View {
     let position: OpenPosition
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
-                Image(systemName: position.side == .buy ? "arrowtriangle.up.fill" : "arrowtriangle.down.fill")
-                    .font(.caption2)
-                    .foregroundStyle(position.side == .buy ? Theme.gain : Theme.loss)
-                Text(position.symbol).font(.headline)
-                Text("\(position.quantity) @").foregroundStyle(.secondary)
-                MoneyText(value: position.entry_price, size: 15, weight: .medium)
+        VStack(alignment: .leading, spacing: DS.Space.sm) {
+            HStack(alignment: .firstTextBaseline, spacing: DS.Space.sm) {
+                SideGlyph(isBuy: position.side == .buy)
+                Text(position.symbol).dsFont(.body, weight: .bold).foregroundStyle(DS.Text.primary)
+                Text("\(position.quantity) @").dsFont(.bodySmall).foregroundStyle(DS.Text.secondary)
+                MoneyText(value: position.entry_price, style: .bodySmall, weight: .regular)
+                    .foregroundStyle(DS.Text.secondary)
                 Spacer()
                 if let mark = position.latest_mark {
-                    PnLText(value: mark.unrealized_pnl, size: 15)
+                    PnLText(value: mark.unrealized_pnl, style: .bodySmall)
                 }
             }
 
             if let mark = position.latest_mark {
-                HStack(spacing: 4) {
+                HStack(alignment: .firstTextBaseline, spacing: DS.Space.xs) {
                     Text("Mark")
-                    MoneyText(value: mark.price, size: 12, weight: .regular)
+                    MoneyText(value: mark.price, style: .caption, weight: .regular)
                     Text("as of \(mark.as_of.formatted(date: .abbreviated, time: .omitted)) · held \(mark.days_held) day\(mark.days_held == 1 ? "" : "s")")
                 }
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .dsFont(.caption)
+                .foregroundStyle(DS.Text.secondary)
+                .accessibilityElement(children: .combine)
                 .accessibilityIdentifier("position.mark")
             } else {
-                Text("Not yet marked — opened \(position.opened_at.formatted(date: .abbreviated, time: .omitted)). No value is claimed until a daily mark exists.")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
+                Text("Not yet marked. Opened \(position.opened_at.formatted(date: .abbreviated, time: .omitted)). No value is claimed until a daily mark exists.")
+                    .dsFont(.caption)
+                    .foregroundStyle(DS.Text.tertiary)
                     .accessibilityIdentifier("position.unmarked")
             }
         }
-        .padding(.vertical, 2)
     }
 }

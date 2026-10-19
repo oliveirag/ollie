@@ -5,96 +5,96 @@ struct DashboardView: View {
 
     var body: some View {
         NavigationStack {
-            List {
+            DSPage {
                 if let dashboard = store.dashboard {
                     if !dashboard.quotes_available {
-                        Section { QuotesUnavailableNote() }
+                        QuotesUnavailableNote()
                     }
 
-                    Section("Totals") {
-                        TotalRow(label: "Cost basis", value: dashboard.totals.cost_basis)
-                        TotalRow(label: "Market value", value: dashboard.totals.market_value)
-
-                        HStack {
-                            Text("Unrealized")
-                            Spacer()
-                            if let unrealized = dashboard.totals.unrealized_pnl {
-                                PnLText(value: unrealized)
-                            } else {
-                                WithheldValue()
+                    DSSection("Totals", padded: false) {
+                        DSRows(TotalLine.allCases, id: \.self) { line in
+                            switch line {
+                            case .costBasis:
+                                TotalRow(label: "Cost basis", value: dashboard.totals.cost_basis)
+                            case .marketValue:
+                                TotalRow(label: "Market value", value: dashboard.totals.market_value)
+                            case .unrealized:
+                                DSValueRow("Unrealized") {
+                                    if let unrealized = dashboard.totals.unrealized_pnl {
+                                        PnLText(value: unrealized)
+                                    } else {
+                                        WithheldValue()
+                                    }
+                                }
+                            case .realized:
+                                DSValueRow("Realized") {
+                                    PnLText(value: dashboard.totals.realized_pnl)
+                                }
                             }
-                        }
-
-                        HStack {
-                            Text("Realized")
-                            Spacer()
-                            MoneyText(value: dashboard.totals.realized_pnl, weight: .regular)
-                                .foregroundStyle(.secondary)
                         }
                     }
 
                     if dashboard.lots.isEmpty {
-                        Section {
-                            ContentUnavailableView(
-                                "No open positions",
-                                systemImage: "chart.xyaxis.line",
-                                description: Text("Approved signals open a lot here.")
+                        DSCard {
+                            DSEmptyState(
+                                title: "No open positions",
+                                message: "Approved signals open a lot here.",
+                                icon: "chart.bar.xaxis"
                             )
                         }
                     } else {
-                        Section("Open lots") {
-                            ForEach(dashboard.lots, id: \.signal_id) { lot in
+                        DSSection("Open lots", padded: false) {
+                            DSRows(dashboard.lots, id: \.signal_id) { lot in
                                 LotRow(lot: lot)
                             }
                         }
                     }
                 } else {
-                    Section { ProgressView() }
+                    ProgressView().frame(maxWidth: .infinity).padding(.top, DS.Space.xxxl)
                 }
             }
             .navigationTitle("Positions")
             .refreshable { await store.refresh() }
         }
     }
+
+    private enum TotalLine: CaseIterable { case costBasis, marketValue, unrealized, realized }
 }
 
 private struct LotRow: View {
     let lot: OpenLot
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Image(systemName: lot.side == .buy ? "arrowtriangle.up.fill" : "arrowtriangle.down.fill")
-                    .font(.caption2)
-                    .foregroundStyle(lot.side == .buy ? Theme.gain : Theme.loss)
-                Text(lot.symbol).font(.headline)
-                Text(lot.quantity).font(.subheadline).foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: DS.Space.sm) {
+            HStack(alignment: .firstTextBaseline, spacing: DS.Space.sm) {
+                SideGlyph(isBuy: lot.side == .buy)
+                Text(lot.symbol).dsFont(.body, weight: .bold).foregroundStyle(DS.Text.primary)
+                Text(lot.quantity).dsFont(.bodySmall).foregroundStyle(DS.Text.secondary)
                 Spacer()
                 if let pnl = lot.unrealized_pnl {
-                    PnLText(value: pnl, size: 15)
+                    PnLText(value: pnl)
                 } else {
                     WithheldValue()
                 }
             }
 
-            HStack(spacing: 14) {
+            HStack(spacing: DS.Space.lg) {
                 LabelledValue("Entry", lot.entry_price)
                 if let quote = lot.quote {
                     LabelledValue("Quote", quote)
                 } else {
                     // Says which number is missing rather than showing a
                     // stale one; the row still carries its entry basis.
-                    Text("No quote").font(.caption).foregroundStyle(.tertiary)
+                    Text("No quote").dsFont(.caption).foregroundStyle(DS.Text.tertiary)
                 }
                 Spacer()
                 if let age = lot.quote_age_seconds {
                     // Always on screen: a stale price read as current is the
                     // failure mode this endpoint was designed around.
-                    Text("\(age)s ago").font(.caption2).foregroundStyle(.tertiary)
+                    Text("\(age)s ago").dsFont(.caption).foregroundStyle(DS.Text.tertiary)
                 }
             }
         }
-        .padding(.vertical, 2)
     }
 }
 
@@ -108,10 +108,12 @@ private struct LabelledValue: View {
     }
 
     var body: some View {
-        HStack(spacing: 4) {
-            Text(label).font(.caption).foregroundStyle(.secondary)
-            MoneyText(value: value, size: 13, weight: .medium)
+        HStack(alignment: .firstTextBaseline, spacing: DS.Space.xs) {
+            Text(label).dsFont(.caption).foregroundStyle(DS.Text.secondary)
+            MoneyText(value: value, style: .bodySmall, weight: .regular)
+                .foregroundStyle(DS.Text.primary)
         }
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -120,11 +122,10 @@ private struct TotalRow: View {
     let value: String?
 
     var body: some View {
-        HStack {
-            Text(label)
-            Spacer()
+        DSValueRow(label) {
             if let value {
                 MoneyText(value: value, weight: .regular)
+                    .foregroundStyle(DS.Text.primary)
             } else {
                 WithheldValue()
             }
@@ -137,24 +138,18 @@ private struct TotalRow: View {
 /// a partial sum understates the portfolio.
 private struct WithheldValue: View {
     var body: some View {
-        Text("—  withheld")
-            .font(.subheadline)
-            .foregroundStyle(.tertiary)
+        Label("Withheld", systemImage: "eye.slash")
+            .dsFont(.bodySmall)
+            .foregroundStyle(DS.Text.tertiary)
     }
 }
 
 private struct QuotesUnavailableNote: View {
     var body: some View {
-        Label {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Quotes unavailable").font(.subheadline.weight(.semibold))
-                Text("Showing entry basis only. Positions are still accurate.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        } icon: {
-            Image(systemName: "wifi.exclamationmark")
-        }
-        .foregroundStyle(Theme.caution)
+        DSNotice(
+            title: "Quotes unavailable",
+            message: "Showing entry basis only. Positions are still accurate.",
+            icon: "wifi.exclamationmark"
+        )
     }
 }

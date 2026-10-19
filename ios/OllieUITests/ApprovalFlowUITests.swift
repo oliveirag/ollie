@@ -64,7 +64,7 @@ final class ApprovalFlowUITests: XCTestCase {
         // The confirmation names the verb and the mode together, so this also
         // asserts the sheet cannot be mistaken for a live approval.
         let confirm = app.buttons.matching(
-            NSPredicate(format: "label BEGINSWITH 'Approve — paper'")
+            NSPredicate(format: "label BEGINSWITH 'Approve paper'")
         ).firstMatch
         XCTAssertTrue(confirm.waitForExistence(timeout: 10), "confirmation step missing")
         confirm.tap()
