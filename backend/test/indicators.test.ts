@@ -65,6 +65,14 @@ describe('rsi', () => {
     expect(out[14]).not.toBeNull();
   });
 
+  it('returns all nulls when there are exactly `period` closes, one short of a first value', () => {
+    // A first RSI value needs `period` changes, which needs `period + 1`
+    // closes. At exactly `period` closes there is one change short of that.
+    const out = rsi(WILDER_CLOSES.slice(0, 14), 14);
+    expect(out).toHaveLength(14);
+    expect(out.every((v) => v === null)).toBe(true);
+  });
+
   it('stays within 0 and 100', () => {
     for (const value of rsi(closes, 14)) {
       if (value === null) continue;
