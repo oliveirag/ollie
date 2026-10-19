@@ -18,10 +18,11 @@ struct DisclaimerView: View {
         NavigationStack {
             VStack(spacing: 0) {
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 14) {
+                    LazyVStack(alignment: .leading, spacing: DS.Space.lg) {
                         ForEach(Array(paragraphs.enumerated()), id: \.offset) { _, paragraph in
                             Text(paragraph)
-                                .font(.body)
+                                .dsFont(.body)
+                                .foregroundStyle(DS.Text.primary)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
 
@@ -33,13 +34,12 @@ struct DisclaimerView: View {
                             .onAppear { reachedEnd = true }
                             .accessibilityIdentifier("disclaimer.end")
                     }
-                    .padding(20)
+                    .padding(.horizontal, DS.pageMargin)
+                    .padding(.vertical, DS.Space.xl)
                 }
                 .accessibilityIdentifier("disclaimer.scroll")
 
-                Divider()
-
-                VStack(spacing: 10) {
+                VStack(spacing: DS.Space.sm) {
                     if let failure {
                         ErrorRow(error: .server(failure))
                     }
@@ -47,26 +47,30 @@ struct DisclaimerView: View {
                     Button {
                         Task { await accept() }
                     } label: {
-                        Group {
-                            if isWorking {
-                                ProgressView()
-                            } else {
-                                Text(reachedEnd ? "I have read this and accept" : "Scroll to the end to accept")
-                            }
+                        ZStack {
+                            Text(reachedEnd ? "I have read this and accept" : "Scroll to the end to accept")
+                                .opacity(isWorking ? 0 : 1)
+                            if isWorking { ProgressView().tint(DS.Text.onAction) }
                         }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 6)
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.ds(.primary, size: .large))
                     .disabled(!reachedEnd || isWorking)
                     .accessibilityIdentifier("disclaimer.accept")
 
                     Button("Sign out") { store.signOut() }
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .buttonStyle(.ds(.ghost))
                 }
-                .padding(20)
+                .padding(.horizontal, DS.pageMargin)
+                .padding(.vertical, DS.Space.md)
+                .background {
+                    VStack(spacing: 0) {
+                        Rectangle().fill(DS.Border.default).frame(height: 1)
+                        DS.Surface.page
+                    }
+                    .ignoresSafeArea(edges: .bottom)
+                }
             }
+            .background(DS.Surface.page)
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
         }

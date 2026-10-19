@@ -5,81 +5,88 @@ struct ApprovalsView: View {
 
     var body: some View {
         NavigationStack {
-            List {
+            DSPage {
                 if let error = store.error, !error.isRace {
-                    Section { ErrorRow(error: error) }
+                    ErrorRow(error: error)
                 }
 
                 if store.pending.isEmpty {
-                    Section { AllClearRow(store: store) }
+                    if store.isLoading && store.lastRefreshed == nil {
+                        ProgressView().frame(maxWidth: .infinity).padding(.top, DS.Space.xxxl)
+                    } else {
+                        AllClearCard(store: store)
+                    }
                 } else {
-                    Section {
-                        ForEach(store.pending, id: \.id) { signal in
+                    DSSection(pendingTitle, padded: false) {
+                        DSRows(store.pending, id: \.id) { signal in
                             NavigationLink(value: signal.id) {
                                 PendingRow(signal: signal)
                             }
+                            .buttonStyle(DSRowButtonStyle())
                             .accessibilityIdentifier("pending-signal-row")
                         }
-                    } header: {
-                        Text("^[\(store.pending.count) signal](inflect: true) awaiting you")
                     }
                 }
 
                 if !store.decided.isEmpty {
-                    Section("History") {
-                        ForEach(store.decided, id: \.id) { signal in
+                    DSSection("History", padded: false) {
+                        DSRows(store.decided, id: \.id) { signal in
                             DecidedRow(signal: signal)
                         }
                     }
                 }
             }
-            .listStyle(.insetGrouped)
             .navigationTitle("Approvals")
             .navigationDestination(for: String.self) { id in
                 SignalDetailView(signalID: id)
             }
             .refreshable { await store.refresh() }
-            .overlay {
-                if store.isLoading && store.pending.isEmpty && store.lastRefreshed == nil {
-                    ProgressView()
-                }
-            }
         }
+    }
+
+    private var pendingTitle: String {
+        let count = store.pending.count
+        return "\(count) signal\(count == 1 ? "" : "s") awaiting you"
     }
 }
 
 /// The state the owner sees most: nothing pending. Reports what the system is
 /// doing rather than showing an empty box, so "no signals" reads as "working
 /// and found nothing" instead of "possibly broken".
-private struct AllClearRow: View {
+private struct AllClearCard: View {
     let store: SignalStore
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
-                Image(systemName: store.killSwitch ? "octagon.fill" : "checkmark.circle.fill")
-                    .foregroundStyle(store.killSwitch ? Theme.destructive : Theme.gain)
-                Text(store.killSwitch ? "Halted" : "All clear")
-                    .font(.headline)
-            }
-
-            Text(store.killSwitch
-                 ? "The kill switch is on. No new signals will be proposed."
-                 : "Nothing awaiting a decision.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-
-            if let refreshed = store.lastRefreshed {
-                Label {
-                    Text("Checked \(refreshed.formatted(date: .omitted, time: .shortened))")
-                } icon: {
-                    Image(systemName: "clock")
+        DSCard {
+            VStack(alignment: .leading, spacing: DS.Space.sm) {
+                HStack(spacing: DS.Space.sm) {
+                    Image(systemName: store.killSwitch ? "octagon.fill" : "checkmark.circle")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(store.killSwitch ? DS.Icon.error : DS.Icon.primary)
+                    Text(store.killSwitch ? "Halted" : "All clear")
+                        .dsFont(.body, weight: .bold)
+                        .foregroundStyle(DS.Text.primary)
                 }
-                .font(.caption)
-                .foregroundStyle(.tertiary)
+
+                Text(store.killSwitch
+                     ? "The kill switch is on. No new signals will be proposed."
+                     : "Nothing awaiting a decision.")
+                    .dsFont(.bodySmall)
+                    .foregroundStyle(DS.Text.secondary)
+
+                if let refreshed = store.lastRefreshed {
+                    Label {
+                        Text("Checked \(refreshed.formatted(date: .omitted, time: .shortened))")
+                    } icon: {
+                        Image(systemName: "clock")
+                    }
+                    .dsFont(.caption)
+                    .foregroundStyle(DS.Text.tertiary)
+                    .padding(.top, DS.Space.xs)
+                }
             }
         }
-        .padding(.vertical, 6)
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -87,67 +94,92 @@ private struct PendingRow: View {
     let signal: SignalSummary
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .firstTextBaseline) {
+        VStack(alignment: .leading, spacing: DS.Space.sm) {
+            HStack(alignment: .center, spacing: DS.Space.sm) {
                 OrderLine(signal: signal)
-                Spacer(minLength: 8)
+                Spacer(minLength: DS.Space.sm)
                 if let expires = signal.expires_at {
-                    Countdown(expiresAt: expires, compact: true)
+                    Countdown(expiresAt: expires)
                 }
             }
 
             if let thesis = signal.thesis {
                 Text(thesis)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .dsFont(.bodySmall)
+                    .foregroundStyle(DS.Text.secondary)
                     .lineLimit(2)
+                    .multilineTextAlignment(.leading)
             }
 
             if signal.thesis_source?.value1 == .fallback_template {
                 TemplateThesisMark()
             }
         }
-        .padding(.vertical, 4)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
-/// Symbol, side, quantity, price — the order itself, in one scannable line.
+/// Symbol, side, quantity, price: the order itself, in one scannable line.
+/// Side is a glyph and a word, never a colour.
 struct OrderLine: View {
     let signal: SignalSummary
-    var size: CGFloat = 17
-    @ScaledMetric(relativeTo: .body) private var scale: CGFloat = 1
+    var style: DSTextStyle = .body
 
     var body: some View {
-        HStack(spacing: 6) {
-            Image(systemName: signal.side == .buy ? "arrowtriangle.up.fill" : "arrowtriangle.down.fill")
-                .font(.system(size: size * 0.55 * scale))
-                .foregroundStyle(signal.side == .buy ? Theme.gain : Theme.loss)
+        OrderLineContent(
+            symbol: signal.symbol,
+            isBuy: signal.side == .buy,
+            quantity: signal.quantity,
+            price: signal.estimated_price,
+            style: style
+        )
+    }
+}
 
-            Text(signal.symbol)
-                .font(.system(size: size * scale, weight: .bold))
+/// The shared drawing behind `OrderLine` and the subscriber's
+/// `PublishedOrderLine`, which wrap two generated types with the same facts.
+struct OrderLineContent: View {
+    let symbol: String
+    let isBuy: Bool
+    let quantity: String
+    let price: String?
+    var style: DSTextStyle = .body
 
-            Text("\(signal.side == .buy ? "Buy" : "Sell") \(signal.quantity)")
-                .font(.system(size: size * 0.88 * scale))
-                .foregroundStyle(.secondary)
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: DS.Space.sm) {
+            SideGlyph(isBuy: isBuy, size: style.size * 0.75)
+                .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + style.size * 0.3 }
 
-            if let price = signal.estimated_price {
+            Text(symbol)
+                .dsFont(style, weight: .bold)
+                .foregroundStyle(DS.Text.primary)
+
+            Text("\(isBuy ? "Buy" : "Sell") \(quantity)")
+                .dsFont(style == .body ? .bodySmall : .body)
+                .foregroundStyle(DS.Text.secondary)
+
+            if let price {
                 Text("@")
-                    .font(.system(size: size * 0.8 * scale))
-                    .foregroundStyle(.tertiary)
-                MoneyText(value: price, size: size * 0.88, weight: .medium)
+                    .dsFont(style == .body ? .bodySmall : .body)
+                    .foregroundStyle(DS.Text.tertiary)
+                MoneyText(value: price, style: style == .body ? .bodySmall : .body, weight: .regular)
+                    .foregroundStyle(DS.Text.secondary)
             }
         }
+        .lineLimit(1)
+        .minimumScaleFactor(0.85)
+        .accessibilityElement(children: .combine)
     }
 }
 
 /// The thesis came from the fallback template, meaning the LLM call failed.
-/// Worth noticing — the signal itself is unaffected, since the decision is
+/// Worth noticing. The signal itself is unaffected, since the decision is
 /// deterministic and the model only ever writes prose.
 struct TemplateThesisMark: View {
     var body: some View {
-        Label("Template thesis — the model was unavailable", systemImage: "doc.plaintext")
-            .font(.caption2)
-            .foregroundStyle(.tertiary)
+        Label("Template thesis: the model was unavailable", systemImage: "doc.plaintext")
+            .dsFont(.caption)
+            .foregroundStyle(DS.Text.tertiary)
     }
 }
 
@@ -155,39 +187,38 @@ private struct DecidedRow: View {
     let signal: SignalSummary
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                OrderLine(signal: signal, size: 15)
-                Spacer(minLength: 8)
+        VStack(alignment: .leading, spacing: DS.Space.xs) {
+            HStack(alignment: .center) {
+                OrderLine(signal: signal, style: .bodySmall)
+                Spacer(minLength: DS.Space.sm)
                 StatusChip(status: signal.status)
             }
             if let reason = signal.decide_reason {
                 Text(reason)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .dsFont(.caption)
+                    .foregroundStyle(DS.Text.secondary)
                     .lineLimit(1)
             }
             if let order = signal.order?.value1 {
                 OrderStateLine(order: order)
             }
         }
-        .padding(.vertical, 2)
     }
 }
 
 /// Where a live order stands (Phase 5). Approved-and-placed is not the same
 /// as filled, and a cancelled order with no fill is an approved signal that
-/// never became a position — both are said in words.
+/// never became a position. Both are said in words, with a glyph each.
 struct OrderStateLine: View {
     let order: Components.Schemas.Order
 
     var body: some View {
         Label {
-            Text(text).font(.caption)
+            Text(text).dsFont(.caption)
         } icon: {
             Image(systemName: symbol)
         }
-        .foregroundStyle(order.terminal_at == nil ? Color.secondary : (filled ? Theme.gain : Theme.loss))
+        .foregroundStyle(order.terminal_at == nil ? DS.Text.secondary : DS.Text.primary)
         .accessibilityIdentifier("order.state")
     }
 
@@ -198,13 +229,13 @@ struct OrderStateLine: View {
     private var text: String {
         if order.terminal_at == nil {
             return order.state == "partially_filled"
-                ? "Live order partially filled (\(order.cumulative_quantity)) — awaiting the rest"
-                : "Live order \(order.state) — awaiting fill"
+                ? "Live order partially filled (\(order.cumulative_quantity)), awaiting the rest"
+                : "Live order \(order.state), awaiting fill"
         }
         if filled, let price = order.average_price {
             return "Filled \(order.cumulative_quantity) @ \(price)"
         }
-        return "Live order \(order.state) — no fill"
+        return "Live order \(order.state), no fill"
     }
 
     private var symbol: String {
@@ -213,36 +244,18 @@ struct OrderStateLine: View {
     }
 }
 
-/// Three outcomes, three temperatures. Rejected is grey because rejecting is a
-/// valid decision, not an error; expired is amber because it is a missed
-/// opportunity; red is reserved for halting and the final minute.
+/// Three outcomes, three glyphs, one colour. Approved is the solid badge
+/// because it is the one that moved money; rejected and missed are outlines.
+/// Rejecting is a valid decision, not an error, so nothing here is red.
 struct StatusChip: View {
     let status: Components.Schemas.SignalStatus
 
     var body: some View {
-        Text(label)
-            .font(.caption2.weight(.semibold))
-            .padding(.horizontal, 7)
-            .padding(.vertical, 3)
-            .background(color.opacity(0.15), in: Capsule())
-            .foregroundStyle(color)
-    }
-
-    private var label: String {
         switch status {
-        case .approved: "Approved"
-        case .rejected: "Rejected"
-        case .expired: "Missed"
-        case .pending: "Pending"
-        }
-    }
-
-    private var color: Color {
-        switch status {
-        case .approved: Theme.gain
-        case .rejected: .secondary
-        case .expired: Theme.caution
-        case .pending: .secondary
+        case .approved: DSBadge(label: "Approved", icon: "checkmark", variant: .solid)
+        case .rejected: DSBadge(label: "Rejected", icon: "xmark", variant: .outline)
+        case .expired: DSBadge(label: "Missed", icon: "clock.badge.xmark", variant: .outline)
+        case .pending: DSBadge(label: "Pending", icon: "hourglass", variant: .neutral)
         }
     }
 }
@@ -251,12 +264,10 @@ struct ErrorRow: View {
     let error: OllieError
 
     var body: some View {
-        Label {
-            Text(error.errorDescription ?? "Something went wrong.")
-                .font(.footnote)
-        } icon: {
-            Image(systemName: "exclamationmark.triangle.fill")
-        }
-        .foregroundStyle(Theme.destructive)
+        DSNotice(
+            title: error.errorDescription ?? "Something went wrong.",
+            icon: "exclamationmark.triangle.fill",
+            isError: true
+        )
     }
 }

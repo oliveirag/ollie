@@ -42,26 +42,30 @@ struct RootView: View {
     }
 
     private var ownerShell: some View {
-        TabView {
-            ApprovalsView()
-                .tabItem { Label("Approvals", systemImage: "tray.full") }
-
-            DashboardView()
-                .tabItem { Label("Positions", systemImage: "chart.xyaxis.line") }
-
-            TrackRecordView()
-                .tabItem { Label("Record", systemImage: "chart.line.uptrend.xyaxis") }
-
-            ControlsView()
-                .tabItem { Label("Controls", systemImage: "slider.horizontal.3") }
-        }
-        // The rail is attached once, here, above navigation — not per screen.
-        // PRD §4.3 wants the mode unmistakable everywhere, and a per-screen
-        // badge is how one screen eventually ships without it.
-        .safeAreaInset(edge: .top, spacing: 0) {
+        // The rail sits above the TabView in a stack rather than in a safe
+        // area inset on it: an inset on the TabView let pushed screens lay
+        // their navigation bar underneath the rail, hiding the back button.
+        // Still attached once, here, above navigation. PRD §4.3 wants the mode
+        // unmistakable everywhere, and a per-screen badge is how one screen
+        // eventually ships without it.
+        VStack(spacing: 0) {
             ModeRail(mode: owner.mode)
+
+            TabView {
+                ApprovalsView()
+                    .tabItem { Label("Approvals", systemImage: "tray.full") }
+
+                DashboardView()
+                    .tabItem { Label("Positions", systemImage: "chart.bar.xaxis") }
+
+                TrackRecordView()
+                    .tabItem { Label("Record", systemImage: "chart.line.uptrend.xyaxis") }
+
+                ControlsView()
+                    .tabItem { Label("Controls", systemImage: "slider.horizontal.3") }
+            }
         }
-        .tint(owner.mode.accent)
+        .tint(DS.Text.action)
         .task { await owner.refresh() }
         // Keyed on the token so pasting it on first launch registers the
         // device then, not on the next launch.
@@ -83,41 +87,47 @@ struct WelcomeView: View {
     let onOwner: () -> Void
 
     var body: some View {
-        VStack(spacing: 28) {
+        VStack(alignment: .leading, spacing: 0) {
             Spacer()
 
-            VStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: DS.Space.lg) {
                 Image(systemName: "waveform.path.ecg")
-                    .font(.system(.largeTitle, weight: .semibold))
-                    .imageScale(.large)
-                    .foregroundStyle(.secondary)
-                Text("Ollie").font(.largeTitle.bold())
+                    .font(.system(size: 28, weight: .semibold))
+                    .foregroundStyle(DS.Icon.primary)
+                    .frame(width: 56, height: 56)
+                    .background(DS.Surface.default, in: RoundedRectangle(cornerRadius: DS.Radius.lg, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: DS.Radius.lg, style: .continuous)
+                            .strokeBorder(DS.Border.strong, lineWidth: DS.BorderWidth.sm)
+                    }
+                    .accessibilityHidden(true)
+
+                Text("Ollie")
+                    .dsFont(.display)
+                    .foregroundStyle(DS.Text.primary)
+
                 Text("A public record of one rule-based strategy's signals, published only after they were acted on. Your agent decides what to do with them.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 28)
+                    .dsFont(.body)
+                    .foregroundStyle(DS.Text.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             Spacer()
 
-            VStack(spacing: 12) {
-                Button(action: onSubscribe) {
-                    Text("Subscribe")
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 6)
-                }
-                .buttonStyle(.borderedProminent)
-                .accessibilityIdentifier("welcome.subscribe")
+            VStack(spacing: DS.Space.sm) {
+                Button("Subscribe", action: onSubscribe)
+                    .buttonStyle(.ds(.primary, size: .large))
+                    .accessibilityIdentifier("welcome.subscribe")
 
                 Button("I run Ollie", action: onOwner)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .buttonStyle(.ds(.ghost))
                     .accessibilityIdentifier("welcome.owner")
             }
-            .padding(.horizontal, 24)
-            .padding(.bottom, 24)
         }
+        .padding(.horizontal, DS.Space.xxl)
+        .padding(.bottom, DS.Space.lg)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(DS.Surface.page)
     }
 }
 
@@ -129,27 +139,30 @@ struct TokenEntryView: View {
 
     @State private var token = ""
 
+    private var isPlausible: Bool {
+        token.trimmingCharacters(in: .whitespacesAndNewlines).count >= 32
+    }
+
     var body: some View {
         NavigationStack {
-            Form {
-                Section {
-                    SecureField("Owner API token", text: $token)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                } header: {
-                    Text("Connect to Ollie")
-                } footer: {
-                    Text("The value of OWNER_API_TOKEN on your backend. It is stored in the "
-                         + "Keychain on this device only and never leaves it except as a bearer "
-                         + "header to \(OllieServer.baseURL.absoluteString).")
-                }
+            DSPage {
+                DSTextField(
+                    label: "Owner API token",
+                    placeholder: "Paste the token",
+                    text: $token,
+                    secure: true,
+                    helper: "The value of OWNER_API_TOKEN on your backend. It is stored in the "
+                        + "Keychain on this device only and never leaves it except as a bearer "
+                        + "header to \(OllieServer.baseURL.absoluteString)."
+                )
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
 
-                Section {
-                    Button("Save") { onSave(token) }
-                        .disabled(token.trimmingCharacters(in: .whitespacesAndNewlines).count < 32)
-                }
+                Button("Save") { onSave(token) }
+                    .buttonStyle(.ds(.primary))
+                    .disabled(!isPlausible)
             }
-            .navigationTitle("Ollie")
+            .navigationTitle("Connect to Ollie")
             .toolbar {
                 if let onBack {
                     ToolbarItem(placement: .cancellationAction) {

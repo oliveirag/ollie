@@ -12,54 +12,81 @@ struct SubscriberSettingsView: View {
 
     var body: some View {
         NavigationStack {
-            List {
+            DSPage {
                 if let url = store.mcpURL {
-                    Section("MCP server") {
-                        Text(url)
-                            .font(.system(.footnote, design: .monospaced))
-                            .textSelection(.enabled)
-                        SetupSteps(url: url)
+                    DSSection("MCP server") {
+                        VStack(alignment: .leading, spacing: DS.Space.lg) {
+                            Text(url)
+                                .dsFont(.code)
+                                .foregroundStyle(DS.Text.primary)
+                                .textSelection(.enabled)
+                            DSDivider()
+                            SetupSteps(url: url)
+                        }
                     }
                 }
 
-                Section {
+                DSSection(
+                    "Agent tokens",
+                    footer: "Each token is shown once at creation. Revoking cuts the agent off immediately; the row stays as history.",
+                    padded: false
+                ) {
                     if store.tokens.isEmpty {
-                        Text("No agent tokens.").foregroundStyle(.secondary)
-                    }
-                    ForEach(store.tokens, id: \.id) { token in
-                        TokenRow(token: token) {
-                            revoking = token.id
+                        Text("No agent tokens.")
+                            .dsFont(.body)
+                            .foregroundStyle(DS.Text.secondary)
+                            .padding(DS.Space.lg)
+                    } else {
+                        DSRows(store.tokens, id: \.id) { token in
+                            TokenRow(token: token) {
+                                revoking = token.id
+                            }
                         }
                     }
+                    DSDivider()
                     Button {
                         Task { await mint() }
                     } label: {
-                        if isMinting { ProgressView() } else { Label("Create a new agent token", systemImage: "plus") }
+                        HStack {
+                            if isMinting {
+                                ProgressView()
+                            } else {
+                                Label("Create a new agent token", systemImage: "plus")
+                            }
+                            Spacer()
+                        }
+                        .dsFont(.body, weight: .bold)
+                        .foregroundStyle(DS.Text.primary)
+                        .padding(.horizontal, DS.Space.lg)
+                        .frame(minHeight: DS.hitTarget + DS.Space.sm)
+                        .contentShape(Rectangle())
                     }
+                    .buttonStyle(.plain)
                     .disabled(isMinting)
                     .accessibilityIdentifier("settings.mint")
-                } header: {
-                    Text("Agent tokens")
-                } footer: {
-                    Text("Each token is shown once at creation. Revoking cuts the agent off immediately; the row stays as history.")
                 }
 
                 if let failure {
-                    Section { ErrorRow(error: .server(failure)) }
+                    ErrorRow(error: .server(failure))
                 }
 
-                Section {
-                    Button("Sign out", role: .destructive) { store.signOut() }
+                VStack(alignment: .leading, spacing: DS.Space.sm) {
+                    // Signing out is reversible, so it is not red. Revoking a
+                    // token is the irreversible one.
+                    Button("Sign out") { store.signOut() }
+                        .buttonStyle(.ds(.secondary))
                         .accessibilityIdentifier("settings.signOut")
-                } footer: {
                     Text("Signing out forgets the session on this device. Agent tokens keep working until revoked.")
+                        .dsFont(.caption)
+                        .foregroundStyle(DS.Text.secondary)
+                        .padding(.horizontal, DS.Space.xs)
                 }
 
                 if let version = store.onboarding?.disclaimer.version {
-                    Section("Disclaimer") {
+                    DSSection("Disclaimer") {
                         Text("Accepted version \(version.prefix(12))…")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .dsFont(.code)
+                            .foregroundStyle(DS.Text.secondary)
                     }
                 }
             }
@@ -113,23 +140,24 @@ private struct TokenRow: View {
     let onRevoke: () -> Void
 
     var body: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
+        HStack(alignment: .center, spacing: DS.Space.md) {
+            VStack(alignment: .leading, spacing: DS.Space.xs) {
                 Text("Created \(token.created_at.formatted(date: .abbreviated, time: .shortened))")
-                    .font(.subheadline)
+                    .dsFont(.bodySmall)
+                    .foregroundStyle(token.revoked_at == nil ? DS.Text.primary : DS.Text.secondary)
                 Text(status)
-                    .font(.caption)
-                    .foregroundStyle(token.revoked_at == nil ? .secondary : .tertiary)
+                    .dsFont(.caption)
+                    .foregroundStyle(token.revoked_at == nil ? DS.Text.secondary : DS.Text.tertiary)
             }
             Spacer()
             if token.revoked_at == nil {
-                Button("Revoke", role: .destructive, action: onRevoke)
-                    .font(.footnote)
-                    .buttonStyle(.bordered)
+                Button("Revoke", action: onRevoke)
+                    .buttonStyle(.ds(.destructive, size: .small, fullWidth: false))
                     .accessibilityIdentifier("token.revoke")
+            } else {
+                DSBadge(label: "Revoked", icon: "xmark", variant: .outline)
             }
         }
-        .foregroundStyle(token.revoked_at == nil ? .primary : .secondary)
     }
 
     private var status: String {

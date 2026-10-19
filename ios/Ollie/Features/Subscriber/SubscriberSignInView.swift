@@ -22,27 +22,28 @@ struct SubscriberSignInView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section {
-                    TextField("Invite code", text: $inviteCode)
-                        .textInputAutocapitalization(.characters)
-                        .autocorrectionDisabled()
-                        .accessibilityIdentifier("signin.inviteCode")
-                } header: {
-                    Text("Invite")
-                } footer: {
-                    Text("Ollie is invite-only for now. Returning subscribers can leave this blank.")
-                }
+            DSPage {
+                Text("Ollie is invite-only for now. Returning subscribers can leave the code blank.")
+                    .dsFont(.body)
+                    .foregroundStyle(DS.Text.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
 
-                Section {
+                DSTextField(label: "Invite code", placeholder: "Invite code", text: $inviteCode)
+                    .textInputAutocapitalization(.characters)
+                    .autocorrectionDisabled()
+                    .accessibilityIdentifier("signin.inviteCode")
+
+                VStack(alignment: .leading, spacing: DS.Space.sm) {
+                    // Apple's own button, as the HIG requires, with the
+                    // design system's corner radius and control height.
                     SignInWithAppleButton(.signIn) { request in
                         request.requestedScopes = [.email]
                     } onCompletion: { result in
                         Task { await complete(result) }
                     }
                     .signInWithAppleButtonStyle(colorScheme == .dark ? .white : .black)
-                    .frame(height: 48)
-                    .listRowInsets(EdgeInsets())
+                    .frame(height: DS.ControlHeight.lg)
+                    .clipShape(RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous))
                     .disabled(isWorking)
 
                     #if DEBUG
@@ -50,21 +51,26 @@ struct SubscriberSignInView: View {
                         Button("Continue with a test identity") {
                             Task { await signIn(identityToken: Self.testIdentityToken()) }
                         }
+                        .buttonStyle(.ds(.secondary, size: .large))
                         .accessibilityIdentifier("signin.testIdentity")
                         .disabled(isWorking)
                     }
                     #endif
-                } footer: {
+
                     Text("Apple shares only a stable identifier and, if you choose, a relay email. "
                          + "Ollie never sees a password and never asks for brokerage credentials.")
+                        .dsFont(.caption)
+                        .foregroundStyle(DS.Text.secondary)
+                        .padding(.horizontal, DS.Space.xs)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
 
                 if isWorking {
-                    Section { ProgressView() }
+                    ProgressView().frame(maxWidth: .infinity)
                 }
 
                 if let failure {
-                    Section { ErrorRow(error: .server(failure)) }
+                    ErrorRow(error: .server(failure))
                 }
             }
             .navigationTitle("Subscribe")

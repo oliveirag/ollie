@@ -26,86 +26,103 @@ struct DecisionSheet: View {
 
     var body: some View {
         NavigationStack {
-            Form {
+            DSPage(spacing: DS.Space.xl) {
                 if let detail {
-                    Section {
-                        OrderLine(signal: Self.summarize(detail))
-                        if let expires = detail.expires_at, detail.status == .pending {
-                            HStack {
-                                Text("Time left").font(.subheadline).foregroundStyle(.secondary)
-                                Spacer()
-                                Countdown(expiresAt: expires, compact: true)
+                    DSCard {
+                        VStack(alignment: .leading, spacing: DS.Space.md) {
+                            OrderLine(signal: Self.summarize(detail))
+                            if let expires = detail.expires_at, detail.status == .pending {
+                                DSDivider()
+                                HStack {
+                                    Text("Time left").dsFont(.bodySmall).foregroundStyle(DS.Text.secondary)
+                                    Spacer()
+                                    Countdown(expiresAt: expires)
+                                }
                             }
                         }
                     }
 
                     if let alerts = detail.review?.alerts, !alerts.isEmpty {
-                        Section("Broker flagged") {
+                        VStack(alignment: .leading, spacing: DS.Space.sm) {
+                            DSSectionHeader("Broker flagged")
                             ForEach(Array(alerts.enumerated()), id: \.offset) { _, alert in
-                                Text(alert._type.replacingOccurrences(of: "_", with: " ").capitalized)
-                                    .font(.subheadline)
+                                DSNotice(
+                                    title: alert._type.replacingOccurrences(of: "_", with: " ").capitalized,
+                                    icon: "exclamationmark.triangle"
+                                )
                             }
                         }
                     }
                 }
 
                 if isLiveApproval, let detail {
-                    Section {
-                        Label("This places a real order", systemImage: "exclamationmark.octagon.fill")
-                            .font(.headline)
-                            .foregroundStyle(TradingMode.live.accent)
-                        if let notional = Self.notional(detail) {
-                            HStack {
-                                Text("About").foregroundStyle(.secondary)
-                                MoneyText(value: notional, size: 17, prefix: "$")
-                                Text("at the proposal's estimate").foregroundStyle(.secondary)
+                    VStack(alignment: .leading, spacing: DS.Space.sm) {
+                        DSCard {
+                            VStack(alignment: .leading, spacing: DS.Space.md) {
+                                Label("This places a real order", systemImage: "exclamationmark.octagon.fill")
+                                    .dsFont(.body, weight: .bold)
+                                    .foregroundStyle(DS.Text.error)
+                                if let notional = Self.notional(detail) {
+                                    HStack(spacing: DS.Space.xs) {
+                                        Text("About").foregroundStyle(DS.Text.secondary)
+                                        MoneyText(value: notional, style: .bodySmall, prefix: "$")
+                                            .foregroundStyle(DS.Text.primary)
+                                        Text("at the proposal's estimate").foregroundStyle(DS.Text.secondary)
+                                    }
+                                    .dsFont(.bodySmall)
+                                }
+                                DSDivider()
+                                Toggle("I understand this uses real money", isOn: $acknowledgedLive)
+                                    .toggleStyle(.ds)
+                                    .accessibilityIdentifier("decision.acknowledgeLive")
                             }
-                            .font(.subheadline)
                         }
-                        Toggle("I understand this uses real money", isOn: $acknowledgedLive)
-                            .tint(TradingMode.live.accent)
-                            .accessibilityIdentifier("decision.acknowledgeLive")
-                    } footer: {
+                        .overlay {
+                            RoundedRectangle(cornerRadius: DS.Radius.lg, style: .continuous)
+                                .strokeBorder(DS.Border.error, lineWidth: DS.BorderWidth.sm)
+                        }
                         Text("Ollie reviews the order again, places it, and records the fill when Robinhood reports it. The signal is published only after that fill.")
+                            .dsFont(.caption)
+                            .foregroundStyle(DS.Text.secondary)
+                            .padding(.horizontal, DS.Space.xs)
                     }
                 }
 
-                Section {
-                    TextField("Reason (optional)", text: $reason, axis: .vertical)
-                        .lineLimit(1...3)
-                }
+                DSTextField(label: "Reason", placeholder: "Optional", text: $reason)
 
-                Section {
+                VStack(spacing: DS.Space.sm) {
                     Button {
                         Task { await onConfirm(reason.isEmpty ? nil : reason) }
                     } label: {
-                        HStack {
-                            Spacer()
-                            if isWorking {
-                                ProgressView().tint(.white)
-                            } else {
-                                // Names the verb *and* the mode, so the button
-                                // itself says whether money is real.
-                                Text(confirmLabel).fontWeight(.semibold)
-                            }
-                            Spacer()
+                        ZStack {
+                            // Names the verb *and* the mode, so the button
+                            // itself says whether money is real. The label
+                            // keeps its width while working, so nothing jumps.
+                            Text(confirmLabel).opacity(isWorking ? 0 : 1)
+                            if isWorking { ProgressView().tint(confirmVariant == .secondary ? DS.Text.primary : DS.Text.onAction) }
                         }
                     }
-                    .buttonStyle(.borderedProminent)
-                    // Reject is grey: a valid decision, not an error. Red stays reserved
-                    // for halting and the final minute (Theme).
-                    .tint(action == .approve ? (isLiveApproval ? TradingMode.live.accent : mode.accent) : Color(.systemGray))
+                    .buttonStyle(.ds(confirmVariant, size: .large))
                     .disabled(isWorking || (isLiveApproval && !acknowledgedLive))
+                    .accessibilityLabel(confirmLabel)
                     .accessibilityIdentifier("decision.confirm")
 
-                    Button("Cancel", role: .cancel) { dismiss() }
-                        .frame(maxWidth: .infinity)
+                    Button("Cancel") { dismiss() }
+                        .buttonStyle(.ds(.ghost))
                         .disabled(isWorking)
                 }
             }
             .navigationTitle(action == .approve ? "Approve signal" : "Reject signal")
             .navigationBarTitleDisplayMode(.inline)
         }
+        .presentationBackground(DS.Surface.page)
+    }
+
+    /// A live approval is the only red button in the app: it spends real
+    /// money and cannot be taken back. A paper approval and a rejection are
+    /// the sheet's one primary action, in the mono accent.
+    private var confirmVariant: DSButtonVariant {
+        isLiveApproval ? .destructive : .primary
     }
 
     private var confirmLabel: String {
@@ -115,11 +132,11 @@ struct DecisionSheet: View {
         // The signal's own mode, not the account's: a paper signal approved
         // after the flip still settles on paper, and the button must not say
         // otherwise.
-        return isLiveApproval ? "Place real \(side) order" : "Approve — paper \(side)"
+        return isLiveApproval ? "Place real \(side) order" : "Approve paper \(side)"
     }
 
     /// Quantity × the review estimate, as a string, without going through a
-    /// float for the money itself — Decimal parses and multiplies exactly.
+    /// float for the money itself. Decimal parses and multiplies exactly.
     private static func notional(_ detail: SignalDetail) -> String? {
         guard let price = detail.review?.estimated_price ?? detail.estimated_price,
               let p = Decimal(string: price),

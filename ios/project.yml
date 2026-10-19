@@ -74,6 +74,8 @@ targets:
         TARGETED_DEVICE_FAMILY: "1"
         ENABLE_USER_SCRIPT_SANDBOXING: NO
         CODE_SIGN_ENTITLEMENTS: Ollie/Resources/Ollie.entitlements
+        # The asset catalog holds colours only; there is no app icon yet.
+        ASSETCATALOG_COMPILER_APPICON_NAME: ""
       configs:
         # `$()` splits the `//` so the build-settings parser does not read the
         # rest of the line as a comment. It expands to nothing.
@@ -87,7 +89,13 @@ targets:
       path: Ollie/Resources/Info.plist
       properties:
         CFBundleDisplayName: Ollie
-        UILaunchScreen: {}
+        # JetBrains Mono, the design system's one typeface (OFL, license
+        # alongside in Resources/Fonts). Regular and Bold only for now.
+        UIAppFonts:
+          - JetBrainsMono-Regular.ttf
+          - JetBrainsMono-Bold.ttf
+        UILaunchScreen:
+          UIColorName: LaunchBackground
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
         # Resolved per build configuration (see settings below), never a
