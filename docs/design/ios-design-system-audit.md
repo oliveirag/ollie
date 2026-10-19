@@ -17,6 +17,9 @@ where the design system itself has gaps.
    unlocked.
 4. **The subscriber's disclaimer rail clipped at both edges** (uppercase, one line, 10pt). Now sentence
    case, wraps, 12pt minimum.
+5. **The welcome screen could not reach Subscribe at the largest text size.** It surfaced when the
+   rebuilt type grew taller and the existing accessibility-size UI test failed. The screen now scrolls
+   once its content outgrows the display, and keeps its fixed layout below that.
 
 ## Where the old UI broke the design system
 

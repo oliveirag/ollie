@@ -87,46 +87,54 @@ struct WelcomeView: View {
     let onOwner: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Spacer()
+        // Scrolls once the largest text sizes push the buttons past the
+        // screen; until then the spacers hold the hero centred and the
+        // buttons at the bottom, exactly as a fixed layout would.
+        GeometryReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: DS.Space.xxxl) {
+                    Spacer(minLength: 0)
 
-            VStack(alignment: .leading, spacing: DS.Space.lg) {
-                Image(systemName: "waveform.path.ecg")
-                    .font(.system(size: 28, weight: .semibold))
-                    .foregroundStyle(DS.Icon.primary)
-                    .frame(width: 56, height: 56)
-                    .background(DS.Surface.default, in: RoundedRectangle(cornerRadius: DS.Radius.lg, style: .continuous))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: DS.Radius.lg, style: .continuous)
-                            .strokeBorder(DS.Border.strong, lineWidth: DS.BorderWidth.sm)
+                    VStack(alignment: .leading, spacing: DS.Space.lg) {
+                        Image(systemName: "waveform.path.ecg")
+                            .font(.system(size: 28, weight: .semibold))
+                            .foregroundStyle(DS.Icon.primary)
+                            .frame(width: 56, height: 56)
+                            .background(DS.Surface.default, in: RoundedRectangle(cornerRadius: DS.Radius.lg, style: .continuous))
+                            .overlay {
+                                RoundedRectangle(cornerRadius: DS.Radius.lg, style: .continuous)
+                                    .strokeBorder(DS.Border.strong, lineWidth: DS.BorderWidth.sm)
+                            }
+                            .accessibilityHidden(true)
+
+                        Text("Ollie")
+                            .dsFont(.display)
+                            .foregroundStyle(DS.Text.primary)
+
+                        Text("A public record of one rule-based strategy's signals, published only after they were acted on. Your agent decides what to do with them.")
+                            .dsFont(.body)
+                            .foregroundStyle(DS.Text.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
-                    .accessibilityHidden(true)
 
-                Text("Ollie")
-                    .dsFont(.display)
-                    .foregroundStyle(DS.Text.primary)
+                    Spacer(minLength: 0)
 
-                Text("A public record of one rule-based strategy's signals, published only after they were acted on. Your agent decides what to do with them.")
-                    .dsFont(.body)
-                    .foregroundStyle(DS.Text.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                    VStack(spacing: DS.Space.sm) {
+                        Button("Subscribe", action: onSubscribe)
+                            .buttonStyle(.ds(.primary, size: .large))
+                            .accessibilityIdentifier("welcome.subscribe")
+
+                        Button("I run Ollie", action: onOwner)
+                            .buttonStyle(.ds(.ghost))
+                            .accessibilityIdentifier("welcome.owner")
+                    }
+                }
+                .padding(.horizontal, DS.Space.xxl)
+                .padding(.bottom, DS.Space.lg)
+                .frame(maxWidth: .infinity, minHeight: proxy.size.height, alignment: .leading)
             }
-
-            Spacer()
-
-            VStack(spacing: DS.Space.sm) {
-                Button("Subscribe", action: onSubscribe)
-                    .buttonStyle(.ds(.primary, size: .large))
-                    .accessibilityIdentifier("welcome.subscribe")
-
-                Button("I run Ollie", action: onOwner)
-                    .buttonStyle(.ds(.ghost))
-                    .accessibilityIdentifier("welcome.owner")
-            }
+            .scrollBounceBehavior(.basedOnSize)
         }
-        .padding(.horizontal, DS.Space.xxl)
-        .padding(.bottom, DS.Space.lg)
-        .frame(maxWidth: .infinity, alignment: .leading)
         .background(DS.Surface.page)
     }
 }
