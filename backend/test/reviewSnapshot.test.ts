@@ -72,4 +72,28 @@ describe('parseReviewSnapshot', () => {
 
     expect(() => parseReviewSnapshot({ ...built, schema_version: 2 })).toThrow(/review_snapshot is not readable/);
   });
+
+  it('defaults alerts to an empty array when the field is absent entirely', () => {
+    const built = buildReviewSnapshot(
+      review,
+      { symbol: 'AAPL', side: 'buy', quantity: '10' },
+      new Date('2026-09-22T14:30:00.000Z'),
+    );
+    const { alerts: _alerts, ...withoutAlerts } = built;
+
+    expect(parseReviewSnapshot(withoutAlerts).alerts).toEqual([]);
+  });
+
+  it('keeps an unrecognized top-level field rather than stripping it', () => {
+    const built = buildReviewSnapshot(
+      review,
+      { symbol: 'AAPL', side: 'buy', quantity: '10' },
+      new Date('2026-09-22T14:30:00.000Z'),
+    );
+
+    // Passthrough, not strict: a field a future broker response adds survives
+    // the round trip instead of being silently dropped.
+    const withExtra = { ...built, settlement_type: 'instant' };
+    expect(parseReviewSnapshot(withExtra)).toHaveProperty('settlement_type', 'instant');
+  });
 });
