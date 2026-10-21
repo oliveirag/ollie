@@ -26,6 +26,13 @@ describe('buildConfig validation', () => {
     ).toThrow(/exceeds MAX_POSITION_CENTS/);
   });
 
+  it('allows the order notional exactly at the position cap', () => {
+    const config = buildConfig(
+      env({ ORDER_NOTIONAL_CENTS: '100000', MAX_POSITION_CENTS: '100000' }),
+    );
+    expect(config.strategy.orderNotionalCents).toBe(100_000);
+  });
+
   it('throws when the symbol allowlist is empty after parsing', () => {
     expect(() => buildConfig(env({ SYMBOL_ALLOWLIST: ' , ,' }))).toThrow(
       /SYMBOL_ALLOWLIST must name at least one symbol/,
@@ -36,6 +43,11 @@ describe('buildConfig validation', () => {
     expect(() => buildConfig(env({ OWNER_API_TOKEN: 'too-short' }))).toThrow(
       /OWNER_API_TOKEN: must be at least 32 characters/,
     );
+  });
+
+  it('allows the owner API token at exactly 32 characters', () => {
+    const token = 'a'.repeat(32);
+    expect(buildConfig(env({ OWNER_API_TOKEN: token })).ownerApiToken).toBe(token);
   });
 });
 
