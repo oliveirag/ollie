@@ -90,6 +90,11 @@ describe('happy path', () => {
     expect(payload.side).toBe('buy');
     expect(payload.indicators.rsi).toBe(32.7);
     expect(payload.estimated_price).toBe('275.20');
+    // Broker alerts describe the owner's account and the thesis is published.
+    expect(payload).not.toHaveProperty('review_warnings');
+    expect(Object.keys(payload).sort()).toEqual(
+      ['decision_bar', 'estimated_price', 'indicators', 'quantity', 'rule', 'side', 'symbol'],
+    );
   });
 
   it('requests low effort, since naming numbers is not a reasoning problem', async () => {

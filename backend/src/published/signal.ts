@@ -112,7 +112,7 @@ export function toPublishedSignal(signal: Signal): PublishedSignal {
  * written since no longer include it; this strips it from the ones already
  * stored. The stored record is untouched, only the projection changes.
  */
-const ALERTS_SENTENCE = /\s*Broker pre-trade alerts: [A-Z0-9_]+(?:, [A-Z0-9_]+)*\./g;
+const ALERTS_SENTENCE = /\s*Broker pre-trade alerts: [^.]*\./g;
 
 export function publishableThesis(thesis: string | null): string | null {
   if (thesis === null) return null;

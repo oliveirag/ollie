@@ -136,6 +136,16 @@ describe('toPublishedSignal', () => {
     );
   });
 
+  it('strips the legacy sentence whatever characters the alert codes use', () => {
+    const signal = {
+      ...maximalSignal(),
+      thesis: 'Sell 3 AAPL at an estimated 275.20. Broker pre-trade alerts: pdt-warning, Canary_Alert.',
+    };
+    const published = toPublishedSignal(signal);
+    expect(published.thesis).toBe('Sell 3 AAPL at an estimated 275.20.');
+    expect(JSON.stringify(published)).not.toContain('CANARY_ALERT');
+  });
+
   it('refuses to project an unpublished signal', () => {
     const unpublished = { ...maximalSignal(), published: false, publishedAt: null };
     expect(() => toPublishedSignal(unpublished)).toThrow(UnpublishedSignalError);

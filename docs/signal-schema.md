@@ -123,6 +123,11 @@ fully-populated signal.
 `signal_type`, `quantity`, `thesis`, `thesis_source`, `indicators`, and the
 review snapshot's `estimated_price` only.
 
+`thesis` crosses as stored with one exception: theses written before
+2026-10-22 by the fallback template ended with "Broker pre-trade alerts:
+<codes>.", and the projection strips that sentence. Theses written since never
+contain alerts; the thesis generator is not given them.
+
 **What never crosses:**
 
 - `ref_id` — a broker idempotency key for the owner's account.
