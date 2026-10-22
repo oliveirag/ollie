@@ -123,6 +123,29 @@ describe('toPublishedSignal', () => {
     expect(toPublishedSignal(signal).thesis_source).toBeNull();
   });
 
+  it('strips the legacy broker-alerts sentence from a stored template thesis', () => {
+    const signal = {
+      ...maximalSignal(),
+      thesisSource: 'fallback_template',
+      thesis:
+        'Buy 2 AAPL at an estimated 182.50. RSI(14) is 27.3 and the MACD histogram is -0.42. ' +
+        'Broker pre-trade alerts: EQUITY_NOT_ENOUGH_BP, CANARY_ALERT.',
+    };
+    expect(toPublishedSignal(signal).thesis).toBe(
+      'Buy 2 AAPL at an estimated 182.50. RSI(14) is 27.3 and the MACD histogram is -0.42.',
+    );
+  });
+
+  it('strips the legacy sentence whatever characters the alert codes use', () => {
+    const signal = {
+      ...maximalSignal(),
+      thesis: 'Sell 3 AAPL at an estimated 275.20. Broker pre-trade alerts: pdt-warning, Canary_Alert.',
+    };
+    const published = toPublishedSignal(signal);
+    expect(published.thesis).toBe('Sell 3 AAPL at an estimated 275.20.');
+    expect(JSON.stringify(published)).not.toContain('CANARY_ALERT');
+  });
+
   it('refuses to project an unpublished signal', () => {
     const unpublished = { ...maximalSignal(), published: false, publishedAt: null };
     expect(() => toPublishedSignal(unpublished)).toThrow(UnpublishedSignalError);

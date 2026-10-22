@@ -304,7 +304,6 @@ export async function runPipeline(deps: PipelineDeps): Promise<PipelineResult> {
     const thesis = await thesisFor({
       candidate,
       estimatedPrice: review.estimatedPrice,
-      reviewWarnings: warnings,
     });
 
     try {

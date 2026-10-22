@@ -41,7 +41,6 @@ function input(overrides: Partial<ThesisInput> = {}): ThesisInput {
   return {
     candidate: candidate(),
     estimatedPrice: '275.20',
-    reviewWarnings: [],
     ...overrides,
   };
 }
@@ -91,6 +90,11 @@ describe('happy path', () => {
     expect(payload.side).toBe('buy');
     expect(payload.indicators.rsi).toBe(32.7);
     expect(payload.estimated_price).toBe('275.20');
+    // Broker alerts describe the owner's account and the thesis is published.
+    expect(payload).not.toHaveProperty('review_warnings');
+    expect(Object.keys(payload).sort()).toEqual(
+      ['decision_bar', 'estimated_price', 'indicators', 'quantity', 'rule', 'side', 'symbol'],
+    );
   });
 
   it('requests low effort, since naming numbers is not a reasoning problem', async () => {
@@ -197,11 +201,6 @@ describe('template thesis', () => {
     expect(templateThesis(input({ candidate: candidate({ rule }) }))).toContain(phrase);
   });
 
-  it('surfaces broker pre-trade alerts', () => {
-    const text = templateThesis(input({ reviewWarnings: ['EQUITY_NOT_ENOUGH_BP'] }));
-    expect(text).toContain('Broker pre-trade alerts: EQUITY_NOT_ENOUGH_BP.');
-  });
-
   it('describes a time stop by the holding period alone, citing no indicator', () => {
     const text = templateThesis(
       input({
@@ -220,22 +219,7 @@ describe('template thesis', () => {
     );
   });
 
-  it('surfaces broker pre-trade alerts on a time stop too', () => {
-    const text = templateThesis(
-      input({
-        candidate: candidate({
-          side: 'sell',
-          signalType: 'time_stop',
-          rule: 'max_holding_period',
-          indicators: { barsHeld: 30, maxHoldingDays: 30 },
-        }),
-        reviewWarnings: ['EQUITY_NOT_ENOUGH_BP'],
-      }),
-    );
-    expect(text).toContain('Broker pre-trade alerts: EQUITY_NOT_ENOUGH_BP.');
-  });
-
-  it('omits the alerts sentence when the broker raised nothing', () => {
+  it('never mentions broker alerts, which describe the owner account', () => {
     expect(templateThesis(input())).not.toContain('Broker pre-trade alerts');
   });
 

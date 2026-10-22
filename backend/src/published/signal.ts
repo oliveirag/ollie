@@ -98,9 +98,23 @@ export function toPublishedSignal(signal: Signal): PublishedSignal {
     side: signal.side,
     signal_type: signal.signalType,
     quantity: signal.quantity.toString(),
-    thesis: signal.thesis,
+    thesis: publishableThesis(signal.thesis),
     thesis_source: thesisSource.success ? thesisSource.data : null,
     indicators: signal.indicators,
     estimated_price: estimatedPrice,
   };
+}
+
+/**
+ * The fallback template used to end with "Broker pre-trade alerts: <codes>."
+ * Those codes describe the owner's account (EQUITY_NOT_ENOUGH_BP is a buying
+ * power reading), which is exactly what `alerts` is forbidden for. Theses
+ * written since no longer include it; this strips it from the ones already
+ * stored. The stored record is untouched, only the projection changes.
+ */
+const ALERTS_SENTENCE = /\s*Broker pre-trade alerts: [^.]*\./g;
+
+export function publishableThesis(thesis: string | null): string | null {
+  if (thesis === null) return null;
+  return thesis.replace(ALERTS_SENTENCE, '');
 }

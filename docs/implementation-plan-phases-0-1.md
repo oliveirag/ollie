@@ -222,7 +222,7 @@ Run sequence (each stage logged with `run_id`):
 
 - `client.messages.create({ model: env.ANTHROPIC_MODEL /* claude-opus-5 */, max_tokens: 500, system, messages })`; ~15s timeout, SDK default retries. No `temperature`.
 - System prompt: 2–3 sentence plain-English rationale, only from provided data, no invented numbers/predictions/price targets, no advice language.
-- User content: compact JSON `{symbol, side, rule, indicators, quantity, estimated_price, review_warnings}`.
+- User content: compact JSON `{symbol, side, rule, indicators, quantity, estimated_price, decision_bar}`. Not `review_warnings`: the thesis is published, and broker alerts describe the owner's account (removed 2026-10-22).
 - **Any failure/timeout/refusal → deterministic template fallback** (e.g. `"AAPL RSI(14) at 27.3 crossed below the oversold threshold of 30; MACD histogram −0.42."`) with `thesis_source='fallback_template'`. Log prompt + completion always.
 
 ## Milestones
