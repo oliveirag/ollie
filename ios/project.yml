@@ -90,9 +90,11 @@ targets:
       properties:
         CFBundleDisplayName: Ollie
         # JetBrains Mono, the design system's one typeface (OFL, license
-        # alongside in Resources/Fonts). Regular and Bold only for now.
+        # alongside in Resources/Fonts). Regular, Medium and Bold, the three
+        # weights the system allows, all from release 2.304.
         UIAppFonts:
           - JetBrainsMono-Regular.ttf
+          - JetBrainsMono-Medium.ttf
           - JetBrainsMono-Bold.ttf
         UILaunchScreen:
           UIColorName: LaunchBackground

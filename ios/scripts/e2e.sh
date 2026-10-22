@@ -31,6 +31,13 @@ SUITE="${1:-all}"
 PG_PORT=5433
 PG_BIN="$(brew --prefix postgresql@16 2>/dev/null)/bin"
 PGDATA="$OUT/pgdata"
+# The socket goes in a short temp dir, not PGDATA: a Unix socket path is
+# capped at 103 bytes on macOS, and a worktree under ~/Developer blows past it.
+# Created in the postgres step, once the cleanup trap is set.
+PGSOCK=""
+# initdb and postgres refuse to start when the locale is unset, which it is
+# under a non-interactive shell.
+export LC_ALL="${LC_ALL:-en_US.UTF-8}"
 DB_URL="postgresql://ollie:ollie@localhost:$PG_PORT/ollie_e2e"
 SIGNAL_DB_URL="postgresql://ollie_signal:ollie_signal@localhost:$PG_PORT/ollie_e2e"
 OWNER_TOKEN="$(openssl rand -hex 32)"
@@ -65,7 +72,7 @@ cleanup() {
   if [ -f "$PGDATA/postmaster.pid" ]; then
     "$PG_BIN/pg_ctl" -D "$PGDATA" -m fast stop >/dev/null 2>&1 || true
   fi
-  rm -rf "$PGDATA"
+  rm -rf "$PGDATA" ${PGSOCK:+"$PGSOCK"}
 }
 trap cleanup EXIT
 
@@ -101,8 +108,9 @@ wait_for() {
 
 log "postgres"
 rm -rf "$PGDATA"
+PGSOCK="$(mktemp -d /tmp/ollie-pg.XXXXXX)"
 "$PG_BIN/initdb" -D "$PGDATA" -U ollie --pwfile=<(echo ollie) -A scram-sha-256 >"$OUT/initdb.log" 2>&1
-"$PG_BIN/pg_ctl" -D "$PGDATA" -o "-p $PG_PORT -k $PGDATA" -l "$OUT/postgres.log" -w start >/dev/null
+"$PG_BIN/pg_ctl" -D "$PGDATA" -o "-p $PG_PORT -k $PGSOCK" -l "$OUT/postgres.log" -w start >/dev/null
 (cd "$BACKEND" && backend_env TEST_DATABASE_URL="$DB_URL" SIGNAL_TEST_DATABASE_URL="$SIGNAL_DB_URL" \
   npx tsx scripts/setup-test-db.ts >"$OUT/db-setup.log" 2>&1) \
   || { tail -20 "$OUT/db-setup.log"; exit 1; }
