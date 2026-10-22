@@ -33,8 +33,10 @@ export interface ThesisInput {
   candidate: CandidateSignal;
   /** Estimated fill price from the review snapshot, decimal string. */
   estimatedPrice: string;
-  /** Pre-trade alert types from the broker, if any. */
-  reviewWarnings: readonly string[];
+  // Broker pre-trade alerts are deliberately not an input. The thesis is
+  // published to subscribers, and an alert like EQUITY_NOT_ENOUGH_BP describes
+  // the owner's account, not the trade. The owner sees alerts on the approval
+  // screen from the review snapshot.
 }
 
 const SYSTEM_PROMPT = `You write the one-paragraph rationale that accompanies an equities trading signal.
@@ -172,7 +174,6 @@ function promptPayload(input: ThesisInput): Record<string, unknown> {
     quantity: candidate.quantity,
     rule: candidate.rule,
     estimated_price: input.estimatedPrice,
-    review_warnings: input.reviewWarnings,
     // A time stop consulted no indicators, so it is given none. Handing the
     // model zeroed-out RSI and MACD fields would invite a thesis citing a
     // crossing that never happened — the one thing the narration must never do.
@@ -194,15 +195,11 @@ export function templateThesis(input: ThesisInput): string {
   // in the decision, in a record that is meant to explain why the trade fired.
   if (isExitIndicators(candidate.indicators)) {
     const { barsHeld, maxHoldingDays } = candidate.indicators;
-    const warnings =
-      input.reviewWarnings.length > 0
-        ? ` Broker pre-trade alerts: ${input.reviewWarnings.join(', ')}.`
-        : '';
     return (
       `Sell ${candidate.quantity} ${candidate.symbol} at an estimated ${input.estimatedPrice}. ` +
       `The position has been held ${barsHeld} trading days, reaching the ${maxHoldingDays}-day ` +
       `maximum holding period. No entry or exit rule fired; this exit is the holding ` +
-      `period alone.${warnings}`
+      `period alone.`
     );
   }
 
@@ -226,15 +223,11 @@ export function templateThesis(input: ThesisInput): string {
   })();
 
   const verb = candidate.side === 'buy' ? 'Buy' : 'Sell';
-  const warnings =
-    input.reviewWarnings.length > 0
-      ? ` Broker pre-trade alerts: ${input.reviewWarnings.join(', ')}.`
-      : '';
 
   return (
     `${verb} ${candidate.quantity} ${candidate.symbol} at an estimated ${input.estimatedPrice}. ` +
     `On the bar closing ${candidate.barTime}, ${trigger}. ` +
-    `RSI(${i.rsiPeriod}) is ${rsi} and the MACD histogram is ${hist}.${warnings}`
+    `RSI(${i.rsiPeriod}) is ${rsi} and the MACD histogram is ${hist}.`
   );
 }
 

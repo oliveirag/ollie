@@ -123,6 +123,19 @@ describe('toPublishedSignal', () => {
     expect(toPublishedSignal(signal).thesis_source).toBeNull();
   });
 
+  it('strips the legacy broker-alerts sentence from a stored template thesis', () => {
+    const signal = {
+      ...maximalSignal(),
+      thesisSource: 'fallback_template',
+      thesis:
+        'Buy 2 AAPL at an estimated 182.50. RSI(14) is 27.3 and the MACD histogram is -0.42. ' +
+        'Broker pre-trade alerts: EQUITY_NOT_ENOUGH_BP, CANARY_ALERT.',
+    };
+    expect(toPublishedSignal(signal).thesis).toBe(
+      'Buy 2 AAPL at an estimated 182.50. RSI(14) is 27.3 and the MACD histogram is -0.42.',
+    );
+  });
+
   it('refuses to project an unpublished signal', () => {
     const unpublished = { ...maximalSignal(), published: false, publishedAt: null };
     expect(() => toPublishedSignal(unpublished)).toThrow(UnpublishedSignalError);

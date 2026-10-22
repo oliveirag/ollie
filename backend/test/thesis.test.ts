@@ -41,7 +41,6 @@ function input(overrides: Partial<ThesisInput> = {}): ThesisInput {
   return {
     candidate: candidate(),
     estimatedPrice: '275.20',
-    reviewWarnings: [],
     ...overrides,
   };
 }
@@ -197,11 +196,6 @@ describe('template thesis', () => {
     expect(templateThesis(input({ candidate: candidate({ rule }) }))).toContain(phrase);
   });
 
-  it('surfaces broker pre-trade alerts', () => {
-    const text = templateThesis(input({ reviewWarnings: ['EQUITY_NOT_ENOUGH_BP'] }));
-    expect(text).toContain('Broker pre-trade alerts: EQUITY_NOT_ENOUGH_BP.');
-  });
-
   it('describes a time stop by the holding period alone, citing no indicator', () => {
     const text = templateThesis(
       input({
@@ -220,22 +214,7 @@ describe('template thesis', () => {
     );
   });
 
-  it('surfaces broker pre-trade alerts on a time stop too', () => {
-    const text = templateThesis(
-      input({
-        candidate: candidate({
-          side: 'sell',
-          signalType: 'time_stop',
-          rule: 'max_holding_period',
-          indicators: { barsHeld: 30, maxHoldingDays: 30 },
-        }),
-        reviewWarnings: ['EQUITY_NOT_ENOUGH_BP'],
-      }),
-    );
-    expect(text).toContain('Broker pre-trade alerts: EQUITY_NOT_ENOUGH_BP.');
-  });
-
-  it('omits the alerts sentence when the broker raised nothing', () => {
+  it('never mentions broker alerts, which describe the owner account', () => {
     expect(templateThesis(input())).not.toContain('Broker pre-trade alerts');
   });
 

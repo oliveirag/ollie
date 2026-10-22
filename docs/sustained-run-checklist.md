@@ -66,13 +66,32 @@ the notification path is not reaching you, or the window is too short.
 ## 4. Real money is still unreachable
 
 ```bash
-cd backend && grep -rn "placeEquityOrder" src/ | grep -v "^src/orchestrator/robinhood/"
+cd backend && grep -rn "placeEquityOrder(" src/ | grep -v "^src/orchestrator/robinhood/"
 ```
 
-Want: nothing but the comment in `executor.ts`. The adapter's own method throws
-unconditionally, and `LIVE_TRADING_ENABLED` stays false until Phase 5. Three
-independent barriers; this check confirms the outermost one has not been quietly
-removed by a refactor.
+Want: exactly one line, the call in `LiveExecutor.execute` in
+`src/orchestrator/executor.ts`. Anything else is a new path to a real order and
+stops the run. `pipeline.integration.test.ts` asserts the same thing; look anyway.
+
+That one call sits behind three live-mode checks, all of which must pass before
+it runs:
+
+- `LIVE_TRADING_ENABLED=true` in the orchestrator's environment (a redeploy)
+- `app_settings.execution_mode` is `live` (the app's mode toggle)
+- the signal itself was created in `live` mode
+
+The decision route adds a fourth outside the executor: a live approval without
+`confirm_live: true` is refused before `LiveExecutor` is built. The kill switch
+is checked first and halts all of it.
+
+During the sustained run, confirm the first two are off:
+
+```bash
+curl -sS -H "Authorization: Bearer $TOKEN" $OLLIE/v1/settings
+```
+
+Want `live_trading_enabled: false` and `execution_mode: "paper"`. Either one
+flipped is an owner action from `live-flip-checklist.md`, never a side effect.
 
 ## 5. The credential has not gone stale
 
