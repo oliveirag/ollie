@@ -171,6 +171,19 @@ describe('position coverage', () => {
   });
 });
 
+describe('warmup coverage', () => {
+  it('marks a day unevaluable until both indicators have enough history, then evaluable from the next bar on', () => {
+    const { days } = run();
+
+    // requiredBars = max(rsiPeriod + 2, macdSlow + macdSignal) = max(16, 35) = 35,
+    // so the 34th bar (index 33) is one short and the 35th (index 34) completes it.
+    expect(days[33]!.barTime).toBe('2026-06-18T00:00:00Z');
+    expect(days[33]!.evaluable).toBe(false);
+    expect(days[34]!.barTime).toBe('2026-06-22T00:00:00Z');
+    expect(days[34]!.evaluable).toBe(true);
+  });
+});
+
 describe('closing more than one lot', () => {
   // The real AAPL fixture never carries two open lots at once, so this builds
   // its own bars: a dip that fires an RSI oversold buy, a rebound that fires a
