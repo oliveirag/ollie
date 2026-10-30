@@ -14,10 +14,22 @@ describe('buildConfig validation', () => {
     );
   });
 
+  it('allows the RSI oversold threshold exactly one below the overbought one', () => {
+    const config = buildConfig(env({ RSI_OVERSOLD: '69', RSI_OVERBOUGHT: '70' }));
+    expect(config.strategy.rsiOversold).toBe(69);
+    expect(config.strategy.rsiOverbought).toBe(70);
+  });
+
   it('throws when the MACD fast period is not shorter than the slow one', () => {
     expect(() => buildConfig(env({ MACD_FAST: '26', MACD_SLOW: '26' }))).toThrow(
       /MACD_FAST \(26\) must be below MACD_SLOW \(26\)/,
     );
+  });
+
+  it('allows the MACD fast period exactly one below the slow one', () => {
+    const config = buildConfig(env({ MACD_FAST: '25', MACD_SLOW: '26' }));
+    expect(config.strategy.macdFast).toBe(25);
+    expect(config.strategy.macdSlow).toBe(26);
   });
 
   it('throws when the order notional exceeds the position cap, since every order would be rejected', () => {
