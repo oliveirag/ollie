@@ -213,6 +213,14 @@ describe('max daily trades', () => {
     expect(accepted).toHaveLength(1);
     expect(applyRiskCaps(inputs({ signalsToday: 3 })).accepted).toHaveLength(0);
   });
+
+  it('rejects every candidate when the cap is zero', () => {
+    const { accepted, rejected } = applyRiskCaps(
+      inputs({ config: { ...CONFIG, maxDailyTrades: 0 } }),
+    );
+    expect(accepted).toHaveLength(0);
+    expect(rejected[0]!.reason).toBe('daily_trade_cap');
+  });
 });
 
 describe('max total exposure', () => {
