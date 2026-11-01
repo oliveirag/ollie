@@ -123,6 +123,11 @@ describe('toPublishedSignal', () => {
     expect(toPublishedSignal(signal).thesis_source).toBeNull();
   });
 
+  it('passes a null thesis through rather than throwing on the strip', () => {
+    const signal = { ...maximalSignal(), thesis: null };
+    expect(toPublishedSignal(signal).thesis).toBeNull();
+  });
+
   it('strips the legacy broker-alerts sentence from a stored template thesis', () => {
     const signal = {
       ...maximalSignal(),
