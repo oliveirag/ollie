@@ -7,11 +7,11 @@ import SwiftUI
 /// nothing else; views read these names, never a raw hex. Change a value
 /// there first, then here, never only here.
 ///
-/// The system is achromatic on purpose. Red means error or destructive and
-/// nothing else, and there is no success or warning colour: state is carried
-/// by an icon and a word on a neutral surface. That includes gain and loss,
-/// which this app used to paint teal and red-orange; a sign and an arrow carry
-/// them now, which they already did for anyone who cannot tell the two apart.
+/// The system is achromatic on purpose. Red means error or destructive, and
+/// there is no success or warning colour: state is carried by an icon and a
+/// word on a neutral surface. The one exception is `Data`: gain and loss on
+/// signed money, which every trader reads by colour first. Those two always
+/// travel with a sign and a triangle, so colour is never the only cue.
 enum DS {
     // MARK: Colour (mapped tier, dark default and light)
 
@@ -53,6 +53,21 @@ enum DS {
         static let focus = DS.color(dark: 0xFFFFFF, light: 0x171717)
         static let disabled = DS.color(dark: 0x262626, light: 0xE5E5E5)
         static let error = DS.color(dark: 0xF87171, light: 0xDC2626)
+    }
+
+    /// Financial data and charts. Gain and loss colour only a signed P&L value
+    /// and its triangle, never buy or sell, never a surface. Loss is a lighter
+    /// (dark) or deeper (light) red than `Text.error`, so a losing position
+    /// and a failed request never share a colour.
+    enum Data {
+        static let gain = DS.color(dark: 0x4ADE80, light: 0x15803D)
+        static let loss = DS.color(dark: 0xFCA5A5, light: 0xB91C1C)
+        /// A chart's line. Single series only, so it takes the text colour.
+        static let series = DS.Text.primary
+        static let grid = DS.Border.default
+        /// The break-even rule, drawn dashed.
+        static let zero = DS.Border.control
+        static let axisLabel = DS.Text.tertiary
     }
 
     enum Effect {

@@ -47,9 +47,10 @@ struct MoneyText: View {
     }
 }
 
-/// A signed P&L value. The sign and the arrow carry the direction, in the
-/// primary text colour: the design system keeps red for errors, and a loss is
-/// a result, not an error. Zero gets neither.
+/// A signed P&L value. The sign and the triangle carry the direction, and the
+/// gain or loss colour backs them up for a reader scanning a column. Colour is
+/// never the only cue, so the value still reads in grayscale. Zero gets none
+/// of the three.
 struct PnLText: View {
     let value: String
     var style: DSTextStyle = .body
@@ -72,7 +73,7 @@ struct PnLText: View {
                 prefix: zero ? "" : (negative ? "−" : "+")
             )
         }
-        .foregroundStyle(zero ? DS.Text.secondary : DS.Text.primary)
+        .foregroundStyle(zero ? DS.Text.secondary : (negative ? DS.Data.loss : DS.Data.gain))
         .accessibilityElement(children: .combine)
         .accessibilityLabel(zero ? "Zero" : (negative ? "Down \(magnitude)" : "Up \(magnitude)"))
     }

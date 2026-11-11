@@ -7,9 +7,14 @@ import UIKit
 /// text style named in `relativeTo`, so a larger text setting grows the whole
 /// layout rather than clipping it.
 ///
-/// Only Regular and Bold ship in the bundle (Resources/Fonts). The token file
-/// sets captions at Medium; until a Medium cut is added, `.medium` renders as
-/// Regular rather than a faux weight.
+/// Regular, Medium and Bold ship in the bundle (Resources/Fonts), all from the
+/// same JetBrains Mono release so their metrics match. Those are the only
+/// three weights the system allows.
+///
+/// Tracking stays at zero below 32. Apple adds a little positive tracking at
+/// small sizes because SF is proportional and tightens as it grows; a
+/// monospace already sets every glyph in a full-width cell, and JetBrains Mono
+/// is drawn for 12 to 14pt, so extra space would only make it look gappy.
 enum DSTextStyle: CaseIterable {
     case display, h1, h2, h3, h4, bodyLarge, body, bodySmall, code, caption
 
@@ -76,7 +81,26 @@ enum DSTextStyle: CaseIterable {
     var ligatures: Bool { self == .code }
 }
 
-enum DSWeight { case regular, medium, bold }
+enum DSWeight {
+    case regular, medium, bold
+
+    var postScriptName: String {
+        switch self {
+        case .regular: "JetBrainsMono-Regular"
+        case .medium: "JetBrainsMono-Medium"
+        case .bold: "JetBrainsMono-Bold"
+        }
+    }
+
+    /// Only for the fallback, if a bundled font ever fails to load.
+    var systemWeight: UIFont.Weight {
+        switch self {
+        case .regular: .regular
+        case .medium: .medium
+        case .bold: .bold
+        }
+    }
+}
 
 enum DSType {
     static func uiFont(
@@ -86,10 +110,9 @@ enum DSType {
         dynamicTypeSize: DynamicTypeSize? = nil
     ) -> UIFont {
         let resolved = weight ?? style.weight
-        let name = resolved == .bold ? "JetBrainsMono-Bold" : "JetBrainsMono-Regular"
         let pointSize = size ?? style.size
-        var base = UIFont(name: name, size: pointSize)
-            ?? .monospacedSystemFont(ofSize: pointSize, weight: resolved == .bold ? .bold : .regular)
+        var base = UIFont(name: resolved.postScriptName, size: pointSize)
+            ?? .monospacedSystemFont(ofSize: pointSize, weight: resolved.systemWeight)
 
         if !style.ligatures {
             let descriptor = base.fontDescriptor.addingAttributes([

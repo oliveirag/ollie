@@ -66,14 +66,14 @@ struct EquityCurve: View {
                             series: .value("Run", index)
                         )
                         .interpolationMethod(.monotone)
-                        .foregroundStyle(DS.Text.primary)
+                        .foregroundStyle(DS.Data.series)
                         .lineStyle(StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
                     }
                     // A lone surviving day between two gaps would otherwise be
                     // an invisible zero-length line.
                     ForEach(run.count == 1 ? run : [], id: \.date) { point in
                         PointMark(x: .value("Day", point.date), y: .value("PnL", point.value))
-                            .foregroundStyle(DS.Text.primary)
+                            .foregroundStyle(DS.Data.series)
                             .symbolSize(30)
                     }
                 }
@@ -82,22 +82,22 @@ struct EquityCurve: View {
                 // crossing it is the only thing that means "up" or "down".
                 RuleMark(y: .value("Break even", 0))
                     .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
-                    .foregroundStyle(DS.Border.control)
+                    .foregroundStyle(DS.Data.zero)
             }
             .chartXAxis {
                 AxisMarks { _ in
-                    AxisGridLine().foregroundStyle(DS.Border.default)
+                    AxisGridLine().foregroundStyle(DS.Data.grid)
                     AxisValueLabel(format: .dateTime.month(.abbreviated).day())
                         .font(DSType.font(.caption, weight: .regular, dynamicTypeSize: dynamicTypeSize))
-                        .foregroundStyle(DS.Text.tertiary)
+                        .foregroundStyle(DS.Data.axisLabel)
                 }
             }
             .chartYAxis {
                 AxisMarks(position: .leading) { _ in
-                    AxisGridLine().foregroundStyle(DS.Border.default)
+                    AxisGridLine().foregroundStyle(DS.Data.grid)
                     AxisValueLabel()
                         .font(DSType.font(.caption, weight: .regular, dynamicTypeSize: dynamicTypeSize))
-                        .foregroundStyle(DS.Text.tertiary)
+                        .foregroundStyle(DS.Data.axisLabel)
                 }
             }
             .frame(height: 180)
@@ -159,10 +159,11 @@ struct AverageReturnRow: View {
     var body: some View {
         DSValueRow("Average return") {
             if let value {
-                // Signed like P&L: the sign carries direction, not a colour.
+                // Signed like P&L, and coloured like it: the sign carries the
+                // direction, the colour backs it up. Zero stays neutral.
                 Text(value.formatted(.percent.precision(.fractionLength(2)).sign(strategy: .always(includingZero: false))))
                     .dsFont(.body)
-                    .foregroundStyle(DS.Text.secondary)
+                    .foregroundStyle(value == 0 ? DS.Text.secondary : (value < 0 ? DS.Data.loss : DS.Data.gain))
             } else {
                 Text("None yet").dsFont(.body).foregroundStyle(DS.Text.tertiary)
             }
