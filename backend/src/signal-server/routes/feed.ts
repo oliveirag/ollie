@@ -11,7 +11,6 @@ import {
   listAllTrackRecordRows,
   listOpenLots,
   listTrackRecord,
-  lotOpenedAt,
 } from '../../db/trackRecord.js';
 import { computeTrackRecord } from '../../orchestrator/trackRecordStats.js';
 import { toPublishedSignal, type PublishedSignal } from '../../published/signal.js';
@@ -72,7 +71,7 @@ export async function readSubscriberTrackRecord(prisma: PrismaClient) {
   const positions = await Promise.all(
     lots.map(async (lot) => {
       const mark = await latestMarkForLot(lot.signalId, prisma);
-      const openedAt = (await lotOpenedAt(lot.signalId, prisma)) ?? lot.recordedAt;
+      const openedAt = lot.openedAt;
       return {
         signal_id: lot.signalId,
         symbol: lot.symbol,

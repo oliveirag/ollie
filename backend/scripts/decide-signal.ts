@@ -90,7 +90,7 @@ async function main(): Promise<void> {
   }
 
   const status: DecidedStatus = action === 'approve' ? 'approved' : 'rejected';
-  const reason = flag('reason') ?? `${action}d via decide-signal CLI`;
+  const reason = flag('reason') ?? `${status} via decide-signal CLI`;
 
   // The per-approval confirmation (Phase 5, decision 4) holds on the
   // break-glass path too: a live approval places a real order and has to say so.

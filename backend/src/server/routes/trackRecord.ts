@@ -19,7 +19,7 @@ export const registerTrackRecordRoutes: FastifyPluginAsyncZod = async (app) => {
         description:
           'Computed from the append-only track-record rows at read time, never stored — ' +
           'a stored copy could drift from the rows it summarises, and drift in published ' +
-          'performance is the one failure this product cannot survive.\\n\\n' +
+          'performance is the one failure this product cannot survive.\n\n' +
           'Win rate and average return are null until at least one trade has closed. ' +
           'Curve days on which an open lot had no mark are returned with `withheld: true` ' +
           'and a null value rather than a partial sum.',

@@ -561,7 +561,7 @@ components:
               nullable: true
             realized_pnl:
               type: string
-              description: Zero until Phase 3. Nothing closes a position yet, so this is the honest number rather than an invented one. A sell fill currently opens its own lot; matching it against the buy is Phase 3 work.
+              description: Realized PnL summed over every closed lot in the track record, two places
           required:
             - cost_basis
             - market_value
@@ -1042,7 +1042,10 @@ paths:
       summary: Performance to date and the equity curve
       tags:
         - track-record
-      description: "Computed from the append-only track-record rows at read time, never stored — a stored copy could drift from the rows it summarises, and drift in published performance is the one failure this product cannot survive.\\n\\nWin rate and average return are null until at least one trade has closed. Curve days on which an open lot had no mark are returned with `withheld: true` and a null value rather than a partial sum."
+      description: |-
+        Computed from the append-only track-record rows at read time, never stored — a stored copy could drift from the rows it summarises, and drift in published performance is the one failure this product cannot survive.
+
+        Win rate and average return are null until at least one trade has closed. Curve days on which an open lot had no mark are returned with `withheld: true` and a null value rather than a partial sum.
       security:
         - ownerToken: []
       responses:

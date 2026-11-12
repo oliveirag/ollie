@@ -11,11 +11,13 @@ import type { Notifier } from './push/notify.js';
 import type { BrokerAdapter } from './robinhood/client.js';
 
 /**
- * Two cron jobs: propose signals on a schedule, and close out signals nobody
- * decided.
+ * The cron jobs: propose signals, expire undecided ones, mark open lots,
+ * publish filled signals, poll live orders, and run the autonomy sweep.
  *
- * Both run with `protect: true`, which skips a firing while the previous one
- * is still running rather than starting a second concurrently. That matters
+ * Every job runs with `protect: true`, which skips a firing while the previous
+ * one is still running rather than starting a second concurrently. croner only
+ * knows a run is still going while it awaits the callback, so each callback
+ * returns its promise; a callback that fires and forgets gets no protection. That matters
  * most for the pipeline: two overlapping runs would both pass the in-process
  * dedupe check and race to insert the same signal. The unique constraint would
  * still keep the duplicate out of the database, but only after both had spent
@@ -36,15 +38,6 @@ export interface SchedulerDeps {
 
 export interface RunningScheduler {
   stop(): void;
-  /** Next fire times, for the startup log. */
-  nextRuns(): {
-    pipeline: Date | null;
-    expiry: Date | null;
-    mark: Date | null;
-    publish: Date | null;
-    orders: Date | null;
-    autonomy: Date | null;
-  };
 }
 
 export function startScheduler(deps: SchedulerDeps): RunningScheduler {
@@ -54,8 +47,8 @@ export function startScheduler(deps: SchedulerDeps): RunningScheduler {
   const pipelineJob = new Cron(
     config.pipelineCron,
     { timezone: config.timezone, protect: true, name: 'pipeline' },
-    () => {
-      void runPipeline({
+    async () => {
+      await runPipeline({
         broker: deps.broker,
         config,
         logger,
@@ -73,8 +66,8 @@ export function startScheduler(deps: SchedulerDeps): RunningScheduler {
   const expiryJob = new Cron(
     config.expirySweepCron,
     { timezone: config.timezone, protect: true, name: 'expiry' },
-    () => {
-      void sweepExpiredSignals({
+    async () => {
+      await sweepExpiredSignals({
         config,
         logger,
         ...(deps.prisma ? { prisma: deps.prisma } : {}),
@@ -89,8 +82,8 @@ export function startScheduler(deps: SchedulerDeps): RunningScheduler {
   const markJob = new Cron(
     config.markCron,
     { timezone: config.timezone, protect: true, name: 'mark' },
-    () => {
-      void runMarkToMarket({
+    async () => {
+      await runMarkToMarket({
         broker: deps.broker,
         config,
         logger,
@@ -106,8 +99,8 @@ export function startScheduler(deps: SchedulerDeps): RunningScheduler {
   const publishJob = new Cron(
     config.publishSweepCron,
     { timezone: config.timezone, protect: true, name: 'publish' },
-    () => {
-      void sweepUnpublishedSignals({
+    async () => {
+      await sweepUnpublishedSignals({
         logger,
         ...(deps.prisma ? { prisma: deps.prisma } : {}),
       }).catch((error: unknown) => {
@@ -121,8 +114,8 @@ export function startScheduler(deps: SchedulerDeps): RunningScheduler {
   const ordersJob = new Cron(
     config.orderPollCron,
     { timezone: config.timezone, protect: true, name: 'orders' },
-    () => {
-      void pollOpenOrders({
+    async () => {
+      await pollOpenOrders({
         broker: deps.broker,
         logger,
         ...(deps.prisma ? { prisma: deps.prisma } : {}),
@@ -137,8 +130,8 @@ export function startScheduler(deps: SchedulerDeps): RunningScheduler {
   const autonomyJob = new Cron(
     config.autonomySweepCron,
     { timezone: config.timezone, protect: true, name: 'autonomy' },
-    () => {
-      void sweepAutonomy({
+    async () => {
+      await sweepAutonomy({
         broker: deps.broker,
         config,
         logger,
@@ -173,16 +166,6 @@ export function startScheduler(deps: SchedulerDeps): RunningScheduler {
       ordersJob.stop();
       autonomyJob.stop();
       log.info('scheduler stopped');
-    },
-    nextRuns() {
-      return {
-        pipeline: pipelineJob.nextRun(),
-        expiry: expiryJob.nextRun(),
-        mark: markJob.nextRun(),
-        publish: publishJob.nextRun(),
-        orders: ordersJob.nextRun(),
-        autonomy: autonomyJob.nextRun(),
-      };
     },
   };
 }

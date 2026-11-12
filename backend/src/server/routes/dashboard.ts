@@ -1,6 +1,6 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import type { Logger } from 'pino';
-import { listOpenLots, type OpenLot } from '../../db/trackRecord.js';
+import { listOpenLots, totalRealizedPnl, type OpenLot } from '../../db/trackRecord.js';
 import { dec } from '../../money.js';
 import type { BrokerAdapter, Quote } from '../../orchestrator/robinhood/client.js';
 import { DashboardSchema, ErrorSchema } from '../schemas.js';
@@ -11,8 +11,8 @@ import { DashboardSchema, ErrorSchema } from '../schemas.js';
  * Two honesty rules shape this endpoint. Quotes are best-effort: the broker
  * being unreachable degrades the view to entry basis rather than failing it,
  * because a dashboard that 500s when Robinhood hiccups is useless exactly when
- * the owner is anxious. And realized PnL reads zero until Phase 3 — nothing
- * closes a position yet, so any other number would be invented.
+ * the owner is anxious. And realized PnL comes from the record's closed lots,
+ * never from the broker, so it matches what /v1/track-record reports.
  */
 
 export interface DashboardRouteOptions {
@@ -54,7 +54,7 @@ export const registerDashboardRoutes: FastifyPluginAsyncZod<DashboardRouteOption
       },
     },
     async () => {
-      const lots = await listOpenLots();
+      const [lots, realizedPnl] = await Promise.all([listOpenLots(), totalRealizedPnl()]);
 
       let quotes: Record<string, Quote> = {};
       let quotesAvailable = true;
@@ -85,7 +85,7 @@ export const registerDashboardRoutes: FastifyPluginAsyncZod<DashboardRouteOption
           side: lot.side as 'buy' | 'sell',
           quantity: lot.quantity,
           entry_price: lot.entryPrice,
-          opened_at: lot.recordedAt.toISOString(),
+          opened_at: lot.openedAt.toISOString(),
           quote: price,
           quote_age_seconds: price === null ? null : quoteAgeSeconds,
           unrealized_pnl: price === null ? null : unrealizedPnl(lot, price),
@@ -115,9 +115,7 @@ export const registerDashboardRoutes: FastifyPluginAsyncZod<DashboardRouteOption
           cost_basis: costBasis.toFixed(2),
           market_value: marketValue === null ? null : marketValue.toFixed(2),
           unrealized_pnl: unrealizedTotal === null ? null : unrealizedTotal.toFixed(2),
-          // Phase 3's job. Reporting anything else here would be inventing a
-          // number the track record cannot yet support.
-          realized_pnl: '0.00',
+          realized_pnl: realizedPnl,
         },
         quotes_available: quotesAvailable,
       };
