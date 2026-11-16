@@ -1,7 +1,8 @@
 import { Prisma, type Execution, type LiveOrder, type PrismaClient, type Signal, type TrackRecord } from '@prisma/client';
 import type { Logger } from 'pino';
 import type { Config } from '../config/index.js';
-import { recordExecution } from '../db/executions.js';
+import { getPrisma, type Db } from '../db/client.js';
+import { recordExecution, type RecordExecutionInput } from '../db/executions.js';
 import { recordPlacedOrder } from '../db/liveOrders.js';
 import { getAppSettings } from '../db/settings.js';
 import { appendTrackRecord, closeLots, openLotsForSymbol } from '../db/trackRecord.js';
@@ -99,15 +100,14 @@ export interface FillInput {
  * a sell. Shared by the paper executor (synchronous fill) and the order poll
  * job (the broker's fill), so both modes write the record the same way.
  *
- * Throws `NoOpenPositionError` on a sell with nothing to close. Callers that
- * have already recorded the execution — the poll job, where the fill is the
- * broker's fact — log it and keep the execution; the paper path checks
- * before recording so nothing is written at all.
+ * Throws `NoOpenPositionError` on a sell with nothing to close. Callers run
+ * this inside the same transaction as the execution row (`recordFill`), so
+ * the fill and its lots land together or not at all.
  */
 export async function settleLots(
   signal: Signal,
   fill: FillInput,
-  prisma?: PrismaClient,
+  prisma?: Db,
 ): Promise<{ trackRecord: TrackRecord; closedLots?: TrackRecord[] }> {
   if (signal.side === 'sell') {
     const consumed = await selectLotsToClose(signal.symbol, fill.quantity, prisma);
@@ -139,6 +139,52 @@ export async function settleLots(
   return { trackRecord };
 }
 
+export interface RecordedFill {
+  execution: Execution;
+  /** Null when a sell filled with no open lot to close (`keepUnmatchedSell`). */
+  settled: { trackRecord: TrackRecord; closedLots?: TrackRecord[] } | null;
+}
+
+/**
+ * Write the execution row and settle its lots in one transaction.
+ *
+ * Both tables are append-only, so a crash between two separate writes would
+ * be permanent: an execution whose lot never opened or closed, and — on the
+ * live path, which only settles when no execution exists yet — no later run
+ * that would ever repair it. In one transaction either both rows exist or
+ * neither does, and the next attempt starts clean.
+ *
+ * `keepUnmatchedSell` is for the live path: a broker fill is a fact the record
+ * must contain even when there is no lot to close (the owner sold by hand), so
+ * the execution commits and `settled` is null. The paper path leaves it off,
+ * and a sell with nothing to close rolls back without a trace.
+ */
+export async function recordFill(
+  signal: Signal,
+  execution: RecordExecutionInput & { filledAt: Date },
+  options: { prisma?: PrismaClient; keepUnmatchedSell?: boolean } = {},
+): Promise<RecordedFill> {
+  const prisma = options.prisma ?? getPrisma();
+  return prisma.$transaction(async (tx) => {
+    const recorded = await recordExecution(execution, tx);
+    const fill = {
+      fillPrice: execution.fillPrice,
+      quantity: execution.quantity,
+      filledAt: execution.filledAt,
+    };
+    try {
+      return { execution: recorded, settled: await settleLots(signal, fill, tx) };
+    } catch (error) {
+      // Thrown before any write in settleLots, so the transaction is still
+      // usable and the execution can commit on its own.
+      if (options.keepUnmatchedSell && error instanceof NoOpenPositionError) {
+        return { execution: recorded, settled: null };
+      }
+      throw error;
+    }
+  });
+}
+
 /**
  * Simulated fills. Never touches the broker — there is no adapter reference in
  * this class, so "approving a paper signal cannot place an order" is a
@@ -168,28 +214,16 @@ export class PaperExecutor implements Executor {
     );
     const filledAt = (this.deps.now ?? (() => new Date()))();
 
-    // A sell is always a close, never a new position. Selecting the lots it
-    // consumes happens *before* the execution is recorded, so an exit with
-    // nothing to close leaves no trace at all rather than a fill against a
-    // position that does not exist.
-    if (signal.side === 'sell') {
-      const consumed = await selectLotsToClose(signal.symbol, quantity, this.deps.prisma);
-      if (consumed.length === 0) throw new NoOpenPositionError(signal.symbol);
-    }
-
-    const execution = await recordExecution(
-      {
-        signalId: signal.id,
-        mode: 'paper',
-        fillPrice,
-        quantity,
-        filledAt,
-        brokerOrderId: null,
-      },
-      this.deps.prisma,
+    // A sell is always a close, never a new position. The execution and its
+    // lots commit together, so an exit with nothing to close rolls back and
+    // leaves no trace at all rather than a fill against a position that does
+    // not exist.
+    const { execution, settled } = await recordFill(
+      signal,
+      { signalId: signal.id, mode: 'paper', fillPrice, quantity, filledAt, brokerOrderId: null },
+      this.deps.prisma ? { prisma: this.deps.prisma } : {},
     );
-
-    const settled = await settleLots(signal, { fillPrice, quantity, filledAt }, this.deps.prisma);
+    if (!settled) throw new NoOpenPositionError(signal.symbol);
 
     this.deps.logger.info(
       {
@@ -252,9 +286,12 @@ export class LiveExecutor implements Executor {
     const snapshot = parseReviewSnapshot(signal.reviewSnapshot);
     const quantity = signal.quantity.toString();
 
+    // The same whole-lot selection the fill will settle against. Checking
+    // only that *some* lot exists would place a real sell whose fill then
+    // closes nothing, when the oldest lot is bigger than this exit.
     if (signal.side === 'sell') {
-      const lots = await openLotsForSymbol(signal.symbol, this.deps.prisma);
-      if (lots.length === 0) throw new NoOpenPositionError(signal.symbol);
+      const consumed = await selectLotsToClose(signal.symbol, quantity, this.deps.prisma);
+      if (consumed.length === 0) throw new NoOpenPositionError(signal.symbol);
     }
 
     // Review again, now, on the exact terms about to be sent. The original
@@ -336,11 +373,15 @@ export function executorFor(
  * FIFO earns its place in exactly one race — a buy on the same symbol approved
  * *after* this exit was proposed. The exit's quantity was fixed at proposal
  * time, so the newer lot is simply not covered and stays open.
+ *
+ * Exported because every pre-flight (decision route, autonomy sweep,
+ * LiveExecutor) must ask the same question the fill will: an empty result
+ * means the exit would close nothing, even when some lot is open.
  */
-async function selectLotsToClose(
+export async function selectLotsToClose(
   symbol: string,
   quantity: string,
-  prisma?: PrismaClient,
+  prisma?: Db,
 ): Promise<string[]> {
   const lots = await openLotsForSymbol(symbol, prisma);
   const wanted = new Prisma.Decimal(quantity);

@@ -6,7 +6,13 @@ import { listExecutions } from '../src/db/executions.js';
 import { insertSignal, transitionSignal } from '../src/db/signals.js';
 import { appendTrackRecord, listOpenLots, listTrackRecord } from '../src/db/trackRecord.js';
 import { NoOpenPositionError, PaperExecutor } from '../src/orchestrator/executor.js';
-import { closeTestPrisma, resetDatabase, testPrisma, uniqueDedupeKey } from './helpers/db.js';
+import {
+  closeTestPrisma,
+  resetDatabase,
+  testPrisma,
+  uniqueDedupeKey,
+  withTrackRecordInsertsFailing,
+} from './helpers/db.js';
 
 const db = testPrisma();
 const logger: Logger = pino({ level: 'silent' });
@@ -159,5 +165,48 @@ describe('an exit with nothing to close', () => {
     // and the record stays silent about a trade that never happened.
     expect(await listExecutions(exit.id, db)).toHaveLength(0);
     expect(await listOpenLots(db)).toHaveLength(0);
+  });
+});
+
+describe('an exit whose oldest lot is bigger than it', () => {
+  it('refuses and writes nothing, because whole lots only', async () => {
+    const lot = await seedOpenLot('3', '100.000000', new Date(1_000));
+    const exit = await seedApprovedExit('2', '110.000000');
+
+    await expect(executor().execute(exit)).rejects.toThrow(NoOpenPositionError);
+
+    expect(await listExecutions(exit.id, db)).toHaveLength(0);
+    expect((await listOpenLots(db)).map((l) => l.signalId)).toEqual([lot.id]);
+  });
+});
+
+describe('a paper fill and its lot commit together', () => {
+  it('leaves no execution behind when the lot cannot be written', async () => {
+    const buy = await insertSignal(
+      {
+        symbol: 'AAPL',
+        side: 'buy',
+        signalType: 'technical',
+        quantity: '2',
+        thesis: null,
+        thesisSource: 'llm',
+        indicators: {},
+        reviewSnapshot: snapshot('buy', '2', '100.000000'),
+        executionMode: 'paper',
+        dedupeKey: uniqueDedupeKey('entry'),
+      },
+      db,
+    );
+    const approved = await transitionSignal(buy.id, 'approved', 'owner approved', { prisma: db });
+
+    await withTrackRecordInsertsFailing(async () => {
+      await expect(executor().execute(approved)).rejects.toThrow(/simulated failure/);
+    });
+
+    // Written as two statements, the execution would survive the failed lot
+    // insert: a permanent fill with no position, in tables that refuse
+    // deletes. One transaction means neither row exists.
+    expect(await listExecutions(buy.id, db)).toHaveLength(0);
+    expect(await listTrackRecord(buy.id, db)).toHaveLength(0);
   });
 });

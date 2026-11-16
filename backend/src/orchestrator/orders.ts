@@ -1,10 +1,10 @@
 import { Prisma, type PrismaClient } from '@prisma/client';
 import type { Logger } from 'pino';
 import { newRunLogger } from '../logger.js';
-import { listExecutions, recordExecution } from '../db/executions.js';
+import { listExecutions } from '../db/executions.js';
 import { listOpenOrders, updateOrderFromBroker } from '../db/liveOrders.js';
 import { SignalAlreadyPublishedError, getSignal, publishSignal } from '../db/signals.js';
-import { NoOpenPositionError, settleLots } from './executor.js';
+import { recordFill } from './executor.js';
 import { isTerminalOrderState, type BrokerAdapter } from './robinhood/client.js';
 
 /**
@@ -23,7 +23,9 @@ import { isTerminalOrderState, type BrokerAdapter } from './robinhood/client.js'
  * unaccounted for. The switch stops new orders; it cannot un-fill one.
  *
  * Idempotent by construction: an execution is written only when the signal
- * has none, and a terminal order is never polled again.
+ * has none, it commits in one transaction with the lots it settles (so "has
+ * an execution" always means "lots settled"), and a terminal order is never
+ * polled again.
  */
 export interface OrderPollDeps {
   broker: BrokerAdapter;
@@ -106,30 +108,32 @@ export async function pollOpenOrders(deps: OrderPollDeps): Promise<OrderPollResu
 
       const existing = await listExecutions(signal.id, deps.prisma);
       if (existing.length === 0) {
-        const execution = await recordExecution(
-          {
-            signalId: signal.id,
-            mode: 'live',
-            fillPrice: current.averagePrice,
-            quantity: filledQuantity.toString(),
-            filledAt: now,
-            brokerOrderId: order.brokerOrderId,
-          },
-          deps.prisma,
-        );
-
+        let recorded;
         try {
-          await settleLots(
+          recorded = await recordFill(
             signal,
-            { fillPrice: current.averagePrice, quantity: filledQuantity.toString(), filledAt: now },
-            deps.prisma,
+            {
+              signalId: signal.id,
+              mode: 'live',
+              fillPrice: current.averagePrice,
+              quantity: filledQuantity.toString(),
+              filledAt: now,
+              brokerOrderId: order.brokerOrderId,
+            },
+            { keepUnmatchedSell: true, ...(deps.prisma ? { prisma: deps.prisma } : {}) },
           );
         } catch (error) {
-          if (!(error instanceof NoOpenPositionError)) throw error;
+          // Nothing was written: the execution rolled back with its lots. The
+          // order is not stamped terminal, so the next poll records it whole.
+          result.errors += 1;
+          log.error({ err: error, signal_id: signal.id }, 'recording the live fill failed; will retry next poll');
+          continue;
+        }
+        if (!recorded.settled) {
           // The fill is real and recorded; what is missing is a lot to close —
           // the owner sold by hand, or a prior exit consumed it. Say so.
           log.error(
-            { signal_id: signal.id, execution_id: execution.id },
+            { signal_id: signal.id, execution_id: recorded.execution.id },
             'live sell filled with no open lot to close; execution recorded, no lot closed',
           );
         }

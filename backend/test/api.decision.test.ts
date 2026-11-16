@@ -4,7 +4,7 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { listExecutions } from '../src/db/executions.js';
 import { setExecutionMode, setKillSwitch } from '../src/db/settings.js';
 import { getSignal, insertSignal, listSignalEvents } from '../src/db/signals.js';
-import { latestTrackRecord } from '../src/db/trackRecord.js';
+import { appendTrackRecord, latestTrackRecord } from '../src/db/trackRecord.js';
 import { sweepExpiredSignals } from '../src/orchestrator/pipeline.js';
 import { authHeader, buildTestApp, testConfig } from './helpers/api.js';
 import { closeTestPrisma, resetDatabase, testPrisma, uniqueDedupeKey } from './helpers/db.js';
@@ -334,6 +334,22 @@ describe('approving an exit with nothing to close', () => {
 
     const after = await getSignal(exit.id, db);
     expect(after!.status).toBe('pending');
+  });
+
+  it('returns 409 when the only open lot is bigger than the exit', async () => {
+    const entry = await seedSignal({ quantity: '3' });
+    await appendTrackRecord({ signalId: entry.id, entryPrice: '100.00', status: 'open' }, db);
+    const exit = await seedSignal({ side: 'sell', quantity: '2', dedupeKey: uniqueDedupeKey('exit') });
+
+    const response = await decide(exit.id, { action: 'approve' });
+
+    // A lot exists, but the executor closes whole lots only and this one does
+    // not fit. Checking "any lot open" would approve, then fail to execute,
+    // and strand the signal approved with no fill.
+    expect(response.statusCode).toBe(409);
+    expect(response.json().error).toBe('no_open_position');
+    expect((await getSignal(exit.id, db))!.status).toBe('pending');
+    expect(await listExecutions(exit.id, db)).toHaveLength(0);
   });
 
   it('still allows rejecting it', async () => {

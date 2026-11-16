@@ -247,6 +247,17 @@ export function buildConfig(source: NodeJS.ProcessEnv = process.env): Config {
     );
   }
 
+  // The veto window has to close before the signal expires, or the expiry
+  // sweep wins the race and autonomy never approves anything: every signal
+  // just expires with nobody having said no. Only checked with autonomy on,
+  // where the two windows actually compete.
+  if (env.AUTONOMY_ENABLED && env.AUTONOMY_VETO_MINUTES >= env.SIGNAL_EXPIRY_MINUTES) {
+    throw new Error(
+      `AUTONOMY_VETO_MINUTES (${env.AUTONOMY_VETO_MINUTES}) must be below SIGNAL_EXPIRY_MINUTES ` +
+        `(${env.SIGNAL_EXPIRY_MINUTES}); otherwise signals expire before autonomy can approve them`,
+    );
+  }
+
   const symbolAllowlist = parseSymbols(env.SYMBOL_ALLOWLIST);
   if (symbolAllowlist.length === 0) {
     throw new Error('SYMBOL_ALLOWLIST must name at least one symbol');

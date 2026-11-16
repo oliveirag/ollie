@@ -3,12 +3,13 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { buildConfig, type Config } from '../src/config/index.js';
 import { listExecutions } from '../src/db/executions.js';
 import { setAutonomy, setKillSwitch } from '../src/db/settings.js';
-import { getSignal, listSignalEvents, transitionSignal } from '../src/db/signals.js';
+import { getSignal, insertSignal, listSignalEvents, transitionSignal } from '../src/db/signals.js';
+import { appendTrackRecord, listOpenLots } from '../src/db/trackRecord.js';
 import { AUTO_APPROVE_REASON, sweepAutonomy } from '../src/orchestrator/autonomy.js';
 import { runPipeline, sweepExpiredSignals } from '../src/orchestrator/pipeline.js';
 import type { Candle, Quote } from '../src/orchestrator/robinhood/client.js';
 import { MockBrokerAdapter } from '../src/orchestrator/robinhood/mockClient.js';
-import { closeTestPrisma, resetDatabase, testPrisma } from './helpers/db.js';
+import { closeTestPrisma, resetDatabase, testPrisma, uniqueDedupeKey } from './helpers/db.js';
 import fixture from './fixtures/ohlcv/AAPL-daily-2026.json' with { type: 'json' };
 
 /**
@@ -211,5 +212,52 @@ describe('the autonomy sweep', () => {
 
     expect(result.approved).toEqual([]);
     expect((await getSignal(signals[0]!.id, db))?.status).toBe('pending');
+  });
+});
+
+describe('an auto-decidable exit whose oldest lot is bigger than it', () => {
+  it('is skipped and left pending, not approved into a fill that closes nothing', async () => {
+    await setAutonomy(true, db);
+    const base = {
+      symbol: 'AAPL',
+      signalType: 'technical' as const,
+      thesis: null,
+      thesisSource: 'llm' as const,
+      indicators: {},
+      executionMode: 'paper' as const,
+    };
+    const snap = (side: 'buy' | 'sell', quantity: string) => ({
+      schema_version: 1,
+      estimated_price: '300.00',
+      alerts: [],
+      requested: { symbol: 'AAPL', side, quantity, type: 'market' },
+      captured_at: '2026-07-02T13:35:00.000Z',
+      raw: {},
+    });
+    const entry = await insertSignal(
+      { ...base, side: 'buy', quantity: '3', reviewSnapshot: snap('buy', '3'), dedupeKey: uniqueDedupeKey('entry') },
+      db,
+    );
+    await appendTrackRecord({ signalId: entry.id, entryPrice: '300.00', status: 'open', recordedAt: later(-60) }, db);
+    const exit = await insertSignal(
+      {
+        ...base,
+        side: 'sell',
+        quantity: '2',
+        reviewSnapshot: snap('sell', '2'),
+        dedupeKey: uniqueDedupeKey('exit'),
+        autoDecideAt: later(5),
+      },
+      db,
+    );
+
+    const result = await sweepAutonomy({ ...deps(), clock: () => later(6) });
+
+    // "Some lot is open" is not enough: the executor closes whole lots only,
+    // and a 3-share lot does not fit a 2-share exit.
+    expect(result).toMatchObject({ status: 'completed', approved: [], skipped: 1 });
+    expect((await getSignal(exit.id, db))?.status).toBe('pending');
+    expect(await listExecutions(exit.id, db)).toHaveLength(0);
+    expect((await listOpenLots(db)).map((l) => l.signalId)).toEqual([entry.id]);
   });
 });

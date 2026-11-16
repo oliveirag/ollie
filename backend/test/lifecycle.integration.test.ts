@@ -119,7 +119,9 @@ describe('a trade from proposal to published statistics', () => {
       config: cfg,
       logger,
       prisma: db,
-      now: () => new Date('2026-07-03T20:15:00Z'),
+      // Monday 2026-07-06: the Friday before was the observed Independence
+      // Day closure, which the mark job now skips.
+      now: () => new Date('2026-07-06T20:15:00Z'),
     });
 
     const marked = (await listTrackRecord(entry.id, db)).at(-1)!;

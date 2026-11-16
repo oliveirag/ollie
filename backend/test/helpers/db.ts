@@ -78,3 +78,28 @@ export function uniqueDedupeKey(prefix = 'test'): string {
   counter += 1;
   return `${prefix}:${process.pid}:${Date.now()}:${counter}`;
 }
+
+/**
+ * Runs `fn` while every INSERT into track_record fails, the way a crash or a
+ * dropped connection would between writing an execution and settling its lot.
+ * The trigger is test-only and removed even if `fn` throws.
+ */
+export async function withTrackRecordInsertsFailing<T>(fn: () => Promise<T>): Promise<T> {
+  const db = testPrisma();
+  await db.$executeRawUnsafe(`
+    CREATE OR REPLACE FUNCTION test_fail_track_record_insert() RETURNS trigger AS $$
+    BEGIN
+      RAISE EXCEPTION 'simulated failure before the lot was settled';
+    END
+    $$ LANGUAGE plpgsql`);
+  await db.$executeRawUnsafe(
+    'CREATE TRIGGER test_fail_track_record_insert BEFORE INSERT ON track_record ' +
+      'FOR EACH ROW EXECUTE FUNCTION test_fail_track_record_insert()',
+  );
+  try {
+    return await fn();
+  } finally {
+    await db.$executeRawUnsafe('DROP TRIGGER IF EXISTS test_fail_track_record_insert ON track_record');
+    await db.$executeRawUnsafe('DROP FUNCTION IF EXISTS test_fail_track_record_insert()');
+  }
+}
