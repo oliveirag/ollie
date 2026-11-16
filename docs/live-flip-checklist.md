@@ -6,7 +6,7 @@ config changes for real money, two more for autonomy, each preceded by a check
 and followed by a watch.
 
 **Gate.** Do not start until the Phase 3 sustained run has exited
-([sustained-run checklist](sustained-run-checklist.md), "What done looks like")
+([sustained-run checklist, What "done" looks like](sustained-run-checklist.md#what-done-looks-like))
 and you have read the record and judged it worth risking money on. A number
 does not make that call.
 

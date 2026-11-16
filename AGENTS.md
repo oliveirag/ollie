@@ -14,13 +14,14 @@ owner's own account and waits for human approval; subscriber side gets read-only
 - `ios/`: SwiftUI app (owner and subscriber sides), generated with XcodeGen. Team `NL5855QHYU`,
   automatic signing. For any UI, icon or symbol work, load the `apple-dev-resources` skill first.
   Screens follow Apple's iOS 27 Figma kit (fileKey `LrqMNPpVF6rQhdnnEuxkcP`), symbols come from SF
-  Symbols (checked against the iOS 17 deployment target), and the app icon is an Icon Composer
-  `.icon` built on the App Icon Template (fileKey `0CvTzsKcWrX0k5hZfIKjxH`).
+  Symbols (checked against the iOS 17 deployment target). There is no app icon yet; when added it is
+  an Icon Composer `.icon` built on the App Icon Template (fileKey `0CvTzsKcWrX0k5hZfIKjxH`).
 - `docs/`: API contracts, signal schema, runbooks, phase build plans.
 
 ## Commands
 
-Backend (from `backend/`, Postgres via `docker compose up -d` at the repo root):
+Backend (from `backend/`, Postgres 16 on localhost:5432: Homebrew `postgresql@16`, or
+`docker compose up -d` at the repo root):
 
 - `npm test` (sets up the test DB first), `npm run typecheck`, `npm run build`
 - `npm run dev` / `npm run dev:signal`

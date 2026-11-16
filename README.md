@@ -12,21 +12,22 @@ Two strictly separated sides:
   places a trade for anyone but the owner.
 
 Full product spec: [Ollie.md](Ollie.md).
-Build plans: [phases 0–1](docs/implementation-plan-phases-0-1.md) (done, pending live E2E) ·
+Build plans: [phases 0–1](docs/implementation-plan-phases-0-1.md) (complete) ·
 [phase 2](docs/implementation-plan-phase-2.md) (complete) ·
 [phase 3](docs/implementation-plan-phase-3.md) (built; sustained run in progress) ·
 [phase 4](docs/implementation-plan-phase-4.md) (built; deploy and soft launch gated) ·
 [phase 5](docs/implementation-plan-phase-5.md) (built; flips are owner actions).
 Running it: [sustained-run checklist](docs/sustained-run-checklist.md) ·
 [live-flip checklist](docs/live-flip-checklist.md).
-Design reference: [docs/design/owner-app-design.html](docs/design/owner-app-design.html).
+Design: the iOS app follows the owner's design system (`ios/Ollie/DesignSystem/`).
+[docs/design/owner-app-design.html](docs/design/owner-app-design.html) is the superseded first concept.
 
 ## Status
 
 | Phase | Scope | State |
 | --- | --- | --- |
 | 0 | Repo, Postgres, data model, immutable signal logging | complete |
-| 1 | Headless orchestrator: strategy, review snapshot, thesis, paper execute seam | complete (pending live E2E) |
+| 1 | Headless orchestrator: strategy, review snapshot, thesis, paper execute seam | complete |
 | 2 | iOS owner app (approve/reject, dashboard, kill switch) | complete: push and approval proven on a real iPhone (2026-09-24) |
 | 3 | Track record accrual | built (3.1–3.7, record screen verified against a seeded multi-trade record); the 3.8 sustained run remains |
 | 4 | Subscriber side: signal service, MCP server, onboarding, feed | built (4.1–4.6); 4.7 deploy and soft launch wait on the Phase 3 record |
@@ -50,10 +51,11 @@ Ollie.md     Product requirements document
 
 ## Getting started
 
-Everything runs locally against a Docker Postgres:
+Everything runs locally against Postgres 16 on localhost:5432 (Homebrew
+`postgresql@16`, or `docker compose up -d` where Docker works). Set
+`OWNER_API_TOKEN` in `backend/.env` before starting the server.
 
 ```bash
-docker compose up -d
 cd backend && cp .env.example .env && npm install && npm run db:migrate
 npm test
 npm run pipeline:once -- --broker=mock   # a full run against checked-in fixtures

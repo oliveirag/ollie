@@ -26,10 +26,10 @@ Docker), the orchestrator and signal service with `BROKER=mock` and
 builds only talk to localhost. Needs ports 3000, 3100 and 5433 free. Logs and
 result bundles, including the per-tab screenshots, land in `ios/build/e2e/`.
 
-## Subscriber side without the Apple Developer membership
+## Subscriber side on the simulator (stubbed Sign in with Apple)
 
-Sign in with Apple needs a paid team and App ID configuration. Until those
-exist, Debug builds launched with `SUBSCRIBER_TEST_IDENTITY=1` show a
+Sign in with Apple has not yet run on a device, and the simulator cannot
+complete it, so Debug builds launched with `SUBSCRIBER_TEST_IDENTITY=1` show a
 "Continue with a test identity" button that sends a `fake:` identity token. The
 signal service accepts it only when started with `SIWA_STUB=true`, and refuses
 to start that way in production.
@@ -96,20 +96,20 @@ truth that nothing guards.
 ## Auth
 
 Every `/v1` request needs the owner bearer token (`OWNER_API_TOKEN` on the
-backend). The app stores it in the Keychain. Phase 2 has exactly one user, so
-this stands in for Sign in with Apple; SIWA arrives in Phase 4 with the
-subscriber side, where strangers make it earn its place.
+backend). The app stores it in the Keychain. The owner keeps this pre-shared
+token; subscribers use Sign in with Apple against the signal service.
 
 ## Running the UI tests
 
-They drive the real app against a real backend, so both have to be up, and a
-pending signal expires 15 minutes after it is written — seed it immediately
-before the run, not before the build:
+`scripts/e2e.sh owner` does all of this on its own (its own Postgres cluster,
+both servers, seeding) and is the normal way to run them. To use your own
+backend instead: the app and backend both have to be up, and a pending signal
+expires 15 minutes after it is written, so seed it immediately before the run,
+not before the build:
 
 ```bash
-# 1. backend on :3000, with a database behind it
-docker compose up -d
-PORT=3000 npm --prefix ../backend run dev
+# 1. from the repo root: backend on :3000 (Postgres on :5432, OWNER_API_TOKEN in backend/.env)
+PORT=3000 npm --prefix backend run dev
 
 # 2. compile first, so the expiry window is not spent building
 cd ios
@@ -127,8 +127,8 @@ xcodebuild test-without-building -project Ollie.xcodeproj -scheme Ollie \
 `xcodebuild KEY=value` sets a build setting, not an environment variable, and
 the token would never reach the test.
 
-`ScreenshotUITests` captures each tab as an attachment for reviewing the app
-against `docs/design/owner-app-design.html`:
+`ScreenshotUITests` captures each tab as an attachment for visual review
+against the design system:
 
 ```bash
 xcodebuild test ... -only-testing:OllieUITests/ScreenshotUITests -resultBundlePath /tmp/shots.xcresult
