@@ -4,6 +4,7 @@ import { newRunLogger } from '../logger.js';
 import { getAppSettings } from '../db/settings.js';
 import { appendTrackRecord, hasMarkForDay, listOpenLots } from '../db/trackRecord.js';
 import type { Config } from '../config/index.js';
+import { exchangeDate, isMarketHoliday } from './marketCalendar.js';
 import type { BrokerAdapter } from './robinhood/client.js';
 
 /**
@@ -36,7 +37,7 @@ export interface MarkDeps {
 
 export interface MarkResult {
   runId: string;
-  status: 'completed' | 'halted_kill_switch';
+  status: 'completed' | 'halted_kill_switch' | 'market_closed';
   marked: number;
   skippedAlreadyMarked: number;
   /** Symbols whose quote was unavailable, so their lots were left unmarked. */
@@ -62,6 +63,20 @@ export async function runMarkToMarket(deps: MarkDeps): Promise<MarkResult> {
       skippedAlreadyMarked: 0,
       gaps: [],
     };
+  }
+
+  // MARK_CRON fires Monday to Friday and knows nothing of exchange holidays.
+  // A mark on a closed day would be the prior close written down as a new
+  // day: a permanent row and a curve point for a session that never happened.
+  const holiday = isMarketHoliday(now);
+  if (holiday === true) {
+    log.info({ date: exchangeDate(now) }, 'market closed today; nothing to mark');
+    return { runId: log.runId, status: 'market_closed', marked: 0, skippedAlreadyMarked: 0, gaps: [] };
+  }
+  if (holiday === null) {
+    // Marking as before beats a silent run of gaps; the log says to extend
+    // the table in marketCalendar.ts.
+    log.warn({ date: exchangeDate(now) }, 'holiday calendar does not cover this year; marking without a holiday check');
   }
 
   const lots = await listOpenLots(deps.prisma);

@@ -221,3 +221,25 @@ describe('the daily mark', () => {
     expect(result.status).toBe('halted_kill_switch');
   });
 });
+
+describe('market holidays', () => {
+  it('writes nothing on Thanksgiving, even though MARK_CRON fires that Thursday', async () => {
+    const signal = await seedLot('AAPL', '2', '100.00');
+
+    // 16:15 ET on 2026-11-26.
+    const result = await run({ AAPL: quote('AAPL', '110.00') }, new Date('2026-11-26T21:15:00Z'));
+
+    expect(result.status).toBe('market_closed');
+    expect(result.marked).toBe(0);
+    expect(await listTrackRecord(signal.id, db)).toHaveLength(1);
+  });
+
+  it('marks as usual on the early-close day after it', async () => {
+    const signal = await seedLot('AAPL', '2', '100.00');
+
+    const result = await run({ AAPL: quote('AAPL', '110.00') }, new Date('2026-11-27T21:15:00Z'));
+
+    expect(result).toMatchObject({ status: 'completed', marked: 1 });
+    expect(await listTrackRecord(signal.id, db)).toHaveLength(2);
+  });
+});

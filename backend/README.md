@@ -132,6 +132,12 @@ row per lot every trading day. `listOpenLots` returns both `recordedAt` (the
 newest row) and `openedAt` (the first); anything about holding period or FIFO
 order must use `openedAt`.
 
+**Market holidays are a hand-kept table.** The mark job skips NYSE full-day
+closures from `src/orchestrator/marketCalendar.ts`, which covers 2026 to 2028.
+Daily bars cannot answer "was there a session today" at 16:15 ET because the
+in-progress day is absent. A test fails once the table stops covering next
+year; extend it from the exchange's published calendar.
+
 **The strategy engine takes no dependencies.** `evaluateTechnical` gets bars and
 config and returns a candidate or null. Adding a database read, a clock, or an
 API call to it breaks the replayability the track record's credibility rests on.
