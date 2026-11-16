@@ -152,7 +152,13 @@ export class McpBrokerAdapter implements BrokerAdapter {
       throw new BrokerError(`failed to connect to ${this.url}`, error);
     }
 
-    await this.resolveToolNames(client);
+    try {
+      await this.resolveToolNames(client);
+    } catch (error) {
+      // Connected but unusable: close it rather than leak an open session.
+      await client.close().catch(() => undefined);
+      throw error;
+    }
     this.log.info({ url: this.url, tools: this.toolNames.size }, 'connected to trading MCP');
     return client;
   }
@@ -201,7 +207,7 @@ export class McpBrokerAdapter implements BrokerAdapter {
         const result = await client.callTool({ name: this.toolName(short), arguments: args });
 
         if (result.isError) {
-          throw new BrokerError(`${short} returned an error: ${JSON.stringify(result.content)}`);
+          throw new ToolResultError(short, result.content);
         }
 
         const raw = unwrapToolResult(result.content, short);
@@ -218,16 +224,17 @@ export class McpBrokerAdapter implements BrokerAdapter {
         return { parsed: parsed.data, raw };
       } catch (error) {
         lastError = error;
-        if (!isRetryable(error) || attempt === MAX_ATTEMPTS) break;
+        if (!isRetryable(error, short) || attempt === MAX_ATTEMPTS) break;
 
         const backoffMs = 500 * 2 ** (attempt - 1);
         this.log.warn(
           { tool: short, attempt, backoff_ms: backoffMs, err: error },
           'trading MCP call failed, retrying',
         );
-        // A failed call may have left the session unusable; drop it and let the
-        // next attempt reconnect.
-        this.client = null;
+        // A failed call may have left the session unusable; close it and let
+        // the next attempt reconnect. Dropping it unclosed would leave the
+        // broker holding a session nobody will ever end.
+        await this.dropClient();
         await sleep(backoffMs);
       }
     }
@@ -420,7 +427,8 @@ export class McpBrokerAdapter implements BrokerAdapter {
    * review was run under, so the review snapshot describes this order and
    * not a cousin of it. `ref_id` is the signal's idempotency key: the retry
    * loop in `call` may resend on a transport error, and the broker treats a
-   * repeated key as the same order rather than a second fill.
+   * repeated key as the same order rather than a second fill. It never
+   * resends after the broker has answered with an error (`isRetryable`).
    */
   async placeEquityOrder(request: PlaceOrderRequest): Promise<PlaceResult> {
     const accountNumber = await this.getAccountNumber();
@@ -476,6 +484,32 @@ export class McpBrokerAdapter implements BrokerAdapter {
       this.client = null;
     }
   }
+
+  private async dropClient(): Promise<void> {
+    const stale = this.client;
+    this.client = null;
+    if (!stale) return;
+    try {
+      await stale.close();
+    } catch (error) {
+      this.log.debug({ err: error }, 'closing the stale trading MCP session failed');
+    }
+  }
+}
+
+/**
+ * The server answered the call and said no (`isError`). For an order this is
+ * a business decision — a rejection, a halted symbol, insufficient buying
+ * power — and never something a retry should resend.
+ */
+export class ToolResultError extends BrokerError {
+  constructor(
+    readonly tool: string,
+    readonly content: unknown,
+  ) {
+    super(`${tool} returned an error: ${JSON.stringify(content)}`);
+    this.name = 'ToolResultError';
+  }
 }
 
 /** Pulls the `data` payload out of an MCP tool result's text content. */
@@ -519,21 +553,65 @@ export function toAlerts(orderChecks: Record<string, unknown>): ReviewAlert[] {
   return [{ type: alertType, details: details ? details[1] : orderChecks }];
 }
 
-function isRetryable(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error);
+/** The error, its `cause`, that one's `cause`, and so on (bounded). */
+function errorChain(error: unknown): unknown[] {
+  const chain: unknown[] = [];
+  let current: unknown = error;
+  while (current != null && chain.length < 8 && !chain.includes(current)) {
+    chain.push(current);
+    current = typeof current === 'object' ? (current as { cause?: unknown }).cause : undefined;
+  }
+  return chain;
+}
+
+const NOT_RETRYABLE =
+  /unexpected shape|does not expose a tool|no Robinhood credential configured|RH_MCP_AUTH_TOKEN|rh:authorize/i;
+const TRANSIENT_TEXT =
+  /rate.?limit|timeout|timed out|ETIMEDOUT|ECONNRESET|ECONNREFUSED|EAI_AGAIN|socket hang up|fetch failed|UND_ERR_(?:CONNECT_TIMEOUT|SOCKET|HEADERS_TIMEOUT)/i;
+/**
+ * A 429 or 5xx standing alone. Not inside a longer number or a price: a
+ * rejection quoting "512.30" or "$503" is not a server error.
+ */
+const STATUS_IN_TEXT = /(?<![\d.$])\b(?:429|5\d\d)\b(?!\.\d)/;
+
+function isRetryableStatus(value: unknown): boolean {
+  return typeof value === 'number' && (value === 429 || (value >= 500 && value <= 599));
+}
+
+/**
+ * Whether a failed call is worth another attempt.
+ *
+ * Walks the `cause` chain, because the useful part is often underneath: a
+ * connect failure arrives as "failed to connect to <url>" wrapping undici's
+ * "fetch failed" wrapping `{ code: 'ECONNREFUSED' }`, and the SDK's HTTP
+ * error carries its status as a numeric `code`, not in the text.
+ *
+ * `place_equity_order` is never retried on an answer from the server: the
+ * `ref_id` makes a resend after a transport failure safe, but a rejection is
+ * the broker's decision, and resending it is at best noise and at worst an
+ * order the owner did not approve on those terms.
+ */
+export function isRetryable(error: unknown, tool?: string): boolean {
+  const chain = errorChain(error);
+
+  if (tool === 'place_equity_order' && chain.some((e) => e instanceof ToolResultError)) {
+    return false;
+  }
+
+  const messages = chain.map((e) => (e instanceof Error ? e.message : String(e)));
   // A missing or unrenewable credential will not fix itself; retrying only
   // delays the error. `npm run rh:authorize` names the expired-authorization
   // case raised by RhOAuthProvider.
-  if (
-    /unexpected shape|does not expose a tool|no Robinhood credential configured|RH_MCP_AUTH_TOKEN|rh:authorize/i.test(
-      message,
-    )
-  ) {
-    return false;
+  if (messages.some((m) => NOT_RETRYABLE.test(m))) return false;
+
+  for (const link of chain) {
+    if (typeof link !== 'object' || link === null) continue;
+    const { code, status } = link as { code?: unknown; status?: unknown };
+    if (isRetryableStatus(code) || isRetryableStatus(status)) return true;
+    if (typeof code === 'string' && TRANSIENT_TEXT.test(code)) return true;
   }
-  return /429|rate.?limit|timeout|ETIMEDOUT|ECONNRESET|EAI_AGAIN|socket hang up|5\d\d/i.test(
-    message,
-  );
+
+  return messages.some((m) => TRANSIENT_TEXT.test(m) || STATUS_IN_TEXT.test(m));
 }
 
 function sleep(ms: number): Promise<void> {
