@@ -1,5 +1,5 @@
-import { Prisma, type ExecMode, type Execution, type PrismaClient } from '@prisma/client';
-import { getPrisma } from './client.js';
+import { Prisma, type ExecMode, type Execution } from '@prisma/client';
+import { getPrisma, type Db } from './client.js';
 
 export interface RecordExecutionInput {
   signalId: string;
@@ -15,7 +15,7 @@ export interface RecordExecutionInput {
 /** Append-only: `executions` rejects UPDATE and DELETE at the database level. */
 export async function recordExecution(
   input: RecordExecutionInput,
-  prisma: PrismaClient = getPrisma(),
+  prisma: Db = getPrisma(),
 ): Promise<Execution> {
   return prisma.execution.create({
     data: {
@@ -31,7 +31,7 @@ export async function recordExecution(
 
 export async function listExecutions(
   signalId: string,
-  prisma: PrismaClient = getPrisma(),
+  prisma: Db = getPrisma(),
 ): Promise<Execution[]> {
   return prisma.execution.findMany({ where: { signalId }, orderBy: { filledAt: 'asc' } });
 }

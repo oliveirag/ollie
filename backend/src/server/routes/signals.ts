@@ -3,7 +3,6 @@ import { z } from 'zod';
 import type { Config } from '../../config/index.js';
 import { latestOrderForSignal, latestOrdersForSignals } from '../../db/liveOrders.js';
 import { getAppSettings } from '../../db/settings.js';
-import { openLotsForSymbol } from '../../db/trackRecord.js';
 import {
   getSignal,
   listDecidedSignals,
@@ -16,7 +15,7 @@ import {
 } from '../../db/signals.js';
 import type { Logger } from 'pino';
 import type { Signal } from '@prisma/client';
-import { executorFor } from '../../orchestrator/executor.js';
+import { executorFor, selectLotsToClose } from '../../orchestrator/executor.js';
 import type { BrokerAdapter } from '../../orchestrator/robinhood/client.js';
 import {
   DecisionRequestSchema,
@@ -320,9 +319,11 @@ async function preflightExecution(
   // pending -> terminal, so it would be stranded approved with no fill. Checked
   // here, the answer is a 409 and the signal is still pending and still
   // decidable, exactly as with the kill-switch and live-mode refusals above.
+  // The same whole-lot selection the executor settles with: an open lot bigger
+  // than this exit is not something it can close.
   if (signal.side === 'sell') {
-    const lots = await openLotsForSymbol(signal.symbol);
-    if (lots.length === 0) {
+    const consumed = await selectLotsToClose(signal.symbol, signal.quantity.toString());
+    if (consumed.length === 0) {
       return {
         error: 'no_open_position',
         detail: `no open ${signal.symbol} lot to close`,

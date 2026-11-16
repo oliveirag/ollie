@@ -7,7 +7,8 @@ import { listExecutions } from '../src/db/executions.js';
 import { latestOrderForSignal, listOpenOrders } from '../src/db/liveOrders.js';
 import { setExecutionMode, setKillSwitch } from '../src/db/settings.js';
 import { getSignal, insertSignal } from '../src/db/signals.js';
-import { latestTrackRecord, listOpenLots } from '../src/db/trackRecord.js';
+import { appendTrackRecord, closeLots, latestTrackRecord, listOpenLots } from '../src/db/trackRecord.js';
+import { LiveExecutor, NoOpenPositionError } from '../src/orchestrator/executor.js';
 import { pollOpenOrders } from '../src/orchestrator/orders.js';
 import { sweepUnpublishedSignals } from '../src/orchestrator/publish.js';
 import { MockBrokerAdapter, type OrderScript } from '../src/orchestrator/robinhood/mockClient.js';
@@ -15,7 +16,13 @@ import { GetEquityOrdersSchema } from '../src/orchestrator/robinhood/types.js';
 import { computeTrackRecord } from '../src/orchestrator/trackRecordStats.js';
 import { listAllTrackRecordRows } from '../src/db/trackRecord.js';
 import { authHeader, buildTestApp, testConfig } from './helpers/api.js';
-import { closeTestPrisma, resetDatabase, testPrisma, uniqueDedupeKey } from './helpers/db.js';
+import {
+  closeTestPrisma,
+  resetDatabase,
+  testPrisma,
+  uniqueDedupeKey,
+  withTrackRecordInsertsFailing,
+} from './helpers/db.js';
 
 /**
  * Phase 5, milestones 5.1–5.3: the live order path, exercised end to end in
@@ -329,6 +336,69 @@ describe('the order poll', () => {
     expect(closed?.closedBySignalId).toBe(exit.id);
     expect(closed?.exitPrice?.toString()).toBe('182.6825');
     expect(await listOpenLots(db)).toEqual([]);
+  });
+});
+
+describe('LiveExecutor on an exit whose oldest lot is bigger than it', () => {
+  it('refuses before reviewing or placing anything', async () => {
+    await setExecutionMode('live', db);
+    const entry = await seedLive('buy', '3');
+    await appendTrackRecord({ signalId: entry.id, entryPrice: '182.50', status: 'open' }, db);
+    const exit = await seedLive('sell', '2');
+    const broker = new MockBrokerAdapter({ orderScripts: { AAPL: FILLS.fill! } });
+    const executor = new LiveExecutor(
+      { config: testConfig({ liveTradingEnabled: true }), logger, prisma: db },
+      broker,
+    );
+
+    // "Some lot is open" would let a real sell through whose fill then closes
+    // nothing: whole lots only, and 3 shares do not fit a 2-share exit.
+    await expect(executor.execute(exit)).rejects.toThrow(NoOpenPositionError);
+    expect(broker.callsTo('reviewEquityOrder')).toHaveLength(0);
+    expect(broker.callsTo('placeEquityOrder')).toHaveLength(0);
+  });
+});
+
+describe('a live fill and its lot commit together', () => {
+  it('settles the lot on the next poll when the first one failed between the two', async () => {
+    await liveApp(FILLS.fill!);
+    await setExecutionMode('live', db);
+    const signal = await seedLive();
+    await approve(signal.id);
+
+    // The broker reports the fill, but writing the lot fails. As two separate
+    // writes the execution would stay, and every later poll would see "an
+    // execution exists" and skip settlement: a lot lost for good.
+    const failed = await withTrackRecordInsertsFailing(() =>
+      pollOpenOrders({ broker: mock, logger, prisma: db }),
+    );
+    expect(failed).toMatchObject({ polled: 1, filled: 0, errors: 1 });
+    expect(await listExecutions(signal.id, db)).toHaveLength(0);
+    expect(await listOpenOrders(db)).toHaveLength(1);
+
+    const retried = await pollOpenOrders({ broker: mock, logger, prisma: db });
+    expect(retried).toMatchObject({ polled: 1, filled: 1, errors: 0 });
+    expect(await listExecutions(signal.id, db)).toHaveLength(1);
+    expect((await latestTrackRecord(signal.id, db))?.status).toBe('open');
+  });
+
+  it('still records a sell fill that has no lot to close', async () => {
+    await liveApp(FILLS.fill!);
+    await setExecutionMode('live', db);
+    const entry = await seedLive('buy');
+    await approve(entry.id);
+    await pollOpenOrders({ broker: mock, logger, prisma: db });
+
+    const exit = await seedLive('sell');
+    expect((await approve(exit.id)).statusCode).toBe(200);
+    // The lot goes away before the sell fills (the owner closed it by hand
+    // in this story; here, a direct close).
+    await closeLots({ signalIds: [entry.id], exitPrice: '180', closedBySignalId: exit.id }, db);
+
+    const result = await pollOpenOrders({ broker: mock, logger, prisma: db });
+    expect(result).toMatchObject({ filled: 1, errors: 0 });
+    // The broker's fill is a fact the record keeps, lot or no lot.
+    expect(await listExecutions(exit.id, db)).toHaveLength(1);
   });
 });
 

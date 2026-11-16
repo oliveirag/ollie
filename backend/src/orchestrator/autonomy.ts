@@ -10,8 +10,7 @@ import {
   publishSignal,
   transitionSignal,
 } from '../db/signals.js';
-import { openLotsForSymbol } from '../db/trackRecord.js';
-import { executorFor } from './executor.js';
+import { executorFor, selectLotsToClose } from './executor.js';
 import type { BrokerAdapter } from './robinhood/client.js';
 
 /**
@@ -65,11 +64,12 @@ export async function sweepAutonomy(deps: AutonomySweepDeps): Promise<AutonomySw
 
   for (const signal of due) {
     // The route's pre-flight, for the same reason: an exit with nothing to
-    // close must not burn its one transition. Left pending; expiry will say
-    // nobody decided it, which is true.
+    // close must not burn its one transition. Asked the way the fill will ask
+    // it (whole lots that fit), not "is any lot open". Left pending; expiry
+    // will say nobody decided it, which is true.
     if (signal.side === 'sell') {
-      const lots = await openLotsForSymbol(signal.symbol, deps.prisma);
-      if (lots.length === 0) {
+      const consumed = await selectLotsToClose(signal.symbol, signal.quantity.toString(), deps.prisma);
+      if (consumed.length === 0) {
         skipped += 1;
         log.warn({ signal_id: signal.id, symbol: signal.symbol }, 'auto-approval skipped: no open lot to close');
         continue;

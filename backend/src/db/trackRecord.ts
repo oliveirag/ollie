@@ -4,7 +4,7 @@ import {
   type PrismaClient,
   type TrackRecord,
 } from '@prisma/client';
-import { getPrisma } from './client.js';
+import { getPrisma, isFullClient, type Db } from './client.js';
 
 export interface AppendTrackRecordInput {
   signalId: string;
@@ -30,7 +30,7 @@ export interface AppendTrackRecordInput {
  */
 export async function appendTrackRecord(
   input: AppendTrackRecordInput,
-  prisma: PrismaClient = getPrisma(),
+  prisma: Db = getPrisma(),
 ): Promise<TrackRecord> {
   return prisma.trackRecord.create({
     data: {
@@ -81,7 +81,7 @@ export interface OpenLot {
  * replaced. Doing that in SQL also keeps this one round trip instead of one
  * per open position.
  */
-export async function listOpenLots(prisma: PrismaClient = getPrisma()): Promise<OpenLot[]> {
+export async function listOpenLots(prisma: Db = getPrisma()): Promise<OpenLot[]> {
   const rows = await prisma.$queryRaw<
     Array<{
       signal_id: string;
@@ -171,7 +171,7 @@ export async function latestTrackRecord(
 /** The open lots for one symbol. Same latest-row-then-filter rule as above. */
 export async function openLotsForSymbol(
   symbol: string,
-  prisma: PrismaClient = getPrisma(),
+  prisma: Db = getPrisma(),
 ): Promise<OpenLot[]> {
   const lots = await listOpenLots(prisma);
   return lots.filter((lot) => lot.symbol === symbol);
@@ -187,7 +187,8 @@ export interface CloseLotsInput {
 }
 
 /**
- * Close one or more lots in a single transaction.
+ * Close one or more lots in a single transaction: the caller's, when it
+ * passes one, or a new one.
  *
  * All-or-nothing on purpose. These rows can never be deleted, so a half-applied
  * close is permanent: some lots closed, some still open, and a realized PnL
@@ -196,12 +197,12 @@ export interface CloseLotsInput {
  */
 export async function closeLots(
   input: CloseLotsInput,
-  prisma: PrismaClient = getPrisma(),
+  prisma: Db = getPrisma(),
 ): Promise<TrackRecord[]> {
   const exitPrice = new Prisma.Decimal(input.exitPrice);
   const recordedAt = input.recordedAt ?? new Date();
 
-  return prisma.$transaction(async (tx) => {
+  const run = async (tx: Prisma.TransactionClient): Promise<TrackRecord[]> => {
     const closed: TrackRecord[] = [];
     for (const signalId of input.signalIds) {
       const latest = await tx.trackRecord.findFirst({
@@ -236,7 +237,11 @@ export async function closeLots(
       );
     }
     return closed;
-  });
+  };
+
+  // Inside a caller's transaction already (the fill and its settlement), the
+  // rows join that one; otherwise this opens its own.
+  return isFullClient(prisma) ? prisma.$transaction(run) : run(prisma);
 }
 
 /**
