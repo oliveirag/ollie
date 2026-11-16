@@ -95,15 +95,14 @@ flipped is an owner action from `live-flip-checklist.md`, never a side effect.
 
 ## 5. The credential has not gone stale
 
-Watch for `401` from the Robinhood MCP in the logs. **This is the one predicted
-failure with no fix in place yet:** if Robinhood rotates the refresh token on
-use, the value in `RH_OAUTH_REFRESH_TOKEN` is dead after the first refresh and
-the credential has to move into Postgres. `OAuthStateStore` exists so that is a
-new implementation rather than a rewrite, but it has not been needed — or
-proven unnecessary — yet.
+Watch for `401` or `InvalidGrantError` from the Robinhood MCP in the logs.
+Robinhood rotates refresh tokens on use, so the live credential lives in the
+`oauth_state` table and every refresh is written back there;
+`RH_OAUTH_REFRESH_TOKEN` only seeds an empty table.
 
-Re-running `npm run rh:authorize` locally and updating the Railway variable is
-the stopgap.
+For a dead credential: run `npm run rh:authorize` locally, clear the
+`oauth_state` row, set the new values in Railway, and redeploy. Updating the
+variable alone does nothing.
 
 ## 6. Spend is where you expect
 

@@ -43,7 +43,6 @@ struct SignalDetailView: View {
             DecisionSheet(
                 action: action,
                 detail: detail,
-                mode: store.mode,
                 isWorking: isDeciding,
                 onConfirm: { reason in await confirm(action, reason: reason) }
             )
@@ -215,8 +214,7 @@ struct SignalDetailView: View {
             pendingAction = nil
             // A race is the system working, so the detail is refreshed rather
             // than presented as a failure the owner has to interpret.
-            loadError = error
-            detail = try? await store.detail(id: signalID)
+            if let fresh = try? await store.detail(id: signalID) { detail = fresh }
             if !error.isRace {
                 outcome = Outcome(succeeded: false, message: error.errorDescription ?? "The decision was not recorded.")
             }

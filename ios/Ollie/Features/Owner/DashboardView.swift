@@ -49,8 +49,16 @@ struct DashboardView: View {
                             }
                         }
                     }
-                } else {
+                } else if store.isLoading {
                     ProgressView().frame(maxWidth: .infinity).padding(.top, DS.Space.xxxl)
+                } else {
+                    DSCard {
+                        DSEmptyState(
+                            title: "Positions unavailable",
+                            message: "Pull to refresh.",
+                            icon: "exclamationmark.triangle"
+                        )
+                    }
                 }
             }
             .navigationTitle("Positions")

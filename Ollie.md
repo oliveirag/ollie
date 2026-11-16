@@ -263,7 +263,7 @@ This is the largest non-technical risk and it gates monetization, not building.
 1. Keep signals generic, timestamped, and identical for all subscribers. No personalization.
 2. Show a clear disclaimer before a subscriber completes onboarding and before any monetization: not financial advice, past performance is not indicative of future results, they act at their own risk through their own account.
 3. Confirm Robinhood's Agentic Trading terms permit redistributing MCP-derived signals as a commercial product before charging. Market data often carries redistribution limits.
-4. Talk to a securities lawyer before enabling real-money live signals or paid subscriptions. This document is not legal advice and its author is not a lawyer.
+4. There is no securities lawyer (owner decision). The subscriber feed therefore stays free, generic, non-personalized and identical for every subscriber, with no auto-execution. Paid or personalized signals are out of scope. This document is not legal advice and its author is not a lawyer.
 
 The build phase and the paper phase carry no monetization exposure, so development can start now.
 
@@ -281,7 +281,7 @@ The build phase and the paper phase carry no monetization exposure, so developme
 
 **Phase 4 - Subscriber side.** Ollie Signal MCP server (read-only), subscriber onboarding, feed and track record view, disclaimer. Soft launch to a small group.
 
-**Phase 5 - Gated flips (after lawyer and track record).** Real-money live mode for the owner, then autonomy within the pre-wired caps. Each flip is a config change against an already-built seam, not a rewrite.
+**Phase 5 - Gated flips (after the track record).** Real-money live mode for the owner, then autonomy within the pre-wired caps. Each flip is a config change against an already-built seam, not a rewrite.
 
 ---
 

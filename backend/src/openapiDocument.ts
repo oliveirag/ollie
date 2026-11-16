@@ -14,15 +14,8 @@ export const OPENAPI_HEADER = `# Generated from the zod route schemas. Do not ed
 # Emitted as OpenAPI 3.0.3 with \`nullable: true\` rather than 3.1's
 # \`anyOf: [X, {type: "null"}]\`: swift-openapi-generator does not support the
 # 3.1 null type and drops nullable properties from the generated client
-# entirely. See toOpenApi30 in src/server/openapi.ts.
+# entirely. See toOpenApi30 in src/openapiDocument.ts.
 `;
-
-/**
- * A token is required to build the app, and generating a spec should not
- * require possession of the production credential. This placeholder never
- * authenticates anything: it exists only so route registration can proceed.
- */
-const SPEC_ONLY_TOKEN = 'x'.repeat(64);
 
 const REF_PREFIX = '#/components/schemas/';
 

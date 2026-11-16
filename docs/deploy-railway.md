@@ -1,8 +1,10 @@
 # Deploying the orchestrator to Railway
 
-The orchestrator is a single always-on service plus a managed Postgres. It is
-headless in Phases 0–1: the only HTTP route is `/healthz`, and everything else
-is observed through logs and the database.
+The orchestrator is a single always-on service plus a managed Postgres. It
+serves the owner API under `/v1` (bearer `OWNER_API_TOKEN`) and a public
+`/healthz`; everything else is observed through logs and the database. The
+subscriber signal service (Phase 4.7) is not deployed yet and is not covered
+here.
 
 ## One-time setup
 
@@ -183,8 +185,8 @@ during setup and mark it in the `thesis` field, which the script already does.
 ## Operational notes
 
 - **The kill switch has two independent halves.** `app_settings.kill_switch` in
-  the database is the runtime one (flip it with SQL now, from the iOS app in
-  Phase 2, no redeploy needed). `KILL_SWITCH=true` in the environment is an
+  the database is the runtime one (flip it from the app's Controls tab, or
+  with SQL as break-glass; no redeploy needed). `KILL_SWITCH=true` in the environment is an
   override that requires a redeploy. Either being on stops the pipeline.
 
   ```sql

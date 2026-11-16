@@ -148,7 +148,7 @@ describe('toPublishedSignal', () => {
     };
     const published = toPublishedSignal(signal);
     expect(published.thesis).toBe('Sell 3 AAPL at an estimated 275.20.');
-    expect(JSON.stringify(published)).not.toContain('CANARY_ALERT');
+    expect(JSON.stringify(published)).not.toMatch(/canary_alert/i);
   });
 
   it('refuses to project an unpublished signal', () => {

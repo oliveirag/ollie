@@ -248,18 +248,6 @@ final class SubscriberStore {
     }
 
     private static func translate(_ error: any Error) -> OllieError {
-        guard let urlError = (error as? URLError) ?? (error as NSError).userInfo[NSUnderlyingErrorKey] as? URLError else {
-            return .server(error.localizedDescription)
-        }
-        return switch urlError.code {
-        case .notConnectedToInternet, .networkConnectionLost:
-            .offline("No network connection.")
-        case .cannotConnectToHost, .cannotFindHost:
-            .offline("Is the signal service running at \(SignalServer.baseURL.absoluteString)?")
-        case .timedOut:
-            .offline("The request timed out.")
-        default:
-            .offline(urlError.localizedDescription)
-        }
+        OllieError.fromTransport(error, host: SignalServer.baseURL)
     }
 }

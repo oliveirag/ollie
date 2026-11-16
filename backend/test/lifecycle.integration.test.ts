@@ -192,6 +192,16 @@ describe('a trade from proposal to published statistics', () => {
     await transitionSignal(entry.id, 'approved', 'ok', { prisma: db });
     await executor('2026-07-02T13:36:00Z').execute((await getSignal(entry.id, db))!);
 
+    // A daily mark in between. Each mark appends a newer open row for the lot,
+    // so the holding period must count from the lot's first row, not its latest.
+    await runMarkToMarket({
+      broker: new MockBrokerAdapter({ quotes: { AAPL: quote('312.000000') } }),
+      config: cfg,
+      logger,
+      prisma: db,
+      now: () => new Date('2026-07-09T20:15:00Z'),
+    });
+
     // Five bars on, at a bar where no crossing fires — verified against the
     // fixture, so the time stop is the only thing that can propose this exit.
     const exitRun = await runPipeline({

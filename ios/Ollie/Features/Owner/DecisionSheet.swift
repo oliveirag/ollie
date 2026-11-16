@@ -8,7 +8,6 @@ import SwiftUI
 struct DecisionSheet: View {
     let action: DecisionAction
     let detail: SignalDetail?
-    let mode: TradingMode
     let isWorking: Bool
     let onConfirm: (String?) async -> Void
 

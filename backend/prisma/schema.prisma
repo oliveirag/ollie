@@ -1,8 +1,8 @@
-// Ollie data model, Phase 0.
+// Ollie data model.
 //
-// `users` and `subscriptions` from the PRD are deliberately absent: nothing in
-// Phases 0-1 reads them, and an unused table with an auth story attached is a
-// liability. They arrive with the iOS app in Phase 2.
+// `users` arrived with the subscriber side in Phase 4. The PRD's
+// `subscriptions` table was never built: the feed is free, so there is
+// nothing to subscribe to.
 //
 // Immutability is not expressed here. Prisma has no DDL for "this row may only
 // change along a state machine", so it lives in hand-written plpgsql triggers
@@ -96,8 +96,8 @@ model Signal {
   /// race-proof backstop behind the pipeline's in-process dedupe check.
   dedupeKey String @unique @map("dedupe_key") @db.Text
 
-  /// Broker idempotency key, allocated now so that when live mode lands in
-  /// Phase 5 a retried place_equity_order cannot double-fill.
+  /// Broker idempotency key, sent as ref_id on live orders so a retried
+  /// place_equity_order cannot double-fill.
   refId String @default(dbgenerated("gen_random_uuid()")) @map("ref_id") @db.Uuid
 
   events      SignalEvent[]

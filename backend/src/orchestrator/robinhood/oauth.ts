@@ -38,17 +38,16 @@ export interface StoredOAuthState {
 /**
  * Where that state lives.
  *
- * Deliberately an interface. Refresh tokens commonly rotate on use, and we have
- * not yet observed whether Robinhood's do — if they do, the credential changes
- * at runtime and an environment variable can no longer hold it. Swapping the
- * implementation must not require touching the provider.
+ * Deliberately an interface. Robinhood rotates refresh tokens on use (seen
+ * 2026-08-14), so the credential changes at runtime and an environment
+ * variable cannot hold it; production uses `PrismaOAuthStateStore`.
  */
 export interface OAuthStateStore {
   load(): Promise<StoredOAuthState | undefined>;
   save(state: StoredOAuthState): Promise<void>;
 }
 
-/** In-memory store, seeded from a refresh token. Used by the orchestrator. */
+/** In-memory store, seeded from a refresh token. For scripts and tests. */
 export class MemoryOAuthStateStore implements OAuthStateStore {
   private state: StoredOAuthState | undefined;
 
@@ -62,11 +61,6 @@ export class MemoryOAuthStateStore implements OAuthStateStore {
 
   async save(state: StoredOAuthState): Promise<void> {
     this.state = state;
-  }
-
-  /** Exposed so a caller can detect rotation and persist the new value. */
-  snapshot(): StoredOAuthState | undefined {
-    return this.state;
   }
 }
 

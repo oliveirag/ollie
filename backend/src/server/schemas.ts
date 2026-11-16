@@ -359,9 +359,7 @@ export const DashboardSchema = z
         .describe('Null when any lot is missing a quote — a partial total is worse than none'),
       unrealized_pnl: decimalString.nullable(),
       realized_pnl: decimalString.describe(
-        'Zero until Phase 3. Nothing closes a position yet, so this is the honest number ' +
-          'rather than an invented one. A sell fill currently opens its own lot; matching it ' +
-          'against the buy is Phase 3 work.',
+        'Realized PnL summed over every closed lot in the track record, two places',
       ),
     }),
     quotes_available: z

@@ -4,6 +4,7 @@ import type { Config } from '../config/index.js';
 import { newRunLogger } from '../logger.js';
 import {
   DuplicateSignalError,
+  SignalNotPendingError,
   countSignalsSince,
   findExistingDedupeKeys,
   insertSignal,
@@ -26,11 +27,11 @@ import type { CandidateSignal } from './strategy/index.js';
 /**
  * generate -> decide -> execute.
  *
- * This module is the "generate" half and the seam itself. Deciding is a human
- * (the CLI in Phase 1, the iOS app in Phase 2) and executing is the executor,
- * so a run of this pipeline can only ever produce *proposals*. Nothing here
- * can move money, and that is enforced by what it has access to: no executor,
- * and a broker interface whose only write method throws.
+ * This module is the "generate" half and the seam itself. Deciding is the
+ * owner (the iOS app, or the CLI as break-glass) or the autonomy sweep, and
+ * executing is the executor, so a run of this pipeline can only ever produce
+ * *proposals*. Nothing here can move money: it holds no executor, and the one
+ * order-placing call lives in LiveExecutor.
  *
  * Every dependency is injected so the whole thing runs against a mock broker
  * and a fake clock in tests.
@@ -136,7 +137,7 @@ export async function runPipeline(deps: PipelineDeps): Promise<PipelineResult> {
   const openedBySymbol = new Map<string, Date>();
   for (const lot of await listOpenLots(prisma)) {
     const existing = openedBySymbol.get(lot.symbol);
-    if (!existing || lot.recordedAt < existing) openedBySymbol.set(lot.symbol, lot.recordedAt);
+    if (!existing || lot.openedAt < existing) openedBySymbol.set(lot.symbol, lot.openedAt);
   }
 
   // Phase 5: a signal born under autonomy carries the instant the sweep may
@@ -438,8 +439,13 @@ export async function sweepExpiredSignals(deps: ExpirySweepDeps): Promise<Signal
       );
     } catch (error) {
       // The owner decided it between the query and the update. Their decision
-      // wins; expiry is the fallback, not an override.
-      log.info({ signal_id: signal.id, err: error }, 'signal was decided before expiry');
+      // wins; expiry is the fallback, not an override. Anything else is a real
+      // failure and is logged as one.
+      if (error instanceof SignalNotPendingError) {
+        log.info({ signal_id: signal.id }, 'signal was decided before expiry');
+      } else {
+        log.error({ signal_id: signal.id, err: error }, 'expiring signal failed');
+      }
     }
   }
 

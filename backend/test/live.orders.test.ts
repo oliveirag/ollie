@@ -31,10 +31,6 @@ const fixture = JSON.parse(
   readFileSync(join(__dirname, 'fixtures/mcp/equity-order.json'), 'utf8'),
 ) as Record<string, unknown>;
 
-function liveConfig() {
-  return testConfig({ liveTradingEnabled: true });
-}
-
 async function seedLive(side: 'buy' | 'sell' = 'buy', quantity = '2') {
   return insertSignal(
     {
@@ -120,6 +116,7 @@ describe('the three gates in front of a live order', () => {
     expect(response.statusCode).toBe(409);
     expect(response.json().error).toBe('live_mode_not_enabled');
     expect((await getSignal(signal.id, db))?.status).toBe('pending');
+    expect(mock.callsTo('placeEquityOrder')).toHaveLength(0);
   });
 
   it('409s while app_settings.execution_mode is paper', async () => {
@@ -130,6 +127,7 @@ describe('the three gates in front of a live order', () => {
 
     expect(response.statusCode).toBe(409);
     expect(response.json().error).toBe('live_mode_not_enabled');
+    expect(mock.callsTo('placeEquityOrder')).toHaveLength(0);
   });
 
   it('409s without confirm_live, leaving the signal pending and the broker untouched', async () => {

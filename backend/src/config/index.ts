@@ -45,17 +45,17 @@ const EnvSchema = z.object({
   MACD_SIGNAL: positiveInt.default(9),
 
   /**
-   * Trading days a lot may stay open before the time stop proposes an exit.
-   * Exists so a sustained paper run cannot end with zero closed trades — and
-   * therefore no win rate and nothing worth publishing — merely because the
-   * market never obliged with a crossing. 0 disables it.
-   */
-  /**
    * When the daily mark runs, ET. After the close by default, so the quote it
    * records is a settled price rather than a mid-session one.
    */
   MARK_CRON: z.string().default('15 16 * * 1-5'),
 
+  /**
+   * Trading days a lot may stay open before the time stop proposes an exit.
+   * Exists so a sustained paper run cannot end with zero closed trades — and
+   * therefore no win rate and nothing worth publishing — merely because the
+   * market never obliged with a crossing. 0 disables it.
+   */
   MAX_HOLDING_DAYS: z.coerce.number().int().min(0).default(30),
 
   ORDER_NOTIONAL_CENTS: positiveInt.default(50_000),

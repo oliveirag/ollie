@@ -211,7 +211,17 @@ describe('max daily trades', () => {
       }),
     );
     expect(accepted).toHaveLength(1);
-    expect(applyRiskCaps(inputs({ signalsToday: 3 })).accepted).toHaveLength(0);
+
+    // With the day's slots used up, the same sell is refused.
+    const full = applyRiskCaps(
+      inputs({
+        candidates: [candidate({ side: 'sell', quantity: '1' })],
+        account: { positions: [position('AAPL', '5')], prices: { AAPL: '100.00' } },
+        signalsToday: 3,
+      }),
+    );
+    expect(full.accepted).toHaveLength(0);
+    expect(full.rejected[0]!.reason).toBe('daily_trade_cap');
   });
 
   it('rejects every candidate when the cap is zero', () => {

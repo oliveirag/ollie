@@ -244,36 +244,6 @@ final class SignalStore {
     }
 
     private static func translate(_ error: any Error) -> OllieError {
-        let urlError = (error as? URLError) ?? (error as NSError).underlyingURLError
-        guard let urlError else { return .server(error.localizedDescription) }
-
-        return switch urlError.code {
-        case .notConnectedToInternet, .networkConnectionLost:
-            .offline("No network connection.")
-        case .cannotConnectToHost, .cannotFindHost:
-            .offline("Is the backend running at \(OllieServer.baseURL.absoluteString)?")
-        case .timedOut:
-            .offline("The request timed out.")
-        default:
-            .offline(urlError.localizedDescription)
-        }
-    }
-}
-
-private extension NSError {
-    /// The transport wraps the real URLError, so the surface error alone would
-    /// render every connection problem as an opaque failure.
-    var underlyingURLError: URLError? {
-        if let direct = self as? URLError { return direct }
-        var current: NSError? = self
-        while let error = current {
-            if let urlError = error as? URLError { return urlError }
-            if let underlying = error.userInfo[NSUnderlyingErrorKey] as? NSError {
-                current = underlying
-            } else {
-                return nil
-            }
-        }
-        return nil
+        OllieError.fromTransport(error, host: OllieServer.baseURL)
     }
 }

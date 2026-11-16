@@ -134,8 +134,11 @@ struct DSRows<Data: RandomAccessCollection, ID: Hashable, Row: View>: View {
     }
 
     var body: some View {
-        ForEach(Array(data.enumerated()), id: \.offset) { index, element in
-            if index > 0 { DSDivider(inset: DS.Space.lg) }
+        // Identity comes from the caller's key path, so a row keeps its state
+        // when the list above it changes; the divider skips only the first row.
+        let firstID = data.first.map { $0[keyPath: id] }
+        ForEach(data, id: id) { element in
+            if element[keyPath: id] != firstID { DSDivider(inset: DS.Space.lg) }
             row(element)
                 .padding(.horizontal, DS.Space.lg)
                 .padding(.vertical, DS.Space.md)

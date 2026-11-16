@@ -19,7 +19,7 @@ export interface InsertSignalInput {
   symbol: string;
   side: SignalSide;
   signalType: SignalType;
-  /** Decimal string. Never a float — see docs/decimal-discipline in the README. */
+  /** Decimal string. Never a float — see "Money is decimal strings" in backend/README.md. */
   quantity: string;
   thesis: string | null;
   thesisSource: 'llm' | 'fallback_template';

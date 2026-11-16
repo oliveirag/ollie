@@ -347,7 +347,10 @@ async function selectLotsToClose(
 
   const chosen: string[] = [];
   let running = new Prisma.Decimal(0);
-  for (const lot of [...lots].sort((a, b) => a.recordedAt.getTime() - b.recordedAt.getTime())) {
+  const oldestFirst = [...lots].sort(
+    (a, b) => a.openedAt.getTime() - b.openedAt.getTime() || a.signalId.localeCompare(b.signalId),
+  );
+  for (const lot of oldestFirst) {
     const next = running.plus(lot.quantity);
     if (next.greaterThan(wanted)) break;
     chosen.push(lot.signalId);

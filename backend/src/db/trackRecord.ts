@@ -65,7 +65,10 @@ export interface OpenLot {
   /** True when the row carries its own size (a partial live fill). */
   quantityOverridden: boolean;
   entryPrice: string;
+  /** The newest row's time: the latest mark once the lot has been marked. */
   recordedAt: Date;
+  /** The lot's first row: when it was actually opened. */
+  openedAt: Date;
 }
 
 /**
@@ -88,11 +91,13 @@ export async function listOpenLots(prisma: PrismaClient = getPrisma()): Promise<
       quantity_overridden: boolean;
       entry_price: Prisma.Decimal;
       recorded_at: Date;
+      opened_at: Date;
       status: string;
     }>
   >`
     SELECT DISTINCT ON (tr.signal_id)
       tr.signal_id, tr.entry_price, tr.recorded_at, tr.status::text AS status,
+      MIN(tr.recorded_at) OVER (PARTITION BY tr.signal_id) AS opened_at,
       s.symbol, s.side::text AS side,
       COALESCE(tr.quantity, s.quantity) AS quantity,
       (tr.quantity IS NOT NULL) AS quantity_overridden
@@ -115,6 +120,7 @@ export async function listOpenLots(prisma: PrismaClient = getPrisma()): Promise<
       quantityOverridden: row.quantity_overridden,
       entryPrice: row.entry_price.toString(),
       recordedAt: row.recorded_at,
+      openedAt: row.opened_at,
     }));
 }
 
@@ -134,19 +140,21 @@ export async function latestMarkForLot(
 }
 
 /**
- * When a lot was opened: its earliest row. `listOpenLots` reports the newest
- * row's timestamp, which after a mark is the mark's date, not the entry's.
+ * Realized PnL over every closed lot, as a two-place decimal string. Uses the
+ * latest row per signal, the same rule as `listOpenLots`, so a correction
+ * appended later supersedes rather than double-counts.
  */
-export async function lotOpenedAt(
-  signalId: string,
-  prisma: PrismaClient = getPrisma(),
-): Promise<Date | null> {
-  const first = await prisma.trackRecord.findFirst({
-    where: { signalId },
-    orderBy: [{ recordedAt: 'asc' }, { id: 'asc' }],
-    select: { recordedAt: true },
-  });
-  return first?.recordedAt ?? null;
+export async function totalRealizedPnl(prisma: PrismaClient = getPrisma()): Promise<string> {
+  const rows = await prisma.$queryRaw<Array<{ total: Prisma.Decimal | null }>>`
+    SELECT SUM(latest.realized_pnl) AS total
+    FROM (
+      SELECT DISTINCT ON (tr.signal_id) tr.status::text AS status, tr.realized_pnl
+      FROM track_record tr
+      ORDER BY tr.signal_id, tr.recorded_at DESC, tr.id DESC
+    ) latest
+    WHERE latest.status = 'closed'
+  `;
+  return new Prisma.Decimal(rows[0]?.total ?? 0).toFixed(2);
 }
 
 /** Latest row per signal is the current view; earlier rows are history. */

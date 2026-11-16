@@ -8,7 +8,7 @@ for what does and does not cross that line.
 ## Lifecycle
 
 ```
-                        ┌─ approved   → executor writes a fill
+                        ┌─ approved   → paper: executor writes a fill; live: order placed, poll records the fill
 pending (on creation) ──┼─ rejected   → permanent record, reason attached
                         └─ expired    → permanent record, reason attached
 ```
@@ -27,8 +27,8 @@ these are enforced by database triggers, not by the application (see
 | `created_at` | timestamptz | When the signal fired. UTC, database-stamped. |
 | `symbol` | text | Always from the configured allowlist. |
 | `side` | `buy` \| `sell` | Long-only in v1: a sell is an exit and requires a position. |
-| `signal_type` | `technical` \| `rebalance` | Only `technical` fires in Phase 1. |
-| `quantity` | numeric(18,6) | Whole shares in v1, floored from the configured notional. |
+| `signal_type` | `technical` \| `rebalance` \| `time_stop` | `technical` and `time_stop` fire; `time_stop` is the holding-period exit, its `indicators` carry `barsHeld` and `maxHoldingDays`. `rebalance` is reserved. |
+| `quantity` | numeric(18,6) | Whole shares in v1. Buys are floored from the configured notional; sells are sized to the open position. |
 | `thesis` | text, nullable | Plain-English rationale. Nullable because the LLM is allowed to fail. |
 | `thesis_source` | text | `llm` or `fallback_template` — which path produced the thesis. |
 | `indicators` | jsonb | Every input the rule read, including the previous bar's values. |
@@ -39,7 +39,8 @@ these are enforced by database triggers, not by the application (see
 | `decide_reason` | text, nullable | Why. Set once, alongside the status change. |
 | `published` / `published_at` | boolean / timestamptz | One-way, set together in one statement after the approving fill is recorded. The trigger refuses every other change to either column. |
 | `dedupe_key` | text, unique | `{rule}:{symbol}:{side}:{barTime}` — one signal per rule per bar. |
-| `ref_id` | uuid | Broker idempotency key, allocated at creation, unused until Phase 5. |
+| `ref_id` | uuid | Broker idempotency key, allocated at creation and sent with live orders. |
+| `auto_decide_at` | timestamptz, nullable | Set at creation while autonomy is on: when the autonomy sweep may approve. Frozen by the trigger. |
 
 ### `indicators`
 

@@ -3,7 +3,7 @@ import pino from 'pino';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { getAppSettings, setKillSwitch } from '../src/db/settings.js';
 import { insertSignal } from '../src/db/signals.js';
-import { appendTrackRecord, listOpenLots } from '../src/db/trackRecord.js';
+import { appendTrackRecord, closeLots, listOpenLots } from '../src/db/trackRecord.js';
 import { runPipeline } from '../src/orchestrator/pipeline.js';
 import type { Quote } from '../src/orchestrator/robinhood/client.js';
 import { MockBrokerAdapter } from '../src/orchestrator/robinhood/mockClient.js';
@@ -105,12 +105,38 @@ describe('GET /v1/dashboard', () => {
     });
   });
 
-  it('reports realized PnL as zero until Phase 3', async () => {
+  it('reports realized PnL as zero with no closed lots', async () => {
     await seedOpenLot();
     const broker = new MockBrokerAdapter({ quotes: { AAPL: quote('AAPL', '150.00') } });
 
-    // Nothing closes a position yet, so any other number would be invented.
     expect((await dashboard(broker)).json().totals.realized_pnl).toBe('0.00');
+  });
+
+  it('sums realized PnL over closed lots from the record', async () => {
+    const entry = await seedOpenLot({ quantity: '3', entryPrice: '100.00' });
+    const exit = await insertSignal(
+      {
+        symbol: 'AAPL',
+        side: 'sell',
+        signalType: 'technical',
+        quantity: '3',
+        thesis: null,
+        thesisSource: 'llm',
+        indicators: {},
+        reviewSnapshot: { estimated_price: '110.50' },
+        executionMode: 'paper',
+        dedupeKey: uniqueDedupeKey(),
+      },
+      db,
+    );
+    await closeLots(
+      { signalIds: [entry.id], exitPrice: '110.50', closedBySignalId: exit.id },
+      db,
+    );
+    const broker = new MockBrokerAdapter({ quotes: { AAPL: quote('AAPL', '110.50') } });
+
+    // (110.50 - 100.00) x 3.
+    expect((await dashboard(broker)).json().totals.realized_pnl).toBe('31.50');
   });
 
   it('degrades to entry basis when the broker is unreachable', async () => {

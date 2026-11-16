@@ -213,10 +213,3 @@ export const PlaceEquityOrderSchema = z.union([
 ]);
 
 export type RawEquityOrder = z.infer<typeof EquityOrderSchema>;
-
-export type RawAccount = z.infer<typeof AccountSchema>;
-export type RawPortfolio = z.infer<typeof PortfolioSchema>;
-export type RawPosition = z.infer<typeof PositionSchema>;
-export type RawQuote = z.infer<typeof QuoteSchema>;
-export type RawBar = z.infer<typeof BarSchema>;
-export type RawReview = z.infer<typeof ReviewEquityOrderSchema>;

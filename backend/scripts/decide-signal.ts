@@ -9,8 +9,8 @@
  *
  * Approving runs the executor for the signal's own execution mode. In paper
  * mode that writes a simulated fill and opens a track-record position without
- * contacting the broker. In live mode it throws, because live execution does
- * not exist until Phase 5.
+ * contacting the broker. In live mode it places a real order, so it also
+ * requires `--confirm-live`.
  */
 import { disconnectPrisma } from '../src/db/client.js';
 import { getConfig } from '../src/config/index.js';
@@ -90,7 +90,7 @@ async function main(): Promise<void> {
   }
 
   const status: DecidedStatus = action === 'approve' ? 'approved' : 'rejected';
-  const reason = flag('reason') ?? `${action}d via decide-signal CLI`;
+  const reason = flag('reason') ?? `${status} via decide-signal CLI`;
 
   // The per-approval confirmation (Phase 5, decision 4) holds on the
   // break-glass path too: a live approval places a real order and has to say so.

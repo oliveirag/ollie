@@ -38,8 +38,8 @@ export interface ApiDeps {
   config: Config;
   logger: Logger;
   /**
-   * Only reached by a live-mode approval, which throws until Phase 5, and by
-   * the dashboard's best-effort quotes. Injected rather than constructed here
+   * Reached by live-mode approvals (the one order call lives in LiveExecutor)
+   * and by the dashboard's best-effort quotes. Injected rather than constructed here
    * so tests can pass a mock and so the process owns exactly one adapter's
    * lifecycle.
    */
@@ -70,8 +70,8 @@ export const OPENAPI_INFO = {
     'Owner-facing API for the Ollie trading-signal orchestrator.\n\n' +
     'Every route under /v1 requires the owner bearer token. `/healthz` is public so the ' +
     'platform health check can reach it.\n\n' +
-    'The subscriber-facing signal feed is a separate read-only MCP server in Phase 4 and is ' +
-    'not described by this document.',
+    'The subscriber-facing signal service (REST plus a read-only MCP server) is a separate ' +
+    'process, described by openapi-subscriber.yaml.',
 } as const;
 
 export const OPENAPI_SERVERS = [
