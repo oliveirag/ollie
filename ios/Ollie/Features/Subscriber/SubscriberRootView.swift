@@ -16,10 +16,25 @@ struct SubscriberRootView: View {
             case .signedOut:
                 SubscriberSignInView(onBack: onLeave)
             case .loading:
-                ProgressView()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(DS.Surface.page)
-                    .task { await store.refresh() }
+                Group {
+                    // A failed first load would otherwise spin forever: the
+                    // phase stays .loading and this view's task never reruns.
+                    if let error = store.error, !store.isLoading {
+                        VStack(spacing: DS.Space.lg) {
+                            ErrorRow(error: error)
+                            Button("Try again") { Task { await store.refresh() } }
+                                .buttonStyle(.ds(.primary))
+                            Button("Sign out") { store.signOut() }
+                                .buttonStyle(.ds(.ghost))
+                        }
+                        .padding(DS.Space.lg)
+                    } else {
+                        ProgressView()
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(DS.Surface.page)
+                .task { await store.refresh() }
             case .disclaimer:
                 DisclaimerView()
             case .handoff:

@@ -53,6 +53,38 @@ enum OllieError: LocalizedError, Equatable {
         }
     }
 
+    /// Maps a transport failure to what the UI shows. The generated client
+    /// wraps every transport error in `ClientError`, so it is unwrapped first;
+    /// otherwise every connection problem would surface as an opaque message.
+    static func fromTransport(_ error: any Error, host: URL) -> OllieError {
+        if let clientError = error as? ClientError {
+            return fromTransport(clientError.underlyingError, host: host)
+        }
+        guard let urlError = underlyingURLError(of: error) else {
+            return .server(error.localizedDescription)
+        }
+        return switch urlError.code {
+        case .notConnectedToInternet, .networkConnectionLost:
+            .offline("No network connection.")
+        case .cannotConnectToHost, .cannotFindHost:
+            .offline("Is the backend running at \(host.absoluteString)?")
+        case .timedOut:
+            .offline("The request timed out.")
+        default:
+            .offline(urlError.localizedDescription)
+        }
+    }
+
+    private static func underlyingURLError(of error: any Error) -> URLError? {
+        if let direct = error as? URLError { return direct }
+        var current: NSError? = error as NSError
+        while let nsError = current {
+            if let urlError = nsError as? URLError { return urlError }
+            current = nsError.userInfo[NSUnderlyingErrorKey] as? NSError
+        }
+        return nil
+    }
+
     /// A lost race is not a failure to apologise for — the list just needs to
     /// catch up with what actually happened.
     var isRace: Bool {

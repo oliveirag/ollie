@@ -16,8 +16,9 @@ extension TokenStore {
     /// credential from an unauthenticated local channel, which is fine on a
     /// simulator you already control and unacceptable anywhere else.
     /// Also reads `OWNER_API_TOKEN` from the environment, which is how a UI
-    /// test supplies it: `xcodebuild test TEST_RUNNER_OWNER_API_TOKEN=…`
-    /// forwards the variable to the app under test with the prefix stripped.
+    /// test supplies it: exported as `TEST_RUNNER_OWNER_API_TOKEN`, it reaches
+    /// the UI test runner, which passes it to the app via
+    /// `launchEnvironment["OWNER_API_TOKEN"]`.
     static func seedFromLaunchArgumentsIfNeeded() {
         // `RESET_SUBSCRIBER=1` starts the subscriber side signed out, so the
         // onboarding UI test begins from the welcome screen on every run

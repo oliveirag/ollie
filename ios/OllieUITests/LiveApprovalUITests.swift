@@ -40,8 +40,8 @@ final class LiveApprovalUITests: XCTestCase {
         XCTAssertTrue(row.waitForExistence(timeout: 25), "no pending signal — run `npm run signal:write-test` first")
         row.tap()
 
-        // The decision buttons sit at the bottom of a lazy List, below the
-        // evidence, so they do not exist in the hierarchy until scrolled to.
+        // The decision buttons sit at the bottom of the page, below the
+        // evidence; swipe until they are on screen before tapping.
         XCTAssertTrue(app.navigationBars.staticTexts["AAPL"].waitForExistence(timeout: 15), "detail did not load")
         let approve = app.buttons["Approve…"]
         var swipes = 0
