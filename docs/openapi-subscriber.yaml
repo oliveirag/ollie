@@ -7,7 +7,7 @@
 # Emitted as OpenAPI 3.0.3 with `nullable: true` rather than 3.1's
 # `anyOf: [X, {type: "null"}]`: swift-openapi-generator does not support the
 # 3.1 null type and drops nullable properties from the generated client
-# entirely. See toOpenApi30 in src/server/openapi.ts.
+# entirely. See toOpenApi30 in src/openapiDocument.ts.
 openapi: 3.0.3
 info:
   title: Ollie Signal API

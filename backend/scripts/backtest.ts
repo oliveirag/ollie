@@ -11,8 +11,8 @@
  * cache is raw broker output, never simulation results, so re-running can
  * change the answer only if the code changed.
  *
- * Read-only: this script has no executor, and the adapter's only write method
- * throws. It cannot propose, decide, or place anything.
+ * Read-only: this script has no executor and never calls the adapter's order
+ * method. It cannot propose, decide, or place anything.
  */
 import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { dirname } from 'node:path';

@@ -409,15 +409,35 @@ describe('expiry sweep', () => {
 // comment.
 describe('live execution is gated', () => {
   it('throws when the environment gate is closed', async () => {
+    // The database gate is open, so only the env check can stop this.
+    await setExecutionMode('live', db);
     const { signals } = await runPipeline(deps());
     const signal = { ...signals[0]!, executionMode: 'live' as const };
 
+    const mock = broker();
     const executor = new LiveExecutor(
       { config: config({ LIVE_TRADING_ENABLED: 'false' }), logger, prisma: db },
-      broker(),
+      mock,
     );
 
-    await expect(executor.execute(signal)).rejects.toThrow(LiveModeNotEnabledError);
+    await expect(executor.execute(signal)).rejects.toThrow(/LIVE_TRADING_ENABLED/);
+    expect(mock.callsTo('placeEquityOrder')).toHaveLength(0);
+  });
+
+  it('throws on the kill switch even with both gates open', async () => {
+    await setExecutionMode('live', db);
+    const { signals } = await runPipeline(deps());
+    const signal = { ...signals[0]!, executionMode: 'live' as const };
+    await setKillSwitch(true, db);
+
+    const mock = broker();
+    const executor = new LiveExecutor(
+      { config: config({ LIVE_TRADING_ENABLED: 'true' }), logger, prisma: db },
+      mock,
+    );
+
+    await expect(executor.execute(signal)).rejects.toThrow(KillSwitchEngagedError);
+    expect(mock.callsTo('placeEquityOrder')).toHaveLength(0);
   });
 
   it('throws when the database gate is closed even if the env gate is open', async () => {

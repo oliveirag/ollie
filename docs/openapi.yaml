@@ -7,7 +7,7 @@
 # Emitted as OpenAPI 3.0.3 with `nullable: true` rather than 3.1's
 # `anyOf: [X, {type: "null"}]`: swift-openapi-generator does not support the
 # 3.1 null type and drops nullable properties from the generated client
-# entirely. See toOpenApi30 in src/server/openapi.ts.
+# entirely. See toOpenApi30 in src/openapiDocument.ts.
 openapi: 3.0.3
 info:
   title: Ollie Orchestrator API
@@ -17,7 +17,7 @@ info:
 
     Every route under /v1 requires the owner bearer token. `/healthz` is public so the platform health check can reach it.
 
-    The subscriber-facing signal feed is a separate read-only MCP server in Phase 4 and is not described by this document.
+    The subscriber-facing signal service (REST plus a read-only MCP server) is a separate process, described by openapi-subscriber.yaml.
 components:
   securitySchemes:
     ownerToken:

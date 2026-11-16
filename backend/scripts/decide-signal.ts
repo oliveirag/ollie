@@ -9,8 +9,8 @@
  *
  * Approving runs the executor for the signal's own execution mode. In paper
  * mode that writes a simulated fill and opens a track-record position without
- * contacting the broker. In live mode it throws, because live execution does
- * not exist until Phase 5.
+ * contacting the broker. In live mode it places a real order, so it also
+ * requires `--confirm-live`.
  */
 import { disconnectPrisma } from '../src/db/client.js';
 import { getConfig } from '../src/config/index.js';

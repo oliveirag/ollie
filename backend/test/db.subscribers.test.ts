@@ -11,6 +11,7 @@ import {
 } from '../src/db/subscriberTokens.js';
 import { createSubscriber, eraseEmail, findUserByAppleId, getUser } from '../src/db/users.js';
 import { insertSignal } from '../src/db/signals.js';
+import { OWNER_ONLY_TABLES } from '../src/signal-server/wall.js';
 import { appendTrackRecord } from '../src/db/trackRecord.js';
 import {
   closeTestPrisma,
@@ -210,7 +211,7 @@ describe('the ollie_signal role', () => {
     await eraseEmail(user.id, signal);
   });
 
-  it.each(['oauth_state', 'app_settings', 'devices', 'executions', 'signal_events'])(
+  it.each(OWNER_ONLY_TABLES)(
     'is denied SELECT on %s',
     async (table) => {
       await expect(signal.$queryRawUnsafe(`SELECT * FROM "${table}"`)).rejects.toThrow(

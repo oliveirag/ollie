@@ -416,11 +416,6 @@ export class McpBrokerAdapter implements BrokerAdapter {
   }
 
   /**
-   * Unreachable in Phases 0-1. LiveExecutor is the only caller and it throws
-   * before getting here unless two independent gates are open. Implemented so
-   * the seam is real rather than a comment promising one.
-   */
-  /**
    * The real order. Market, regular hours, good-for-day — the same terms the
    * review was run under, so the review snapshot describes this order and
    * not a cousin of it. `ref_id` is the signal's idempotency key: the retry
