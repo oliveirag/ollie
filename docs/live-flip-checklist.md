@@ -98,8 +98,10 @@ Weekly, on top of the sustained-run checklist:
 
 ## 5. Autonomy — only after a live record you trust
 
-1. Set `AUTONOMY_ENABLED=true` and `AUTONOMY_VETO_MINUTES=15` on the
-   orchestrator and redeploy. Fifteen, not the default five, for the rehearsal.
+1. Set `AUTONOMY_ENABLED=true` and `AUTONOMY_VETO_MINUTES=10` on the
+   orchestrator and redeploy. Ten, not the default five, for the rehearsal. It
+   must stay below `SIGNAL_EXPIRY_MINUTES` (15), or expiry wins every race; the
+   orchestrator refuses to boot if it does not.
 2. Controls → Autonomy is unlocked. Turn it on.
 3. On the next proposal: the push arrives, the signal shows its auto-approve
    time, and you do nothing. At the window's end it is approved with

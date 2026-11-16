@@ -45,6 +45,22 @@ describe('buildConfig validation', () => {
     expect(config.strategy.orderNotionalCents).toBe(100_000);
   });
 
+  it('throws with autonomy on when the veto window does not close before expiry', () => {
+    for (const veto of ['15', '20']) {
+      expect(() =>
+        buildConfig(env({ AUTONOMY_ENABLED: 'true', AUTONOMY_VETO_MINUTES: veto, SIGNAL_EXPIRY_MINUTES: '15' })),
+      ).toThrow(/AUTONOMY_VETO_MINUTES \(\d+\) must be below SIGNAL_EXPIRY_MINUTES \(15\)/);
+    }
+  });
+
+  it('allows a veto window one minute short of expiry, and ignores it with autonomy off', () => {
+    const on = buildConfig(env({ AUTONOMY_ENABLED: 'true', AUTONOMY_VETO_MINUTES: '14', SIGNAL_EXPIRY_MINUTES: '15' }));
+    expect(on.autonomyVetoMinutes).toBe(14);
+    // Off, the windows never compete, so a stale value must not block a boot.
+    const off = buildConfig(env({ AUTONOMY_ENABLED: 'false', AUTONOMY_VETO_MINUTES: '15', SIGNAL_EXPIRY_MINUTES: '15' }));
+    expect(off.autonomyVetoMinutes).toBe(15);
+  });
+
   it('throws when the symbol allowlist is empty after parsing', () => {
     expect(() => buildConfig(env({ SYMBOL_ALLOWLIST: ' , ,' }))).toThrow(
       /SYMBOL_ALLOWLIST must name at least one symbol/,
