@@ -81,7 +81,13 @@ export interface OpenLot {
  * replaced. Doing that in SQL also keeps this one round trip instead of one
  * per open position.
  */
-export async function listOpenLots(prisma: Db = getPrisma()): Promise<OpenLot[]> {
+export async function listOpenLots(
+  prisma: Db = getPrisma(),
+  options: { publishedOnly?: boolean } = {},
+): Promise<OpenLot[]> {
+  // Filtering by the signal is safe ahead of DISTINCT ON: it keeps or drops
+  // every row of a lot together, unlike a filter on the row's own status.
+  const publishedFilter = options.publishedOnly ? Prisma.sql`WHERE s.published` : Prisma.empty;
   const rows = await prisma.$queryRaw<
     Array<{
       signal_id: string;
@@ -103,6 +109,7 @@ export async function listOpenLots(prisma: Db = getPrisma()): Promise<OpenLot[]>
       (tr.quantity IS NOT NULL) AS quantity_overridden
     FROM track_record tr
     JOIN signals s ON s.id = tr.signal_id
+    ${publishedFilter}
     ORDER BY tr.signal_id, tr.recorded_at DESC, tr.id DESC
   `;
 
@@ -282,8 +289,10 @@ export async function hasMarkForDay(
  */
 export async function listAllTrackRecordRows(
   prisma: PrismaClient = getPrisma(),
+  options: { publishedOnly?: boolean } = {},
 ): Promise<TrackRecordStatsRow[]> {
   const rows = await prisma.trackRecord.findMany({
+    ...(options.publishedOnly ? { where: { signal: { published: true } } } : {}),
     orderBy: [{ recordedAt: 'asc' }, { id: 'asc' }],
     include: { signal: { select: { quantity: true, symbol: true } } },
   });

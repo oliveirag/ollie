@@ -1,6 +1,5 @@
-import type { Signal } from '@prisma/client';
 import { z } from 'zod';
-import { parseReviewSnapshot } from '../orchestrator/reviewSnapshot.js';
+import type { PublishedSignalRow } from '../db/signals.js';
 import {
   SignalSideSchema,
   SignalTypeSchema,
@@ -13,9 +12,10 @@ import {
  * (Phase 4 definitions; `docs/signal-schema.md` Publication section).
  *
  * One projection, three consumers — the subscriber REST feed, the MCP tools,
- * and the redaction test. There is deliberately no database view of this
- * shape: a view would be a second definition of the subset that could drift
- * from the function the servers actually call. What never crosses is listed
+ * and the redaction test. The subscriber role's column grants and row policy
+ * (migration signal_role_published_only) are the data-tier half: the input
+ * type here is exactly what that role can read, so the projection cannot
+ * reach for a column the database would refuse. What never crosses is listed
  * in `FORBIDDEN_FIELDS` below, and the test asserts each is absent.
  *
  * Identical for every subscriber. Nothing here takes a caller.
@@ -75,18 +75,18 @@ export class UnpublishedSignalError extends Error {
   }
 }
 
-export function toPublishedSignal(signal: Signal): PublishedSignal {
+const DECIMAL = /^-?\d+(\.\d+)?$/;
+
+export function toPublishedSignal(signal: PublishedSignalRow): PublishedSignal {
   // Refusing here rather than trusting callers to filter is what makes "the
   // feed cannot leak an unpublished signal" a property of the projection and
   // not of every query that feeds it.
   if (!signal.published || !signal.publishedAt) throw new UnpublishedSignalError(signal.id);
 
-  let estimatedPrice: string | null = null;
-  try {
-    estimatedPrice = parseReviewSnapshot(signal.reviewSnapshot).estimated_price;
-  } catch {
-    estimatedPrice = null;
-  }
+  const estimatedPrice =
+    signal.estimatedPrice !== null && DECIMAL.test(signal.estimatedPrice)
+      ? signal.estimatedPrice
+      : null;
 
   const thesisSource = ThesisSourceSchema.safeParse(signal.thesisSource);
 

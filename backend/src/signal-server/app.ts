@@ -18,6 +18,7 @@ import { registerFeedRoutes } from './routes/feed.js';
 import { registerOnboardingRoutes, registerSessionRoute } from './routes/onboarding.js';
 import { SignalHealthSchema } from './schemas.js';
 import type { SiwaVerifier } from './siwa.js';
+import { installValidationErrorHandler } from '../server/validationErrors.js';
 
 /**
  * The signal service (Phase 4, decision 4): subscriber REST plus the Ollie
@@ -62,11 +63,16 @@ export async function buildSignalApp(deps: SignalAppDeps): Promise<OllieApp> {
 
   const app = Fastify({
     loggerInstance: logger as FastifyBaseLogger,
-    trustProxy: true,
+    // One hop: Railway's edge proxy. The rate limit keys on request.ip, and
+    // `true` would take the leftmost X-Forwarded-For entry, which any client
+    // can write, so every request could claim a fresh IP. With 1 the address
+    // is the one the edge itself appended.
+    trustProxy: 1,
   }).withTypeProvider<ZodTypeProvider>();
 
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
+  installValidationErrorHandler(app);
 
   // Per-IP, at onRequest, ahead of authentication, so a stream of bad tokens
   // is throttled before it costs a hash and an index lookup each. A subscriber

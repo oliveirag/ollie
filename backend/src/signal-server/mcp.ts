@@ -75,15 +75,31 @@ export function buildMcpServer(prisma: PrismaClient): McpServer {
           .datetime()
           .optional()
           .describe('Only signals published at or after this ISO-8601 instant'),
+        before: z
+          .string()
+          .datetime()
+          .optional()
+          .describe('Next page: pass next_before from the previous call'),
+        before_id: z
+          .string()
+          .uuid()
+          .optional()
+          .describe('Next page: pass next_before_id from the previous call, with before'),
       },
       annotations: readOnly,
     },
-    async ({ limit, since }) => {
+    async ({ limit, since, before, before_id: beforeId }) => {
       const page = await readFeed(prisma, {
         limit: limit ?? 50,
         ...(since ? { since: new Date(since) } : {}),
+        ...(before ? { before: new Date(before) } : {}),
+        ...(before && beforeId ? { beforeId } : {}),
       });
-      return jsonResult({ signals: page.signals, next_before: page.nextBefore });
+      return jsonResult({
+        signals: page.signals,
+        next_before: page.nextBefore,
+        next_before_id: page.nextBeforeId,
+      });
     },
   );
 

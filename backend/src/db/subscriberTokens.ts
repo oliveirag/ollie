@@ -32,6 +32,17 @@ export async function mintToken(
   return { plaintext, token };
 }
 
+/** How often a token's `last_used_at` is rewritten. Every MCP call verifies. */
+export const LAST_USED_RESOLUTION_MS = 60 * 1000;
+
+/**
+ * App session tokens are minted on every sign-in and never shown again, so a
+ * subscriber cannot revoke them by hand. They lapse after this long unused,
+ * and only the newest few stay live.
+ */
+export const APP_TOKEN_IDLE_MS = 90 * 24 * 60 * 60 * 1000;
+export const APP_TOKENS_KEPT = 5;
+
 export interface VerifiedToken {
   token: SubscriberToken;
   user: User;
@@ -40,9 +51,10 @@ export interface VerifiedToken {
 /**
  * Resolve a presented plaintext to its user, or null. The kind is part of the
  * check, not a filter applied afterwards, so an `app` token presented at the
- * MCP endpoint is exactly as unknown as a random string. Touches
- * `last_used_at` on success; that is the only write on the read path and it
- * is what the soft-launch exit criterion reads.
+ * MCP endpoint is exactly as unknown as a random string. An app token idle
+ * for `APP_TOKEN_IDLE_MS` is as unknown too. Touches `last_used_at` on
+ * success, at most once per `LAST_USED_RESOLUTION_MS`; that is the only write
+ * on the read path and it is what the soft-launch exit criterion reads.
  */
 export async function verifyToken(
   plaintext: string,
@@ -56,12 +68,15 @@ export async function verifyToken(
   });
   if (!token || token.kind !== kind || token.revokedAt !== null) return null;
 
-  await prisma.subscriberToken.update({
-    where: { id: token.id },
-    data: { lastUsedAt: options.now ?? new Date() },
-  });
+  const now = options.now ?? new Date();
+  const lastSeen = token.lastUsedAt ?? token.createdAt;
+  if (kind === 'app' && now.getTime() - lastSeen.getTime() > APP_TOKEN_IDLE_MS) return null;
 
   const { user, ...row } = token;
+  if (!token.lastUsedAt || now.getTime() - token.lastUsedAt.getTime() >= LAST_USED_RESOLUTION_MS) {
+    await prisma.subscriberToken.update({ where: { id: token.id }, data: { lastUsedAt: now } });
+    row.lastUsedAt = now;
+  }
   return { token: row, user };
 }
 
@@ -81,6 +96,32 @@ export async function revokeToken(
     data: { revokedAt: options.now ?? new Date() },
   });
   return updated.count > 0;
+}
+
+/**
+ * Revoke every live token of `kind` for the user beyond the newest `keep`.
+ * Called after each sign-in so session tokens do not pile up. Returns how
+ * many were revoked.
+ */
+export async function revokeAllButNewest(
+  userId: string,
+  kind: TokenKind,
+  keep: number,
+  options: { now?: Date; prisma?: PrismaClient } = {},
+): Promise<number> {
+  const prisma = options.prisma ?? getPrisma();
+  const stale = await prisma.subscriberToken.findMany({
+    where: { userId, kind, revokedAt: null },
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    skip: keep,
+    select: { id: true },
+  });
+  if (stale.length === 0) return 0;
+  const updated = await prisma.subscriberToken.updateMany({
+    where: { id: { in: stale.map((t) => t.id) }, revokedAt: null },
+    data: { revokedAt: options.now ?? new Date() },
+  });
+  return updated.count;
 }
 
 export async function listTokens(

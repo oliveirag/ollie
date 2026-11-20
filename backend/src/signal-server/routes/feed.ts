@@ -39,21 +39,25 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 /** Shared with the MCP tools so the two surfaces cannot drift. */
 export async function readFeed(
   prisma: PrismaClient,
-  query: { limit: number; before?: Date; since?: Date },
-): Promise<{ signals: PublishedSignal[]; nextBefore: string | null }> {
+  query: { limit: number; before?: Date; beforeId?: string; since?: Date },
+): Promise<{ signals: PublishedSignal[]; nextBefore: string | null; nextBeforeId: string | null }> {
   const rows = await listPublishedSignals(
     {
       limit: query.limit,
-      ...(query.before ? { before: query.before } : {}),
+      ...(query.before
+        ? { before: { publishedAt: query.before, ...(query.beforeId ? { id: query.beforeId } : {}) } }
+        : {}),
       ...(query.since ? { since: query.since } : {}),
     },
     prisma,
   );
   const signals = rows.map(toPublishedSignal);
   const last = signals.at(-1);
+  const more = rows.length === query.limit && last;
   return {
     signals,
-    nextBefore: rows.length === query.limit && last ? last.published_at : null,
+    nextBefore: more ? last.published_at : null,
+    nextBeforeId: more ? last.id : null,
   };
 }
 
@@ -65,8 +69,11 @@ export async function readPublishedSignalDetail(prisma: PrismaClient, id: string
 }
 
 export async function readSubscriberTrackRecord(prisma: PrismaClient) {
-  const stats = computeTrackRecord(await listAllTrackRecordRows(prisma));
-  const lots = await listOpenLots(prisma);
+  // Published only: a lot opens when the fill is recorded, up to one publish
+  // sweep before its signal reaches the feed. The role's row policy enforces
+  // the same thing; saying it here keeps the rule visible at the call.
+  const stats = computeTrackRecord(await listAllTrackRecordRows(prisma, { publishedOnly: true }));
+  const lots = await listOpenLots(prisma, { publishedOnly: true });
 
   const positions = await Promise.all(
     lots.map(async (lot) => {
@@ -132,12 +139,17 @@ export const registerFeedRoutes: FastifyPluginAsyncZod<FeedRouteOptions> = async
       },
     },
     async (request) => {
-      const { limit, before } = request.query;
+      const { limit, before, before_id: beforeId } = request.query;
       const page = await readFeed(prisma, {
         limit,
         ...(before ? { before: new Date(before) } : {}),
+        ...(before && beforeId ? { beforeId } : {}),
       });
-      return { signals: page.signals, next_before: page.nextBefore };
+      return {
+        signals: page.signals,
+        next_before: page.nextBefore,
+        next_before_id: page.nextBeforeId,
+      };
     },
   );
 
