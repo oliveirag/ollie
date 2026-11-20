@@ -63,6 +63,17 @@ export async function sweepAutonomy(deps: AutonomySweepDeps): Promise<AutonomySw
   let skipped = 0;
 
   for (const signal of due) {
+    // The route refuses a live approval when either live gate is closed, so
+    // the signal stays pending; the sweep must not burn the one transition on
+    // an order the executor will refuse. Expiry records it as undecided.
+    if (
+      signal.executionMode === 'live' &&
+      (!deps.config.liveTradingEnabled || settings.executionMode !== 'live')
+    ) {
+      skipped += 1;
+      log.warn({ signal_id: signal.id }, 'auto-approval skipped: live gates are not open');
+      continue;
+    }
     // The route's pre-flight, for the same reason: an exit with nothing to
     // close must not burn its one transition. Asked the way the fill will ask
     // it (whole lots that fit), not "is any lot open". Left pending; expiry

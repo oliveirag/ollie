@@ -147,6 +147,9 @@ Position awareness belongs in `risk.ts`, timestamps belong to the pipeline.
 call site, `LiveExecutor.execute`. It runs only with the kill switch off,
 `LIVE_TRADING_ENABLED=true`, `app_settings.execution_mode = live`, and a signal
 created in live mode; the decision route also requires `confirm_live: true`.
+The autonomy sweep is the one caller that has no `confirm_live` (Phase 5,
+decision 6): it acts only with `AUTONOMY_ENABLED` and `app_settings.autonomy`
+both on and the signal's veto window passed.
 `PaperExecutor` holds no broker reference at all. If you find yourself adding
 one, that is the change that needs a second opinion.
 

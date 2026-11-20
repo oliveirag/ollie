@@ -42,8 +42,9 @@ These are enforced in code and tests. Never weaken them:
    deletes. Don't add migrations that bypass them.
 3. No signal without a `review_equity_order` snapshot.
 4. `place_equity_order` has exactly one call site, in `LiveExecutor`, behind
-   `LIVE_TRADING_ENABLED`, the runtime execution mode, and `confirm_live`. The subscriber service
-   must never be able to reach it.
+   `LIVE_TRADING_ENABLED`, the runtime execution mode, and `confirm_live`. The autonomy sweep is the
+   one path that skips `confirm_live` (Phase 5, decision 6): it needs both autonomy gates on and the
+   veto window passed instead. The subscriber service must never be able to reach it.
 5. Risk caps and the kill switch are enforced in the pipeline for paper and live runs alike.
 
 Never flip live trading, autonomy, or real-money settings. Those are owner actions from

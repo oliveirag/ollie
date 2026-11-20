@@ -2,7 +2,7 @@ import pino from 'pino';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { buildConfig, type Config } from '../src/config/index.js';
 import { listExecutions } from '../src/db/executions.js';
-import { setAutonomy, setKillSwitch } from '../src/db/settings.js';
+import { setAutonomy, setExecutionMode, setKillSwitch } from '../src/db/settings.js';
 import { getSignal, insertSignal, listSignalEvents, transitionSignal } from '../src/db/signals.js';
 import { appendTrackRecord, listOpenLots } from '../src/db/trackRecord.js';
 import { AUTO_APPROVE_REASON, sweepAutonomy } from '../src/orchestrator/autonomy.js';
@@ -259,5 +259,75 @@ describe('an auto-decidable exit whose oldest lot is bigger than it', () => {
     expect((await getSignal(exit.id, db))?.status).toBe('pending');
     expect(await listExecutions(exit.id, db)).toHaveLength(0);
     expect((await listOpenLots(db)).map((l) => l.signalId)).toEqual([entry.id]);
+  });
+});
+
+/**
+ * Autonomy is the one path to a live order without `confirm_live` (Phase 5,
+ * decision 6; README non-negotiable 4). These pin both halves of that: the
+ * sweep does place a live order once every other gate is open, and it places
+ * nothing while LIVE_TRADING_ENABLED is off.
+ */
+describe('autonomy with a live signal', () => {
+  async function seedLiveDue() {
+    return insertSignal(
+      {
+        symbol: 'AAPL',
+        side: 'buy',
+        signalType: 'technical',
+        quantity: '2',
+        thesis: 'live autonomy',
+        thesisSource: 'fallback_template',
+        indicators: {},
+        reviewSnapshot: {
+          schema_version: 1,
+          estimated_price: '308.63',
+          alerts: [],
+          requested: { symbol: 'AAPL', side: 'buy', quantity: '2', type: 'market' },
+          captured_at: '2026-07-02T13:35:00.000Z',
+          raw: {},
+        },
+        executionMode: 'live',
+        dedupeKey: uniqueDedupeKey('live-auto'),
+        autoDecideAt: later(5),
+      },
+      db,
+    );
+  }
+
+  it('places the live order with no confirm_live once every gate is open', async () => {
+    await setAutonomy(true, db);
+    await setExecutionMode('live', db);
+    const signal = await seedLiveDue();
+    const broker = new MockBrokerAdapter({ orderScripts: { AAPL: { states: [{ state: 'confirmed' }] } } });
+
+    const result = await sweepAutonomy({
+      ...deps(config({ LIVE_TRADING_ENABLED: 'true' })),
+      broker,
+      clock: () => later(6),
+    });
+
+    expect(result.approved.map((s) => s.id)).toEqual([signal.id]);
+    expect(broker.callsTo('placeEquityOrder')).toHaveLength(1);
+  });
+
+  it.each([
+    ['LIVE_TRADING_ENABLED is off', 'false', 'live'],
+    ['the runtime mode is paper', 'true', 'paper'],
+  ] as const)('places nothing and leaves the signal pending while %s', async (_label, env, mode) => {
+    await setAutonomy(true, db);
+    await setExecutionMode(mode, db);
+    const signal = await seedLiveDue();
+    const broker = new MockBrokerAdapter({ orderScripts: { AAPL: { states: [{ state: 'confirmed' }] } } });
+
+    const result = await sweepAutonomy({
+      ...deps(config({ LIVE_TRADING_ENABLED: env })),
+      broker,
+      clock: () => later(6),
+    });
+
+    expect(result).toMatchObject({ approved: [], skipped: 1 });
+    expect(broker.callsTo('placeEquityOrder')).toHaveLength(0);
+    expect((await getSignal(signal.id, db))?.status).toBe('pending');
   });
 });
