@@ -35,7 +35,7 @@ const EnvSchema = z.object({
   RH_OAUTH_REFRESH_TOKEN: z.string().default(''),
   RH_ACCOUNT_NUMBER: z.string().default(''),
 
-  SYMBOL_ALLOWLIST: z.string().default('AAPL,MSFT,SPY'),
+  SYMBOL_ALLOWLIST: z.string().default('AAPL,MSFT,SPY,JPM,XLE,UNH'),
   CANDLE_LOOKBACK_DAYS: positiveInt.default(180),
   RSI_PERIOD: positiveInt.default(14),
   RSI_OVERSOLD: z.coerce.number().min(0).max(100).default(30),
