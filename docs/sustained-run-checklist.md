@@ -120,9 +120,11 @@ curl -sS -H "Authorization: Bearer $TOKEN" $OLLIE/v1/track-record \
   | python3 -c 'import json,sys; d=json.load(sys.stdin); print("closed:",d["closed_trades"],"open:",d["open_positions"],"win rate:",d["win_rate"],"curve days:",len([p for p in d["curve"] if not p["withheld"]]))'
 ```
 
-Milestone 3.8 exits when that shows **at least 20 unwithheld curve days, at
-least one closed trade, and nothing stuck pending** — with every withheld day
-attributable to a logged cause.
+Milestone 3.8 exits when that shows **at least 20 unwithheld trading days of
+curve points, at least one closed trade, and nothing stuck pending**, with every
+withheld day attributable to a logged cause. This is the same criterion as the
+Phase 3 plan; if the two ever read differently, this one is the operational
+wording.
 
 Whether the record is *worth publishing* is a separate judgement, and a number
 does not make it. Twenty days might close two trades or ten; a thin record means

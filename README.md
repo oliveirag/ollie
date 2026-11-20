@@ -11,9 +11,9 @@ Two strictly separated sides:
   at the signal feed and act on it themselves. Ollie never holds subscriber credentials and never
   places a trade for anyone but the owner.
 
-Full product spec: [Ollie.md](Ollie.md).
-Build plans: [phases 0–1](docs/implementation-plan-phases-0-1.md) (complete) ·
-[phase 2](docs/implementation-plan-phase-2.md) (complete) ·
+Original product spec (July 2026, partly superseded): [Ollie.md](Ollie.md).
+Build plans: [phases 0–1](docs/archive/implementation-plan-phases-0-1.md) (complete, archived) ·
+[phase 2](docs/archive/implementation-plan-phase-2.md) (complete, archived) ·
 [phase 3](docs/implementation-plan-phase-3.md) (built; sustained run in progress) ·
 [phase 4](docs/implementation-plan-phase-4.md) (built; deploy and soft launch gated) ·
 [phase 5](docs/implementation-plan-phase-5.md) (built; flips are owner actions).

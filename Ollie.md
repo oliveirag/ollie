@@ -1,5 +1,13 @@
 # Ollie
 
+> **This is the original PRD from July 2026, kept for its reasoning. It is not the current spec.**
+> Phases 0 to 5 are built, and several things here changed on the way: the data model, the folder
+> tree, the open decisions, and every "lawyer gate" (void: there is no lawyer, and the subscriber
+> feed stays free, generic and non-personalized instead). For what is true now, read
+> [README.md](README.md), [backend/prisma/schema.prisma](backend/prisma/schema.prisma) and its
+> migrations, and the generated contracts [docs/openapi.yaml](docs/openapi.yaml) and
+> [docs/openapi-subscriber.yaml](docs/openapi-subscriber.yaml).
+
 **Product Requirements Document**
 
 Version 0.1 (draft) · July 6, 2026 · Owner: Guilherme Oliveira
