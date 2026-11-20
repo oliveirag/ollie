@@ -211,6 +211,17 @@ describe('immutability enforced by the database', () => {
     );
   });
 
+  it('refuses to move an approved signal to rejected', async () => {
+    const signal = await seedSignal();
+    await transitionSignal(signal.id, 'approved', 'approved', { prisma: db });
+    await expectRejected(
+      db.$executeRawUnsafe(
+        `UPDATE signals SET status = 'rejected', decide_reason = 'changed my mind' WHERE id = $1::uuid`,
+        signal.id,
+      ),
+    );
+  });
+
   it('refuses to rewrite a decision reason after the fact', async () => {
     const signal = await seedSignal();
     await transitionSignal(signal.id, 'rejected', 'not convinced', { prisma: db });

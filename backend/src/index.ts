@@ -4,8 +4,7 @@ import { getAppSettings } from './db/settings.js';
 import { bootstrapOAuthState } from './db/oauthState.js';
 import { logger } from './logger.js';
 import type { BrokerAdapter } from './orchestrator/robinhood/client.js';
-import { McpBrokerAdapter } from './orchestrator/robinhood/mcpClient.js';
-import { MockBrokerAdapter } from './orchestrator/robinhood/mockClient.js';
+import { brokerFromConfig } from './orchestrator/robinhood/brokerFromConfig.js';
 import { buildNotifier } from './orchestrator/push/notify.js';
 import { startScheduler } from './orchestrator/scheduler.js';
 import { buildApp } from './server/app.js';
@@ -48,19 +47,12 @@ async function main(): Promise<void> {
   let broker: BrokerAdapter;
   if (config.broker === 'mock') {
     logger.warn('BROKER=mock: no brokerage is contacted; every order fills on the first poll');
-    broker = new MockBrokerAdapter({
-      orderScripts: Object.fromEntries(
-        config.symbolAllowlist.map((symbol) => [
-          symbol,
-          { states: [{ state: 'confirmed' }, { state: 'filled' }] },
-        ]),
-      ),
-    });
+    broker = brokerFromConfig(config, logger);
   } else {
     // Move a first-boot credential out of the environment before the
     // scheduler can reach the broker. A no-op once the database holds a token.
     await bootstrapOAuthState(config);
-    broker = new McpBrokerAdapter({ logger });
+    broker = brokerFromConfig(config, logger);
   }
   const notifier = buildNotifier(config, logger);
   const scheduler = startScheduler({ broker, config, logger, notifier });

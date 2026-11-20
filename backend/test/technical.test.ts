@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   dedupeKeyFor,
   evaluateTechnical,
@@ -236,12 +236,19 @@ describe('determinism', () => {
     `);
   });
 
-  it('does not read the clock: the same bars evaluated twice agree', () => {
+  it('does not read the clock: the same bars agree at any wall-clock time', () => {
     const bars = through('2026-07-02');
-    const first = evaluateTechnical('AAPL', bars, config());
-    const second = evaluateTechnical('AAPL', bars, config());
-    expect(first.barTime).toBe(second.barTime);
-    expect(first.barTime).toBe('2026-07-02T00:00:00Z');
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date('2001-01-01T00:00:00Z'));
+      const past = evaluateTechnical('AAPL', bars, config());
+      vi.setSystemTime(new Date('2099-12-31T23:59:59Z'));
+      const future = evaluateTechnical('AAPL', bars, config());
+      expect(future).toEqual(past);
+      expect(past.barTime).toBe('2026-07-02T00:00:00Z');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

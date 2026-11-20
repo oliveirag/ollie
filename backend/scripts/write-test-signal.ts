@@ -8,9 +8,11 @@
  *   npm run signal:write-test
  *   npm run signal:write-test -- --decide approved --reason "looked fine"
  *
- * Writes to whatever DATABASE_URL points at, so point it at a scratch database
- * unless you want a fabricated row in your permanent record — and it is
- * permanent, that is the point of the triggers.
+ * Refuses any DATABASE_URL that is not localhost: the row is permanent (that
+ * is the point of the triggers) and the snapshot is fabricated. It copies the
+ * runtime execution mode, because the iOS e2e run seeds a live signal against
+ * the mock broker; outside BROKER=mock it refuses to write a live one, so a
+ * fabricated review can never sit in front of a real order.
  */
 import { randomUUID } from 'node:crypto';
 import { disconnectPrisma } from '../src/db/client.js';
@@ -22,6 +24,21 @@ import {
   type DecidedStatus,
 } from '../src/db/signals.js';
 import { getAppSettings } from '../src/db/settings.js';
+import { getConfig } from '../src/config/index.js';
+
+function assertSafeTarget(executionMode: string): void {
+  const config = getConfig();
+  if (!/(@|\/\/)(localhost|127\.0\.0\.1)(:|\/)/.test(config.databaseUrl)) {
+    throw new Error(
+      'refusing to write: DATABASE_URL does not point at localhost. This row is fabricated and permanent.',
+    );
+  }
+  if (executionMode === 'live' && config.broker !== 'mock') {
+    throw new Error(
+      'refusing to write a live signal with a fabricated review unless BROKER=mock.',
+    );
+  }
+}
 
 function flag(name: string): string | undefined {
   const index = process.argv.indexOf(`--${name}`);
@@ -32,6 +49,7 @@ const DECIDABLE: readonly DecidedStatus[] = ['approved', 'rejected', 'expired'];
 
 async function main(): Promise<void> {
   const settings = await getAppSettings();
+  assertSafeTarget(settings.executionMode);
   console.log(
     `app_settings: execution_mode=${settings.executionMode} kill_switch=${settings.killSwitch}`,
   );

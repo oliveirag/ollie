@@ -499,6 +499,33 @@ describe('live execution is gated', () => {
   });
 });
 
+describe('risk caps hold in live mode too', () => {
+  it('stops proposing once the daily cap is reached', async () => {
+    await setExecutionMode('live', db);
+    const result = await runPipeline(deps({ config: config({ MAX_DAILY_TRADES: '0' }) }));
+
+    expect(result.signals).toHaveLength(0);
+    expect(result.riskRejections[0]!.reason).toBe('daily_trade_cap');
+  });
+
+  it('drops a candidate over the position cap, reading the broker position', async () => {
+    await setExecutionMode('live', db);
+    const mock = broker({
+      positions: [
+        { symbol: 'AAPL', quantity: '3', sharesAvailableForSells: '3', averageBuyPrice: '300.00' },
+      ],
+    });
+
+    const result = await runPipeline(
+      deps({ broker: mock, config: config({ MAX_POSITION_CENTS: '100000' }) }),
+    );
+
+    expect(result.signals).toHaveLength(0);
+    expect(result.riskRejections.map((r) => r.reason)).toEqual(['position_size_cap']);
+    expect(mock.callsTo('reviewEquityOrder')).toHaveLength(0);
+  });
+});
+
 describe('execution mode follows the signal, not the account', () => {
   it('creates signals in whatever mode app_settings names', async () => {
     await setExecutionMode('live', db);

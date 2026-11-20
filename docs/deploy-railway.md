@@ -170,17 +170,11 @@ platform health check keys on.
 
 ## Running scripts against the deployed database
 
-`railway run` injects the service's environment into a local shell, which is how
-the Phase 0 exit check gets repeated against managed Postgres for parity:
-
-```bash
-cd backend
-railway run npm run signal:write-test
-```
-
-That writes a real, permanent row to production. It is fabricated data that
-cannot be deleted — the immutability triggers see to that — so do it once
-during setup and mark it in the `thesis` field, which the script already does.
+`railway run` injects the service's environment into a local shell. Do not use
+it with `signal:write-test` or `seed:track-record`: both refuse any
+`DATABASE_URL` that is not localhost, because the rows they write are
+fabricated and permanent. The parity check that once ran here is covered by the
+test suite, which migrates and exercises a real Postgres on every run.
 
 ## Operational notes
 

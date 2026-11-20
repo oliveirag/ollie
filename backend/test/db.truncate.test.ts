@@ -1,5 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
-import { closeTestPrisma, resetDatabase, testPrisma } from './helpers/db.js';
+import { insertSignal } from '../src/db/signals.js';
+import { closeTestPrisma, resetDatabase, testPrisma, uniqueDedupeKey } from './helpers/db.js';
 
 const db = testPrisma();
 
@@ -41,16 +42,26 @@ describe('TRUNCATE is refused on the record tables', () => {
   });
 
   it('leaves the rows in place after a refused truncate', async () => {
-    await db.appSettings.upsert({
-      where: { id: 1 },
-      update: {},
-      create: { id: 1, killSwitch: false, executionMode: 'paper' },
-    });
+    await insertSignal(
+      {
+        symbol: 'AAPL',
+        side: 'buy',
+        signalType: 'technical',
+        quantity: '1',
+        thesis: null,
+        thesisSource: 'llm',
+        indicators: {},
+        reviewSnapshot: { estimated_price: '1' },
+        executionMode: 'paper',
+        dedupeKey: uniqueDedupeKey('truncate'),
+      },
+      db,
+    );
 
     await expect(db.$executeRawUnsafe('TRUNCATE TABLE "signals" CASCADE')).rejects.toThrow();
 
     // A trigger that raised but let the statement through would be worse than
     // no trigger, because it would read as protection while providing none.
-    expect(await db.appSettings.count()).toBe(1);
+    expect(await db.signal.count()).toBe(1);
   });
 });

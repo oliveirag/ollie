@@ -7,10 +7,12 @@
  *   npm run signal:decide -- <signal-id> approve
  *   npm run signal:decide -- <signal-id> reject --reason "changed my mind"
  *
- * Approving runs the executor for the signal's own execution mode. In paper
+ * Approving runs the same pre-flight as the app's decision route (kill
+ * switch, live gates, a sell with no lot to close) before the irreversible
+ * transition, then the executor for the signal's own execution mode. In paper
  * mode that writes a simulated fill and opens a track-record position without
  * contacting the broker. In live mode it places a real order, so it also
- * requires `--confirm-live`.
+ * requires `--confirm-live`. Honors `BROKER=mock`.
  */
 import { disconnectPrisma } from '../src/db/client.js';
 import { getConfig } from '../src/config/index.js';
@@ -22,8 +24,9 @@ import {
   type DecidedStatus,
 } from '../src/db/signals.js';
 import { executorFor } from '../src/orchestrator/executor.js';
+import { preflightExecution } from '../src/orchestrator/preflight.js';
 import { parseReviewSnapshot } from '../src/orchestrator/reviewSnapshot.js';
-import { McpBrokerAdapter } from '../src/orchestrator/robinhood/mcpClient.js';
+import { brokerFromConfig } from '../src/orchestrator/robinhood/brokerFromConfig.js';
 
 function flag(name: string): string | undefined {
   const index = process.argv.indexOf(`--${name}`);
@@ -92,16 +95,24 @@ async function main(): Promise<void> {
   const status: DecidedStatus = action === 'approve' ? 'approved' : 'rejected';
   const reason = flag('reason') ?? `${status} via decide-signal CLI`;
 
-  // The per-approval confirmation (Phase 5, decision 4) holds on the
-  // break-glass path too: a live approval places a real order and has to say so.
-  if (
-    status === 'approved' &&
-    signal.executionMode === 'live' &&
-    !process.argv.includes('--confirm-live')
-  ) {
-    throw new Error(
-      `signal ${signalId} is a LIVE signal; approving it places a real order. Re-run with --confirm-live.`,
+  // The route's pre-flight, run before the transition for the same reason:
+  // the transition is irreversible, and an approval the executor then refuses
+  // would strand the signal approved with no fill. The per-approval
+  // confirmation (Phase 5, decision 4) holds on the break-glass path too.
+  const config = getConfig();
+  if (status === 'approved') {
+    const blocked = await preflightExecution(
+      signal,
+      config,
+      process.argv.includes('--confirm-live'),
     );
+    if (blocked) {
+      const hint =
+        blocked.error === 'live_confirmation_required'
+          ? ' This is a LIVE signal; approving it places a real order. Re-run with --confirm-live.'
+          : '';
+      throw new Error(`refused (${blocked.error}): ${blocked.detail}. The signal is still pending.${hint}`);
+    }
   }
 
   const decided = await transitionSignal(signalId, status, reason);
@@ -114,8 +125,7 @@ async function main(): Promise<void> {
 
   // Only reached on approval. The broker is constructed but unused in paper
   // mode — PaperExecutor holds no reference to it.
-  const config = getConfig();
-  const broker = new McpBrokerAdapter({ logger });
+  const broker = brokerFromConfig(config, logger);
   try {
     const executor = executorFor(decided, { config, logger }, broker);
     const outcome = await executor.execute(decided);
