@@ -6,7 +6,8 @@ import UserNotifications
 /// Gets this device's APNs token to the backend, and tells the owner shell when
 /// a push arrives so it can refetch.
 ///
-/// Owner side only. The orchestrator pushes new signals to the owner's devices;
+/// Owner side only. The orchestrator pushes new signals to the owner's devices,
+/// and one reminder before each expires;
 /// subscribers read the feed through their agent and are never asked for
 /// notification permission.
 ///
@@ -117,6 +118,9 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
         UNUserNotificationCenter.current().delegate = self
+        // At every launch, before any notification can be delivered, so the
+        // approve and decline buttons exist even on a launch an action caused.
+        SignalNotificationActions.register()
         return true
     }
 
@@ -128,8 +132,8 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         print("[push] APNs registration failed: \(error)")
     }
 
-    /// Show the banner even with the app open: a signal has a short window, and
-    /// the owner may be looking at a different tab when it lands.
+    /// Show the banner even with the app open: the owner may be looking at a
+    /// different tab when a signal or its reminder lands.
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification
@@ -142,6 +146,124 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse
     ) async {
+        let userInfo = response.notification.request.content.userInfo
+        switch response.actionIdentifier {
+        case SignalNotificationActions.approve:
+            await SignalNotificationActions.decide(userInfo: userInfo, approve: true)
+        case SignalNotificationActions.decline:
+            await SignalNotificationActions.decide(userInfo: userInfo, approve: false)
+        default:
+            break
+        }
         await PushRegistrar.shared.didReceivePush()
+    }
+}
+
+/// Approve and decline straight from a signal's notification, without opening
+/// the app. The categories match `PUSH_CATEGORY` in the backend's notify.ts.
+///
+/// Paper signals get both buttons. Live signals get decline only: approving
+/// one places a real order and needs the decision sheet's second tap
+/// (`confirm_live`), which a lock-screen button is not. Both actions require
+/// an unlocked device, so a phone left on a desk cannot trade.
+///
+/// A failure is reported with a local notification, because the owner tapped
+/// a button and left: a silently refused approval would read as a trade taken.
+/// Success needs no message; the approvals list shows it on the next open.
+enum SignalNotificationActions {
+    static let approve = "SIGNAL_APPROVE"
+    static let decline = "SIGNAL_DECLINE"
+    static let paperCategory = "SIGNAL_DECISION"
+    static let liveCategory = "SIGNAL_DECISION_LIVE"
+
+    static func register() {
+        let approveAction = UNNotificationAction(
+            identifier: approve,
+            title: "Approve",
+            options: [.authenticationRequired],
+            icon: UNNotificationActionIcon(systemImageName: "checkmark")
+        )
+        let declineAction = UNNotificationAction(
+            identifier: decline,
+            title: "Decline",
+            options: [.authenticationRequired, .destructive],
+            icon: UNNotificationActionIcon(systemImageName: "xmark")
+        )
+        UNUserNotificationCenter.current().setNotificationCategories([
+            UNNotificationCategory(identifier: paperCategory, actions: [approveAction, declineAction], intentIdentifiers: []),
+            UNNotificationCategory(identifier: liveCategory, actions: [declineAction], intentIdentifiers: []),
+        ])
+    }
+
+    @MainActor
+    static func decide(userInfo: [AnyHashable: Any], approve: Bool) async {
+        guard let id = userInfo["signal_id"] as? String else { return }
+        let label = Self.label(userInfo)
+
+        // The live category has no approve button; this holds even if a stale
+        // registration or a hand-built payload offers one.
+        if approve, userInfo["execution_mode"] as? String == "live" {
+            await report("Live signals are approved in the app.", title: "Open Ollie to approve \(label)", id: id)
+            return
+        }
+        guard let token = TokenStore.read(), !token.isEmpty else {
+            await report(OllieError.unauthorized.localizedDescription, title: failureTitle(approve, label), id: id)
+            return
+        }
+
+        let body = Components.Schemas.DecisionRequestInput(
+            action: approve ? .approve : .reject,
+            reason: approve ? "approved from the notification" : "declined from the notification",
+            confirm_live: nil
+        )
+        let message: String
+        do {
+            let output = try await OllieAPI.client(token: token)
+                .decideSignal(.init(path: .init(id: id), body: .json(body)))
+            switch output {
+            case .ok:
+                return
+            case .conflict(let conflict):
+                let payload = try? conflict.body.json
+                if let status = payload?.status {
+                    message = "Already \(status.rawValue)."
+                } else {
+                    message = payload?.detail ?? "Refused by the server."
+                }
+            case .internalServerError(let failure):
+                message = (try? failure.body.json.detail) ?? "Approved, but not filled."
+            case .notFound:
+                message = OllieError.notFound.localizedDescription
+            case .unauthorized:
+                message = OllieError.unauthorized.localizedDescription
+            case .badRequest:
+                message = "The decision failed validation."
+            case .undocumented(let status, _):
+                message = "The server returned \(status)."
+            }
+        } catch {
+            message = OllieError.fromTransport(error, host: OllieServer.baseURL).localizedDescription
+        }
+        await report(message, title: failureTitle(approve, label), id: id)
+    }
+
+    private static func label(_ userInfo: [AnyHashable: Any]) -> String {
+        let side = (userInfo["side"] as? String) == "sell" ? "Sell" : "Buy"
+        return "\(side) \(userInfo["symbol"] as? String ?? "signal")"
+    }
+
+    private static func failureTitle(_ approve: Bool, _ label: String) -> String {
+        approve ? "Couldn't approve \(label)" : "Couldn't decline \(label)"
+    }
+
+    private static func report(_ message: String, title: String, id: String) async {
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = message
+        content.sound = .default
+        // Same id as the signal's push, so it replaces that banner instead of
+        // stacking next to it.
+        let request = UNNotificationRequest(identifier: id, content: content, trigger: nil)
+        try? await UNUserNotificationCenter.current().add(request)
     }
 }

@@ -104,8 +104,8 @@ token; subscribers use Sign in with Apple against the signal service.
 `scripts/e2e.sh owner` does all of this on its own (its own Postgres cluster,
 both servers, seeding) and is the normal way to run them. To use your own
 backend instead: the app and backend both have to be up, and a pending signal
-expires 15 minutes after it is written, so seed it immediately before the run,
-not before the build:
+written outside a session expires 15 minutes later (during one it lasts until
+the 16:00 ET close), so seed it immediately before the run, not before the build:
 
 ```bash
 # 1. from the repo root: backend on :3000 (Postgres on :5432, OWNER_API_TOKEN in backend/.env)

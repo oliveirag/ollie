@@ -77,7 +77,10 @@ async function seedApprovedExit(quantity: string, estimatedPrice = '300.000000')
   return transitionSignal(signal.id, 'approved', 'owner approved', { prisma: db });
 }
 
-const executor = () => new PaperExecutor({ config: config(), logger, prisma: db });
+// A minute after the fixture snapshot's capture, so the proposal estimate is
+// still fresh enough to fill at without an approval-time price.
+const executor = () =>
+  new PaperExecutor({ config: config(), logger, prisma: db, now: () => new Date('2026-07-31T13:36:00.000Z') });
 
 beforeEach(async () => {
   await resetDatabase();
