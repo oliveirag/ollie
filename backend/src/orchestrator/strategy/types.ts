@@ -96,7 +96,8 @@ export type SkipReason =
   | 'insufficient_history'
   | 'no_rule_fired'
   | 'quantity_rounds_to_zero'
-  | 'no_open_position';
+  | 'no_open_position'
+  | 'macd_exit_below_entry';
 
 /**
  * Position state the exit rules read. Entries ignore it entirely.
@@ -109,6 +110,12 @@ export type SkipReason =
 export interface PositionContext {
   /** Shares currently held for this symbol, as a decimal string. */
   openQuantity: string;
+  /**
+   * Quantity-weighted entry price of the open lots, as a decimal string. The
+   * MACD exit reads it: a bearish cross closes the position only above cost.
+   * Absent means unknown, and the MACD exit then fires as it always did.
+   */
+  averageEntryPrice?: string;
 }
 
 /** A candidate from the technical rules, which always cite indicators. */

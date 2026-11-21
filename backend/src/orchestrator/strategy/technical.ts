@@ -1,4 +1,4 @@
-import { sharesForNotional } from '../../money.js';
+import { dec, sharesForNotional } from '../../money.js';
 import { macd, rsi } from './indicators.js';
 import {
   TECHNICAL_RULES,
@@ -110,6 +110,18 @@ export function evaluateTechnical(
       // trade to propose, and asking the owner to approve one the risk gate
       // would certainly refuse is worse than staying quiet.
       return { candidate: null, skipReason: 'no_open_position', indicators, barTime };
+    }
+    // A MACD flip closes a position only above its cost. Over 2019 to 2026
+    // daily bars, flips fired on most exits and sold below entry about half
+    // the time, cutting trades that the RSI exit or the time stop would have
+    // closed higher. Below cost, the position waits for those two instead:
+    // returning no candidate here leaves the time stop as the backstop.
+    if (
+      fired.rule === 'macd_bearish_cross' &&
+      position?.averageEntryPrice !== undefined &&
+      !dec(referenceClose).greaterThan(position.averageEntryPrice)
+    ) {
+      return { candidate: null, skipReason: 'macd_exit_below_entry', indicators, barTime };
     }
     // Deliberately not notional-sized, and deliberately not subject to the
     // rounds-to-zero check below: on a symbol priced above one order notional

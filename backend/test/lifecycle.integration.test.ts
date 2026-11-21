@@ -49,7 +49,8 @@ describe('a trade from proposal to published statistics', () => {
     const entryRun = await runPipeline({
       broker: new MockBrokerAdapter({
         candles: { AAPL: barsThrough('2026-07-02') },
-        quotes: { AAPL: quote('AAPL', '308.630000') },
+        // Below the 2026-07-31 close of 308.91, so the MACD exit is above cost.
+        quotes: { AAPL: quote('AAPL', '300.000000') },
       }),
       config: cfg,
       logger,
@@ -66,10 +67,10 @@ describe('a trade from proposal to published statistics', () => {
     await transitionSignal(entry.id, 'approved', 'owner approved', { prisma: db });
     await executor('2026-07-02T13:36:00Z').execute((await getSignal(entry.id, db))!);
 
-    // Buy slippage is against the trader: 308.63 x 1.001.
+    // Buy slippage is against the trader: 300 x 1.001.
     const opened = (await listTrackRecord(entry.id, db)).at(-1)!;
     expect(opened.status).toBe('open');
-    expect(opened.entryPrice.toString()).toBe('308.93863');
+    expect(opened.entryPrice.toString()).toBe('300.3');
 
     // --- A day's mark -------------------------------------------------------
     await runMarkToMarket({
@@ -84,8 +85,8 @@ describe('a trade from proposal to published statistics', () => {
 
     const marked = (await listTrackRecord(entry.id, db)).at(-1)!;
     expect(marked.markPrice?.toString()).toBe('320');
-    // (320 - 308.93863) x 3, to six places.
-    expect(marked.unrealizedPnl?.toString()).toBe('33.18411');
+    // (320 - 300.3) x 3.
+    expect(marked.unrealizedPnl?.toString()).toBe('59.1');
 
     // --- Exit: the bearish MACD cross on 2026-07-31 -------------------------
     const exitRun = await runPipeline({
@@ -114,8 +115,8 @@ describe('a trade from proposal to published statistics', () => {
     expect(closed.closedBySignalId).toBe(exit!.id);
     // Sell slippage is also against the trader: 330 x 0.999 = 329.67.
     expect(closed.exitPrice?.toString()).toBe('329.67');
-    // (329.67 - 308.93863) x 3.
-    expect(closed.realizedPnl?.toString()).toBe('62.19411');
+    // (329.67 - 300.3) x 3.
+    expect(closed.realizedPnl?.toString()).toBe('88.11');
     expect(await listOpenLots(db)).toHaveLength(0);
 
     // --- The published numbers ----------------------------------------------
@@ -124,9 +125,51 @@ describe('a trade from proposal to published statistics', () => {
     expect(stats.openPositions).toBe(0);
     expect(stats.wins).toBe(1);
     expect(stats.winRate).toBe(1);
-    expect(stats.totalRealizedPnl.toNumber()).toBeCloseTo(62.19411, 5);
-    // 62.19411 / (308.93863 x 3) = 6.71%.
-    expect(stats.averageReturn).toBeCloseTo(0.0671, 4);
+    expect(stats.totalRealizedPnl.toNumber()).toBeCloseTo(88.11, 5);
+    // 88.11 / (300.3 x 3) = 9.78%.
+    expect(stats.averageReturn).toBeCloseTo(0.0978, 4);
+  });
+
+  it('holds through a bearish cross that would sell below cost', async () => {
+    const cfg = config();
+    const entryRun = await runPipeline({
+      broker: new MockBrokerAdapter({
+        candles: { AAPL: barsThrough('2026-07-02') },
+        // Fills at 308.93863, just above the 2026-07-31 close of 308.91.
+        quotes: { AAPL: quote('AAPL', '308.630000') },
+      }),
+      config: cfg,
+      logger,
+      prisma: db,
+      clock: () => new Date('2026-07-02T13:35:00Z'),
+      generateThesis: stubThesis,
+    });
+    const entry = entryRun.signals[0]!;
+    await transitionSignal(entry.id, 'approved', 'ok', { prisma: db });
+    const executor = new PaperExecutor({
+      config: cfg,
+      logger,
+      prisma: db,
+      now: () => new Date('2026-07-02T13:36:00Z'),
+    });
+    await executor.execute((await getSignal(entry.id, db))!);
+
+    const crossRun = await runPipeline({
+      broker: new MockBrokerAdapter({
+        candles: { AAPL: barsThrough('2026-07-31') },
+        quotes: { AAPL: quote('AAPL', '305.000000') },
+      }),
+      config: cfg,
+      logger,
+      prisma: db,
+      clock: () => new Date('2026-07-31T13:35:00Z'),
+      generateThesis: stubThesis,
+    });
+
+    // The cross fires on the bar, but the lot stays open for the RSI exit or
+    // the time stop.
+    expect(crossRun.signals.filter((s) => s.side === 'sell')).toHaveLength(0);
+    expect(await listOpenLots(db)).toHaveLength(1);
   });
 
   it('exits on the time stop when no crossing obliges', async () => {
