@@ -6,9 +6,15 @@ import { listDevices, upsertDevice } from '../src/db/devices.js';
 import { insertSignal, type InsertSignalInput } from '../src/db/signals.js';
 import { runPipeline } from '../src/orchestrator/pipeline.js';
 import type { ApnsClient, ApnsResult } from '../src/orchestrator/push/apns.js';
-import { ApnsNotifier, buildNotifier, buildPayload } from '../src/orchestrator/push/notify.js';
+import {
+  ApnsNotifier,
+  PUSH_CATEGORY,
+  buildNotifier,
+  buildPayload,
+  buildReminderPayload,
+} from '../src/orchestrator/push/notify.js';
 import { MockBrokerAdapter } from '../src/orchestrator/robinhood/mockClient.js';
-import { closeTestPrisma, resetDatabase, testPrisma } from './helpers/db.js';
+import { closeTestPrisma, resetDatabase, testPrisma, uniqueDedupeKey } from './helpers/db.js';
 import { envConfig, signalInput, THROUGH_BULLISH_CROSS, validSnapshot } from './helpers/factories.js';
 
 const db = testPrisma();
@@ -51,17 +57,22 @@ afterAll(async () => {
   await closeTestPrisma();
 });
 
+// 16:00 EDT on a session day.
+const CLOSE = new Date('2026-08-10T20:00:00.000Z');
+
 describe('buildPayload', () => {
   it('carries the order and the deadline, and nothing from the raw snapshot', async () => {
     const signal = await seedSignal();
 
-    const payload = buildPayload(signal, 15);
+    const payload = buildPayload(signal, CLOSE);
 
     expect(payload.title).toBe('Buy AAPL');
     expect(payload.body).toContain('2 shares');
     expect(payload.body).toContain('182.50');
-    expect(payload.body).toContain('15 min');
+    expect(payload.body).toContain('Decide by 4:00 PM ET');
     expect(payload.data.signal_id).toBe(signal.id);
+    expect(payload.data.kind).toBe('new_signal');
+    expect(payload.data.expires_at).toBe(CLOSE.toISOString());
     // A lock screen is not the place for a broker's JSON.
     expect(JSON.stringify(payload)).not.toContain('schema_version');
   });
@@ -69,7 +80,7 @@ describe('buildPayload', () => {
   it('still builds a payload when the snapshot is unreadable', async () => {
     const signal = await seedSignal({ reviewSnapshot: { nope: true } });
 
-    const payload = buildPayload(signal, 15);
+    const payload = buildPayload(signal, CLOSE);
 
     expect(payload.title).toBe('Buy AAPL');
     expect(payload.data.estimated_price).toBeNull();
@@ -78,7 +89,31 @@ describe('buildPayload', () => {
   it('says share, not shares, for a single share', async () => {
     const signal = await seedSignal({ quantity: '1' });
 
-    expect(buildPayload(signal, 15).body).toContain('1 share at');
+    expect(buildPayload(signal, CLOSE).body).toContain('1 share at');
+  });
+
+  it('offers approve and decline on a paper signal, decline only on a live one', async () => {
+    const paper = await seedSignal();
+    const live = await seedSignal({ executionMode: 'live', dedupeKey: uniqueDedupeKey() });
+
+    expect(buildPayload(paper, CLOSE).category).toBe(PUSH_CATEGORY.paper);
+    expect(buildPayload(live, CLOSE).category).toBe(PUSH_CATEGORY.live);
+    expect(buildPayload(live, CLOSE).data.execution_mode).toBe('live');
+  });
+});
+
+describe('buildReminderPayload', () => {
+  it('says the signal is still undecided and when it expires', async () => {
+    const signal = await seedSignal();
+
+    const payload = buildReminderPayload(signal, CLOSE);
+
+    expect(payload.title).toBe('Still undecided: Buy AAPL');
+    expect(payload.body).toContain('2 shares at ~182.50');
+    expect(payload.body).toContain('Expires at 4:00 PM ET');
+    expect(payload.data.kind).toBe('reminder');
+    expect(payload.data.signal_id).toBe(signal.id);
+    expect(payload.category).toBe(PUSH_CATEGORY.paper);
   });
 });
 
@@ -136,6 +171,21 @@ describe('ApnsNotifier', () => {
     ).resolves.toBeUndefined();
   });
 
+  it('sends the reminder with the signal as its collapse id and the action category', async () => {
+    await upsertDevice({ apnsToken: 'token-a', environment: 'production' }, db);
+    const signal = await seedSignal();
+    const { client, spy } = fakeClient({ ok: true });
+
+    await new ApnsNotifier(client, config, silent).remindPendingSignal(signal, CLOSE);
+
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy.mock.calls[0]![0]).toMatchObject({
+      title: 'Still undecided: Buy AAPL',
+      collapseId: signal.id,
+      category: PUSH_CATEGORY.paper,
+    });
+  });
+
   it('does nothing when no device is registered', async () => {
     const signal = await seedSignal();
     const { spy } = fakeClient({ ok: true });
@@ -166,6 +216,9 @@ describe('push never blocks a signal', () => {
 
     const exploding = {
       async notifyNewSignal(): Promise<void> {
+        throw new Error('push subsystem is on fire');
+      },
+      async remindPendingSignal(): Promise<void> {
         throw new Error('push subsystem is on fire');
       },
     };

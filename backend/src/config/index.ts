@@ -65,7 +65,25 @@ const EnvSchema = z.object({
   MAX_TOTAL_EXPOSURE_CENTS: positiveInt.default(500_000),
 
   SLIPPAGE_BPS: nonNegativeInt.default(10),
+  /**
+   * The shortest approval window. With SIGNAL_EXPIRES_AT_CLOSE on (the default)
+   * a signal proposed during a session stays open until that session's 16:00
+   * ET close, and this is only the floor for signals created outside one.
+   */
   SIGNAL_EXPIRY_MINUTES: positiveInt.default(15),
+  /**
+   * Keep a signal open until the regular close of the session it was proposed
+   * in. Signals come from the last completed daily bar, which does not change
+   * until the next session, so the decision is as valid at 15:00 as at 09:40.
+   * Off restores the fixed SIGNAL_EXPIRY_MINUTES window.
+   */
+  SIGNAL_EXPIRES_AT_CLOSE: bool.default(true),
+  /**
+   * Minutes before expiry to push one reminder for a still-pending signal.
+   * 0 disables it. Skipped when the whole window is shorter than this, since
+   * the new-signal push already covers it.
+   */
+  SIGNAL_REMINDER_MINUTES: nonNegativeInt.default(30),
 
   PIPELINE_CRON: z.string().default('35 9 * * 1-5'),
   EXPIRY_SWEEP_CRON: z.string().default('* * * * *'),
@@ -164,6 +182,8 @@ export interface Config {
   risk: RiskConfig;
   slippageBps: number;
   signalExpiryMinutes: number;
+  signalExpiresAtClose: boolean;
+  signalReminderMinutes: number;
   pipelineCron: string;
   expirySweepCron: string;
   publishSweepCron: string;
@@ -244,7 +264,9 @@ export function buildConfig(source: NodeJS.ProcessEnv = process.env): Config {
   // The veto window has to close before the signal expires, or the expiry
   // sweep wins the race and autonomy never approves anything: every signal
   // just expires with nobody having said no. Only checked with autonomy on,
-  // where the two windows actually compete.
+  // where the two windows actually compete. Checked against the floor, the
+  // shortest window a signal can get, so it holds with SIGNAL_EXPIRES_AT_CLOSE
+  // on or off.
   if (env.AUTONOMY_ENABLED && env.AUTONOMY_VETO_MINUTES >= env.SIGNAL_EXPIRY_MINUTES) {
     throw new Error(
       `AUTONOMY_VETO_MINUTES (${env.AUTONOMY_VETO_MINUTES}) must be below SIGNAL_EXPIRY_MINUTES ` +
@@ -283,6 +305,8 @@ export function buildConfig(source: NodeJS.ProcessEnv = process.env): Config {
     },
     slippageBps: env.SLIPPAGE_BPS,
     signalExpiryMinutes: env.SIGNAL_EXPIRY_MINUTES,
+    signalExpiresAtClose: env.SIGNAL_EXPIRES_AT_CLOSE,
+    signalReminderMinutes: env.SIGNAL_REMINDER_MINUTES,
     pipelineCron: env.PIPELINE_CRON,
     expirySweepCron: env.EXPIRY_SWEEP_CRON,
     publishSweepCron: env.PUBLISH_SWEEP_CRON,

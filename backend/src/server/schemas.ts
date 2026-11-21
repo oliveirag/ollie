@@ -1,5 +1,6 @@
 import type { LiveOrder, Signal } from '@prisma/client';
 import { z } from 'zod';
+import { signalExpiresAt, type ExpiryConfig } from '../orchestrator/expiry.js';
 import { parseReviewSnapshot } from '../orchestrator/reviewSnapshot.js';
 
 /**
@@ -126,8 +127,10 @@ export const SignalSummarySchema = z.object({
     .datetime()
     .nullable()
     .describe(
-      'created_at + SIGNAL_EXPIRY_MINUTES, computed at read time, for pending signals only. ' +
-        'The expiry sweep remains the authority; this is a countdown hint, not a promise.',
+      'For pending signals only, computed at read time: the 16:00 ET close of the session the ' +
+        'signal was proposed in, or created_at + SIGNAL_EXPIRY_MINUTES when that is later or ' +
+        'the signal was created outside a session. The expiry sweep remains the authority; ' +
+        'this is a countdown hint, not a promise.',
     ),
   decided_at: z.string().datetime().nullable(),
   decide_reason: z.string().nullable(),
@@ -184,7 +187,7 @@ function readThesisSource(value: string): SignalSummary['thesis_source'] {
 
 export function toSignalSummary(
   signal: Signal,
-  expiryMinutes: number,
+  expiry: ExpiryConfig,
   order: LiveOrder | null = null,
 ): SignalSummary {
   return {
@@ -201,7 +204,7 @@ export function toSignalSummary(
     thesis_source: readThesisSource(signal.thesisSource),
     expires_at:
       signal.status === 'pending'
-        ? new Date(signal.createdAt.getTime() + expiryMinutes * 60_000).toISOString()
+        ? signalExpiresAt(signal.createdAt, expiry).toISOString()
         : null,
     decided_at: signal.decidedAt?.toISOString() ?? null,
     decide_reason: signal.decideReason ?? null,
@@ -304,7 +307,7 @@ export function toSignalEvent(event: {
 export function toSignalDetail(
   signal: Signal,
   events: Parameters<typeof toSignalEvent>[0][],
-  expiryMinutes: number,
+  expiry: ExpiryConfig,
   order: LiveOrder | null = null,
 ): SignalDetail {
   let review: SignalDetail['review'] = null;
@@ -320,7 +323,7 @@ export function toSignalDetail(
   }
 
   return {
-    ...toSignalSummary(signal, expiryMinutes, order),
+    ...toSignalSummary(signal, expiry, order),
     indicators: signal.indicators,
     review,
     events: events.map(toSignalEvent),

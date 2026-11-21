@@ -12,7 +12,9 @@ import {
   LiveExecutor,
   LiveModeNotEnabledError,
   PaperExecutor,
+  StaleFillPriceError,
 } from '../src/orchestrator/executor.js';
+import { expiryReason, signalExpiresAt } from '../src/orchestrator/expiry.js';
 import { runPipeline, sweepExpiredSignals } from '../src/orchestrator/pipeline.js';
 import { parseReviewSnapshot } from '../src/orchestrator/reviewSnapshot.js';
 import { MockBrokerAdapter } from '../src/orchestrator/robinhood/mockClient.js';
@@ -227,6 +229,41 @@ describe('no snapshot, no signal', () => {
 });
 
 describe('approval writes a paper fill', () => {
+  it('fills at the approval-time price when the caller supplies one', async () => {
+    const { signals } = await runPipeline(deps());
+    await transitionSignal(signals[0]!.id, 'approved', 'owner approved', { prisma: db });
+    const approved = (await getSignal(signals[0]!.id, db))!;
+
+    // Hours after the proposal, at a price the 09:35 estimate knew nothing about.
+    const executor = new PaperExecutor({
+      config: config(),
+      logger,
+      prisma: db,
+      now: () => new Date(NOW.getTime() + 5 * 60 * 60_000),
+    });
+    const outcome = await executor.execute(approved, { fillBasis: '300.00' });
+    if (outcome.kind !== 'filled') throw new Error('a paper fill is always synchronous');
+
+    // 300.00 * (1 + 10/10000), not the proposal's 308.63.
+    expect(outcome.execution.fillPrice.toString()).toBe('300.3');
+  });
+
+  it('refuses to fill at a proposal estimate older than the floor window', async () => {
+    const { signals } = await runPipeline(deps());
+    await transitionSignal(signals[0]!.id, 'approved', 'owner approved', { prisma: db });
+    const approved = (await getSignal(signals[0]!.id, db))!;
+
+    const executor = new PaperExecutor({
+      config: config(),
+      logger,
+      prisma: db,
+      now: () => new Date(NOW.getTime() + 16 * 60_000),
+    });
+
+    await expect(executor.execute(approved)).rejects.toThrow(StaleFillPriceError);
+    expect(await listExecutions(approved.id, db)).toHaveLength(0);
+  });
+
   it('fills at the review estimate moved against the trader by the slippage', async () => {
     const { signals } = await runPipeline(deps());
     const signal = signals[0]!;
@@ -279,7 +316,7 @@ describe('approval writes a paper fill', () => {
     const approved = (await getSignal(signals[0]!.id, db))!;
 
     const before = mock.calls.length;
-    await new PaperExecutor({ config: config(), logger, prisma: db }).execute(approved);
+    await new PaperExecutor({ config: config(), logger, prisma: db, now: clock }).execute(approved);
 
     expect(mock.calls).toHaveLength(before);
     expect(mock.callsTo('placeEquityOrder')).toHaveLength(0);
@@ -337,6 +374,31 @@ describe('expiry sweep', () => {
 
     const events = await listSignalEvents(expired[0]!.id, db);
     expect(events[0]!.toStatus).toBe('expired');
+  });
+
+  it('keeps a session signal open until the close when SIGNAL_EXPIRES_AT_CLOSE is on', async () => {
+    const closeConfig = config({ SIGNAL_EXPIRES_AT_CLOSE: 'true' });
+    const { signals } = await runPipeline(deps());
+    // Measured from the real created_at, so this holds whenever the suite runs:
+    // during a session the deadline is the close, outside one it is the floor.
+    const deadline = signalExpiresAt(signals[0]!.createdAt, closeConfig);
+
+    const early = await sweepExpiredSignals({
+      config: closeConfig,
+      logger,
+      prisma: db,
+      clock: () => new Date(deadline.getTime() - 60_000),
+    });
+    expect(early).toHaveLength(0);
+
+    const due = await sweepExpiredSignals({
+      config: closeConfig,
+      logger,
+      prisma: db,
+      clock: () => new Date(deadline.getTime() + 60_000),
+    });
+    expect(due.map((s) => s.id)).toEqual([signals[0]!.id]);
+    expect(due[0]!.decideReason).toBe(expiryReason(signals[0]!.createdAt, closeConfig));
   });
 
   it('does not touch a signal the owner already decided', async () => {

@@ -23,7 +23,7 @@ import {
   transitionSignal,
   type DecidedStatus,
 } from '../src/db/signals.js';
-import { executorFor } from '../src/orchestrator/executor.js';
+import { executorFor, paperFillPrice } from '../src/orchestrator/executor.js';
 import { preflightExecution } from '../src/orchestrator/preflight.js';
 import { parseReviewSnapshot } from '../src/orchestrator/reviewSnapshot.js';
 import { brokerFromConfig } from '../src/orchestrator/robinhood/brokerFromConfig.js';
@@ -115,20 +115,35 @@ async function main(): Promise<void> {
     }
   }
 
+  // Only built on approval. A paper approval needs it for one read-only review
+  // (the fill price, taken now and before the transition, so a broker that
+  // cannot price leaves the signal pending); PaperExecutor itself holds no
+  // reference to it.
+  const broker = status === 'approved' ? brokerFromConfig(config, logger) : null;
+  let fillBasis: string | undefined;
+  if (broker && signal.executionMode === 'paper') {
+    try {
+      fillBasis = await paperFillPrice(signal, broker);
+    } catch (error) {
+      await broker.close();
+      throw new Error(
+        `could not price the fill (${error instanceof Error ? error.message : String(error)}); ` +
+          `signal ${signalId} is still pending`,
+      );
+    }
+  }
+
   const decided = await transitionSignal(signalId, status, reason);
   console.log(`\nsignal ${signalId} -> ${decided.status} (${reason})`);
 
-  if (status === 'rejected') {
+  if (!broker) {
     console.log('rejected signals stay on the record with their reason; nothing was executed.');
     return;
   }
 
-  // Only reached on approval. The broker is constructed but unused in paper
-  // mode — PaperExecutor holds no reference to it.
-  const broker = brokerFromConfig(config, logger);
   try {
     const executor = executorFor(decided, { config, logger }, broker);
-    const outcome = await executor.execute(decided);
+    const outcome = await executor.execute(decided, fillBasis === undefined ? {} : { fillBasis });
 
     if (outcome.kind === 'placed') {
       console.log(`\nLIVE order placed: ${outcome.order.brokerOrderId} (${outcome.order.state})`);

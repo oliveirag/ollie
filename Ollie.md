@@ -76,7 +76,7 @@ The trading loop. Runs on a schedule or trigger.
 - Push notification on a new pending signal.
 - Approval screen shows symbol, side, quantity, estimated price, review warnings, and the thesis.
 - One-tap Approve or Reject. Approve in paper mode records a simulated fill; Approve in live mode (later) calls `place_equity_order`.
-- Signals expire after a configurable window (default 15 minutes) if not acted on, and are logged as expired.
+- Signals expire at the 16:00 ET close of the session they were proposed in (minimum 15 minutes, configurable) if not acted on, and are logged as expired. One push reminder goes out 30 minutes before expiry.
 
 **Acceptance criteria:**
 - Approving a paper signal writes a paper fill and never touches the broker.

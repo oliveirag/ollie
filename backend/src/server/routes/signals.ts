@@ -13,7 +13,7 @@ import {
   type DecidedStatus,
 } from '../../db/signals.js';
 import type { Logger } from 'pino';
-import { executorFor } from '../../orchestrator/executor.js';
+import { executorFor, paperFillPrice } from '../../orchestrator/executor.js';
 import { preflightExecution } from '../../orchestrator/preflight.js';
 import type { BrokerAdapter } from '../../orchestrator/robinhood/client.js';
 import {
@@ -67,7 +67,7 @@ export const registerSignalRoutes: FastifyPluginAsyncZod<SignalRouteOptions> = a
         summary: 'List pending or decided signals',
         description:
           'Pending items carry `expires_at`, computed at read time from the current ' +
-          'SIGNAL_EXPIRY_MINUTES. The expiry sweep remains the authority on what is ' +
+          'expiry settings. The expiry sweep remains the authority on what is ' +
           'actually expired; the timestamp drives the countdown UI and nothing else.',
         tags: ['signals'],
         security: [{ ownerToken: [] }],
@@ -88,7 +88,7 @@ export const registerSignalRoutes: FastifyPluginAsyncZod<SignalRouteOptions> = a
 
       return {
         signals: signals.map((signal) =>
-          toSignalSummary(signal, config.signalExpiryMinutes, orders.get(signal.id) ?? null),
+          toSignalSummary(signal, config, orders.get(signal.id) ?? null),
         ),
       };
     },
@@ -122,7 +122,7 @@ export const registerSignalRoutes: FastifyPluginAsyncZod<SignalRouteOptions> = a
       const order = await latestOrderForSignal(signal.id);
       return reply
         .code(200)
-        .send(toSignalDetail(signal, events, config.signalExpiryMinutes, order));
+        .send(toSignalDetail(signal, events, config, order));
     },
   );
 
@@ -150,7 +150,8 @@ export const registerSignalRoutes: FastifyPluginAsyncZod<SignalRouteOptions> = a
           404: ErrorSchema.describe('No signal with that id'),
           409: ErrorSchema.describe(
             'Already decided or expired, the kill switch is engaged, live mode is not enabled, ' +
-              'or a live approval lacks confirm_live',
+              'a live approval lacks confirm_live, or a paper approval could not get a current ' +
+              'price (`reprice_failed`, the signal stays pending)',
           ),
           500: ErrorSchema.describe('Approved, but the fill failed — see detail'),
         },
@@ -188,6 +189,24 @@ export const registerSignalRoutes: FastifyPluginAsyncZod<SignalRouteOptions> = a
         if (blocked) return reply.code(409).send(blocked);
       }
 
+      // A paper approval fills at today's price, not the proposal's (see
+      // paperFillPrice). Priced here, before the transition, for the same
+      // reason as the pre-flight: a broker that cannot price must leave the
+      // signal pending and decidable, not approved with no fill.
+      let fillBasis: string | undefined;
+      if (status === 'approved' && signal.executionMode === 'paper') {
+        try {
+          fillBasis = await paperFillPrice(signal, broker);
+        } catch (error) {
+          request.log.warn({ err: error, signal_id: id }, 'approval-time review failed; signal left pending');
+          return reply.code(409).send({
+            error: 'reprice_failed',
+            detail:
+              'could not get a current price for the fill; the signal is still pending, try again',
+          });
+        }
+      }
+
       let decided;
       try {
         decided = await transitionSignal(id, status, decideReason);
@@ -204,7 +223,7 @@ export const registerSignalRoutes: FastifyPluginAsyncZod<SignalRouteOptions> = a
         throw error;
       }
 
-      const summary = toSignalSummary(decided, config.signalExpiryMinutes);
+      const summary = toSignalSummary(decided, config);
       if (status === 'rejected') {
         return reply.code(200).send({ signal: summary, execution: null, order: null });
       }
@@ -212,7 +231,7 @@ export const registerSignalRoutes: FastifyPluginAsyncZod<SignalRouteOptions> = a
       let outcome;
       try {
         const executor = executorFor(decided, { config, logger }, broker);
-        outcome = await executor.execute(decided);
+        outcome = await executor.execute(decided, fillBasis === undefined ? {} : { fillBasis });
       } catch (error) {
         // The narrow window the pre-flight cannot close: the kill switch was
         // flipped between the check and the fill. The signal is approved and
@@ -235,7 +254,7 @@ export const registerSignalRoutes: FastifyPluginAsyncZod<SignalRouteOptions> = a
       // report, and the order poll records it and publishes (Phase 5).
       if (outcome.kind === 'placed') {
         return reply.code(200).send({
-          signal: toSignalSummary(decided, config.signalExpiryMinutes, outcome.order),
+          signal: toSignalSummary(decided, config, outcome.order),
           execution: null,
           order: toOrderView(outcome.order),
         });
@@ -258,7 +277,7 @@ export const registerSignalRoutes: FastifyPluginAsyncZod<SignalRouteOptions> = a
       }
 
       return reply.code(200).send({
-        signal: toSignalSummary(published, config.signalExpiryMinutes),
+        signal: toSignalSummary(published, config),
         execution: {
             id: execution.id,
             mode: execution.mode,

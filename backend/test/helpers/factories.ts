@@ -160,7 +160,7 @@ export function envConfig(overrides: Record<string, string> = {}): Config {
 
 /**
  * The caps the pipeline tests run under: $1,000 a trade, $2,000 a symbol, three
- * trades a day, 10 bps slippage, 15-minute expiry.
+ * trades a day, 10 bps slippage, a fixed 15-minute expiry.
  */
 export function pipelineConfig(overrides: Record<string, string> = {}): Config {
   return envConfig({
@@ -170,6 +170,9 @@ export function pipelineConfig(overrides: Record<string, string> = {}): Config {
     MAX_TOTAL_EXPOSURE_CENTS: '500000',
     SLIPPAGE_BPS: '10',
     SIGNAL_EXPIRY_MINUTES: '15',
+    // created_at is stamped by the database with the real time, so a window
+    // that runs to the close would make these depend on when the suite runs.
+    SIGNAL_EXPIRES_AT_CLOSE: 'false',
     ...overrides,
   });
 }

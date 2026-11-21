@@ -10,7 +10,7 @@ import {
   publishSignal,
   transitionSignal,
 } from '../db/signals.js';
-import { executorFor, selectLotsToClose } from './executor.js';
+import { executorFor, paperFillPrice, selectLotsToClose } from './executor.js';
 import type { BrokerAdapter } from './robinhood/client.js';
 
 /**
@@ -87,6 +87,20 @@ export async function sweepAutonomy(deps: AutonomySweepDeps): Promise<AutonomySw
       }
     }
 
+    // Priced before the transition, like the route: a paper fill at the
+    // proposal's estimate could be hours stale, and a broker that cannot price
+    // must leave the signal pending rather than approved with no fill.
+    let fillBasis: string | undefined;
+    if (signal.executionMode === 'paper') {
+      try {
+        fillBasis = await paperFillPrice(signal, deps.broker);
+      } catch (error) {
+        skipped += 1;
+        log.warn({ signal_id: signal.id, err: error }, 'auto-approval skipped: could not price the fill');
+        continue;
+      }
+    }
+
     let decided: Signal;
     try {
       decided = await transitionSignal(signal.id, 'approved', AUTO_APPROVE_REASON, {
@@ -108,7 +122,7 @@ export async function sweepAutonomy(deps: AutonomySweepDeps): Promise<AutonomySw
         { config: deps.config, logger: deps.logger, ...(deps.prisma ? { prisma: deps.prisma } : {}), now: () => now },
         deps.broker,
       );
-      const outcome = await executor.execute(decided);
+      const outcome = await executor.execute(decided, fillBasis === undefined ? {} : { fillBasis });
       if (outcome.kind === 'filled') {
         try {
           await publishSignal(decided.id, { now, ...(deps.prisma ? { prisma: deps.prisma } : {}) });

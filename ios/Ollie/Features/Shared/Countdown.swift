@@ -53,23 +53,34 @@ struct Countdown: View {
         urgency == .critical && !reduceMotion
     }
 
-    /// Fraction of the *configured* window still left. The window is not on the
-    /// wire, so this assumes the backend default; a wrong assumption changes
-    /// only how full the ring looks, never the digits.
+    /// Fraction of the final 15 minutes still left. A signal now lives until the
+    /// close, hours away, and the window is not on the wire, so the ring stays
+    /// full until the stretch where it matters and drains through it. Only how
+    /// full the ring looks depends on this, never the digits.
     private func fraction(remaining: TimeInterval) -> Double {
         min(1, max(0, remaining / (15 * 60)))
     }
 
+    /// "14:59" under an hour, "6:24:10" from an hour up. Signals live until the
+    /// close, so a morning signal shows hours; minutes alone would read "384:10".
     static func format(_ remaining: TimeInterval) -> String {
         let total = Int(remaining.rounded(.down))
+        let hours = total / 3600
+        if hours > 0 {
+            return String(format: "%d:%02d:%02d", hours, (total % 3600) / 60, total % 60)
+        }
         return String(format: "%d:%02d", total / 60, total % 60)
     }
 
     static func spoken(_ remaining: TimeInterval) -> String {
         let total = Int(remaining.rounded(.down))
         if total <= 0 { return "Expiring now" }
-        let minutes = total / 60
+        let hours = total / 3600
+        let minutes = (total % 3600) / 60
         let seconds = total % 60
+        if hours > 0 {
+            return "\(hours) hour\(hours == 1 ? "" : "s") \(minutes) minute\(minutes == 1 ? "" : "s") remaining"
+        }
         if minutes == 0 { return "\(seconds) seconds remaining" }
         return "\(minutes) minute\(minutes == 1 ? "" : "s") \(seconds) second\(seconds == 1 ? "" : "s") remaining"
     }

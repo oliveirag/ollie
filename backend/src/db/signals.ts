@@ -313,7 +313,11 @@ export async function firstLivePublishedAt(
   return first?.publishedAt ?? null;
 }
 
-/** Pending signals whose approval window has elapsed, oldest first. */
+/**
+ * Pending signals created before `cutoff`, oldest first. The expiry sweep
+ * passes the floor window's cutoff and then applies each signal's exact
+ * deadline (orchestrator/expiry.ts).
+ */
 export async function listExpiredPendingSignals(
   cutoff: Date,
   prisma: PrismaClient = getPrisma(),

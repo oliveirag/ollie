@@ -48,9 +48,10 @@ let a later run write yesterday's mark, and that is deliberate.
 curl -sS -H "Authorization: Bearer $TOKEN" "$OLLIE/v1/signals?status=pending"
 ```
 
-Outside the 15-minute approval window this should be empty. A signal pending for
-hours means the expiry sweep is not running — check that the scheduler started
-(`scheduler started` in the logs, with `next_pipeline_run`).
+After the 16:00 ET close this should be empty: a signal proposed during a
+session stays open until that close (`SIGNAL_EXPIRES_AT_CLOSE`). A signal still
+pending after it means the expiry sweep is not running — check that the
+scheduler started (`scheduler started` in the logs, with `next_pipeline_run`).
 
 Then skim the decided list for reasons that are missing or unhelpful:
 

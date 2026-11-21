@@ -16,6 +16,7 @@ import { getAppSettings } from '../db/settings.js';
 import { listOpenLots } from '../db/trackRecord.js';
 import { generateThesis as defaultGenerateThesis } from './anthropic/thesis.js';
 import type { ThesisInput, ThesisResult } from './anthropic/thesis.js';
+import { expiryReason, signalExpiresAt } from './expiry.js';
 import { paperPositions } from './paperPositions.js';
 import { applyRiskCaps, type RiskRejection } from './risk.js';
 import type { Notifier } from './push/notify.js';
@@ -342,9 +343,7 @@ export async function runPipeline(deps: PipelineDeps): Promise<PipelineResult> {
           thesis_source: thesis.source,
           thesis: thesis.text,
           execution_mode: signal.executionMode,
-          expires_at: new Date(
-            now.getTime() + config.signalExpiryMinutes * 60_000,
-          ).toISOString(),
+          expires_at: signalExpiresAt(signal.createdAt, config).toISOString(),
         },
         'SIGNAL PENDING — awaiting owner decision',
       );
@@ -412,9 +411,12 @@ export interface ExpirySweepDeps {
 export async function sweepExpiredSignals(deps: ExpirySweepDeps): Promise<Signal[]> {
   const clock = deps.clock ?? (() => new Date());
   const now = clock();
-  const cutoff = new Date(now.getTime() - deps.config.signalExpiryMinutes * 60_000);
-
-  const stale = await listExpiredPendingSignals(cutoff, deps.prisma);
+  // Every expired signal is at least the floor window old, so the query
+  // narrows by that and the exact per-signal deadline decides.
+  const floorCutoff = new Date(now.getTime() - deps.config.signalExpiryMinutes * 60_000);
+  const stale = (await listExpiredPendingSignals(floorCutoff, deps.prisma)).filter(
+    (signal) => signalExpiresAt(signal.createdAt, deps.config).getTime() <= now.getTime(),
+  );
   if (stale.length === 0) return [];
 
   const log = newRunLogger('expiry', deps.logger);
@@ -425,7 +427,7 @@ export async function sweepExpiredSignals(deps: ExpirySweepDeps): Promise<Signal
       const updated = await transitionSignal(
         signal.id,
         'expired',
-        `not decided within ${deps.config.signalExpiryMinutes} minutes`,
+        expiryReason(signal.createdAt, deps.config),
         { now, ...(deps.prisma ? { prisma: deps.prisma } : {}) },
       );
       expired.push(updated);

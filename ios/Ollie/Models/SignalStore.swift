@@ -226,7 +226,13 @@ final class SignalStore {
         case .conflict(let conflict):
             let payload = try conflict.body.json
             await refresh()
-            throw OllieError.notPending(status: payload.status?.rawValue ?? "decided")
+            // A 409 with a status means someone else decided it. Without one it
+            // is a refusal the signal survives (kill switch, no current price),
+            // and the server's detail says which.
+            if let status = payload.status {
+                throw OllieError.notPending(status: status.rawValue)
+            }
+            throw OllieError.server(payload.detail ?? "Refused by the server.")
 
         case .notFound:
             await refresh()
