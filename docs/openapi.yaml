@@ -510,7 +510,7 @@ components:
           minimum: -9007199254740991
           maximum: 9007199254740991
           nullable: true
-          description: How stale the quote is. Render it — a stale price read as current is a lie.
+          description: Seconds since the venue last traded, null when the broker did not say. Render it — a stale price read as current is a lie.
         unrealized_pnl:
           type: string
           description: |-

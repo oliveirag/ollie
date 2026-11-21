@@ -211,12 +211,24 @@ export async function closeLots(
   const recordedAt = input.recordedAt ?? new Date();
 
   const run = async (tx: Prisma.TransactionClient): Promise<TrackRecord[]> => {
+    // Every lot's newest row and its signal's size, read in two queries for the
+    // whole batch rather than two per lot. Still inside the transaction, so the
+    // state checked is the state the closes are written against.
+    const latestRows = await tx.trackRecord.findMany({
+      where: { signalId: { in: [...input.signalIds] } },
+      orderBy: [{ signalId: 'asc' }, { recordedAt: 'desc' }, { id: 'desc' }],
+      distinct: ['signalId'],
+    });
+    const latestBySignal = new Map(latestRows.map((row) => [row.signalId, row]));
+    const signals = await tx.signal.findMany({
+      where: { id: { in: [...input.signalIds] } },
+      select: { id: true, quantity: true },
+    });
+    const signalQuantity = new Map(signals.map((signal) => [signal.id, signal.quantity]));
+
     const closed: TrackRecord[] = [];
     for (const signalId of input.signalIds) {
-      const latest = await tx.trackRecord.findFirst({
-        where: { signalId },
-        orderBy: [{ recordedAt: 'desc' }, { id: 'desc' }],
-      });
+      const latest = latestBySignal.get(signalId);
       if (!latest || latest.status !== 'open') {
         // Throwing rolls back the rows already appended in this transaction.
         throw new Error(
@@ -224,9 +236,10 @@ export async function closeLots(
         );
       }
 
-      const signal = await tx.signal.findUniqueOrThrow({ where: { id: signalId } });
+      const ownQuantity = signalQuantity.get(signalId);
+      if (!ownQuantity) throw new Error(`signal ${signalId} does not exist`);
       // The lot's own size when a live fill set one; the signal's otherwise.
-      const quantity = new Prisma.Decimal(latest.quantity ?? signal.quantity);
+      const quantity = new Prisma.Decimal(latest.quantity ?? ownQuantity);
       const realizedPnl = exitPrice.minus(latest.entryPrice).times(quantity);
 
       closed.push(
@@ -252,32 +265,31 @@ export async function closeLots(
   return isFullClient(prisma) ? prisma.$transaction(run) : run(prisma);
 }
 
+function utcDayBounds(when: Date): { start: Date; end: Date } {
+  const start = new Date(Date.UTC(when.getUTCFullYear(), when.getUTCMonth(), when.getUTCDate()));
+  return { start, end: new Date(start.getTime() + 24 * 60 * 60 * 1000) };
+}
+
 /**
- * Whether a lot already has a mark row for the UTC day containing `when`.
+ * The ids of every lot that already has a mark row for the UTC day containing
+ * `when`, in one query. The mark job reads this once per firing rather than
+ * asking lot by lot.
  *
  * The guard that keeps the mark job idempotent: a restart, a manual run, or an
  * overlapping firing must not append a second mark for the same day, because
  * the curve sums that day's marks and a duplicate would double-count a lot.
  */
-export async function hasMarkForDay(
-  signalId: string,
+export async function lotsMarkedOnDay(
   when: Date,
   prisma: PrismaClient = getPrisma(),
-): Promise<boolean> {
-  const start = new Date(
-    Date.UTC(when.getUTCFullYear(), when.getUTCMonth(), when.getUTCDate()),
-  );
-  const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
-
-  const existing = await prisma.trackRecord.findFirst({
-    where: {
-      signalId,
-      markPrice: { not: null },
-      recordedAt: { gte: start, lt: end },
-    },
-    select: { id: true },
+): Promise<Set<string>> {
+  const { start, end } = utcDayBounds(when);
+  const rows = await prisma.trackRecord.findMany({
+    where: { markPrice: { not: null }, recordedAt: { gte: start, lt: end } },
+    select: { signalId: true },
+    distinct: ['signalId'],
   });
-  return existing !== null;
+  return new Set(rows.map((row) => row.signalId));
 }
 
 /**

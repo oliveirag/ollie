@@ -511,4 +511,20 @@ describe('rate limiting', () => {
       await tight.close();
     }
   });
+
+  it('keys on the address the edge appended, not a client-written X-Forwarded-For', async () => {
+    const tight = await buildTestSignalApp({ rateLimit: { max: 2, timeWindow: '1 minute' } });
+    try {
+      const statuses: number[] = [];
+      for (let i = 0; i < 3; i += 1) {
+        // What Railway forwards when a client sends its own header: the
+        // client's value first, then the address the edge saw.
+        const headers = { 'x-forwarded-for': `10.0.0.${i}, 203.0.113.9` };
+        statuses.push((await tight.inject({ method: 'GET', url: '/v1/feed', headers })).statusCode);
+      }
+      expect(statuses).toEqual([401, 401, 429]);
+    } finally {
+      await tight.close();
+    }
+  });
 });

@@ -66,8 +66,9 @@ export async function buildSignalApp(deps: SignalAppDeps): Promise<OllieApp> {
     // One hop: Railway's edge proxy. The rate limit keys on request.ip, and
     // `true` would take the leftmost X-Forwarded-For entry, which any client
     // can write, so every request could claim a fresh IP. With 1 the address
-    // is the one the edge itself appended.
-    trustProxy: 1,
+    // is the one the edge itself appended. Written as the hop function that
+    // `trustProxy: 1` means, because Fastify's typings no longer take a number.
+    trustProxy: (_address: string, hop: number) => hop < 1,
   }).withTypeProvider<ZodTypeProvider>();
 
   app.setValidatorCompiler(validatorCompiler);

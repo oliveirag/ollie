@@ -124,6 +124,20 @@ export async function revokeAllButNewest(
   return updated.count;
 }
 
+/** Whether `id` is a token of `kind` belonging to the user. One indexed lookup. */
+export async function ownsToken(
+  id: string,
+  userId: string,
+  kind: TokenKind,
+  prisma: PrismaClient = getPrisma(),
+): Promise<boolean> {
+  const token = await prisma.subscriberToken.findFirst({
+    where: { id, userId, kind },
+    select: { id: true },
+  });
+  return token !== null;
+}
+
 export async function listTokens(
   userId: string,
   kind: TokenKind,

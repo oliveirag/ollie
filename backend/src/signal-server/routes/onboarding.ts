@@ -8,6 +8,7 @@ import {
   hasLiveToken,
   listTokens,
   mintToken,
+  ownsToken,
   revokeAllButNewest,
   revokeToken,
 } from '../../db/subscriberTokens.js';
@@ -298,9 +299,7 @@ export const registerOnboardingRoutes: FastifyPluginAsyncZod<OnboardingRouteOpti
     },
     async (request, reply) => {
       const user = request.subscriber!;
-      const owned = (await listTokens(user.id, 'mcp', prisma)).some(
-        (token) => token.id === request.params.id,
-      );
+      const owned = await ownsToken(request.params.id, user.id, 'mcp', prisma);
       if (!owned) return reply.code(404).send({ error: 'token_not_found' });
 
       if (await revokeToken(request.params.id, user.id, { prisma })) {
