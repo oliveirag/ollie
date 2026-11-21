@@ -51,7 +51,9 @@ never touches your working data.
 | `npm run pipeline:once -- --broker=real` | One pipeline run against the live broker |
 | `npm run signal:decide -- --list` | Show pending signals |
 | `npm run signal:decide -- <id> approve\|reject [--reason "…"] [--confirm-live]` | Break-glass decision from the CLI |
-| `npm run backtest` | Replay the strategy over cached historical bars |
+| `npm run backtest` | Replay the strategy over cached historical bars (`--trades=out.csv` writes every trade with its excursions) |
+| `npm run backtest:compare` | Run strategy variants from a JSON file side by side across the fixed windows, with a bootstrap interval on each expectancy difference |
+| `npm run backtest:parity` | Check the replay proposes what production proposed, from saved `GET /v1/signals` responses |
 | `npm run seed:track-record` | Seed a local multi-trade record (localhost only) |
 | `npm run openapi:write` | Regenerate `docs/openapi*.yaml` from the route schemas |
 | `npm run disclaimer:write` | Regenerate `docs/disclaimer.md` from `src/published/disclaimer.ts` |

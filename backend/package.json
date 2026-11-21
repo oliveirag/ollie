@@ -28,6 +28,8 @@
     "openapi:write": "tsx scripts/write-openapi.ts",
     "seed:track-record": "tsx scripts/seed-track-record.ts",
     "backtest": "tsx scripts/backtest.ts",
+    "backtest:compare": "tsx scripts/backtest-compare.ts",
+    "backtest:parity": "tsx scripts/backtest-parity.ts",
     "disclaimer:write": "tsx scripts/write-disclaimer.ts",
     "start:signal": "node dist/signal-server/index.js",
     "dev:signal": "tsx watch src/signal-server/index.ts"

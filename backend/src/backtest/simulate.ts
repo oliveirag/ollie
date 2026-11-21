@@ -1,8 +1,13 @@
-import { dec, applySlippage } from '../money.js';
+import { dec, applySlippage, type Decimal } from '../money.js';
 import { applyRiskCaps, type RiskRejectionReason } from '../orchestrator/risk.js';
 import type { RiskConfig } from '../config/index.js';
 import type { Position } from '../orchestrator/robinhood/client.js';
-import { evaluateExit, evaluateTechnical, requiredBars } from '../orchestrator/strategy/index.js';
+import {
+  evaluateExit,
+  evaluateStopLoss,
+  evaluateTechnical,
+  requiredBars,
+} from '../orchestrator/strategy/index.js';
 import type { Candle, CandidateSignal, SignalRule, StrategyConfig } from '../orchestrator/strategy/index.js';
 
 /**
@@ -54,6 +59,21 @@ export interface BacktestInput {
   approvalRate?: number;
   /** Seeds the approval draw, so a run below 1.0 is still reproducible. */
   seed?: number;
+  /**
+   * Only bars inside this window may open a position; exits keep running
+   * after it so every lot opened inside resolves. Bars before `from` still
+   * warm the indicators up, which slicing the history would not do. ISO
+   * strings, `to` exclusive. Omitted, every bar may open a position.
+   */
+  entryWindow?: { from?: string; to?: string };
+  /**
+   * Calendar days of history handed to the rules on each bar, as the pipeline
+   * fetches (CANDLE_LOOKBACK_DAYS). Omitted, the rules see every bar so far.
+   * The indicators converge well inside the production window, so this mostly
+   * buys speed on long histories; passing it also keeps the replay honest
+   * about what production can see.
+   */
+  lookbackDays?: number;
 }
 
 export interface BacktestTrade {
@@ -68,6 +88,14 @@ export interface BacktestTrade {
   realizedPnl: string | null;
   /** Bars the lot was held, entry bar excluded. Null while still open. */
   holdingBars: number | null;
+  /**
+   * Worst and best excursion while held, as fractions of the entry price:
+   * the lowest low and highest high from the fill bar through the exit bar
+   * (or the last bar, while open). How deep a trade went before it resolved
+   * is what a stop or a target would have acted on.
+   */
+  maxAdverseExcursion: number;
+  maxFavorableExcursion: number;
 }
 
 export interface BacktestDay {
@@ -81,6 +109,8 @@ export interface BacktestDay {
    * counting them against coverage would understate it.
    */
   evaluable: boolean;
+  /** Realized P&L to date plus open lots marked at this bar's close, decimal string. */
+  equity: string;
 }
 
 export interface BacktestResult {
@@ -102,6 +132,9 @@ interface Lot {
   entryRule: SignalRule;
   /** Index into the timeline, for counting bars held. */
   entryDayIndex: number;
+  /** Lowest low and highest high since the fill, for the excursion figures. */
+  lowSinceEntry: string;
+  highSinceEntry: string;
 }
 
 interface QueuedOrder {
@@ -121,6 +154,10 @@ export function simulate(input: BacktestInput): BacktestResult {
   const symbols = Object.keys(input.bars).sort();
   const approvalRate = input.approvalRate ?? 1;
   const nextRandom = seededRandom(input.seed ?? 1);
+  const entryFrom = input.entryWindow?.from;
+  const entryTo = input.entryWindow?.to;
+  const mayEnter = (barTime: string): boolean =>
+    (entryFrom === undefined || barTime >= entryFrom) && (entryTo === undefined || barTime < entryTo);
 
   // One timeline across every symbol, because the risk gate's daily trade cap
   // and total exposure are portfolio-wide: a bar has to be evaluated for all
@@ -139,6 +176,7 @@ export function simulate(input: BacktestInput): BacktestResult {
   const rejections = { ...NO_REJECTIONS };
 
   let queued: QueuedOrder[] = [];
+  let realized = dec(0);
   let signalsProposed = 0;
   let unfilled = 0;
   let expired = 0;
@@ -171,11 +209,21 @@ export function simulate(input: BacktestInput): BacktestResult {
           entryBarTime: barTime,
           entryRule: order.candidate.rule,
           entryDayIndex: dayIndex,
+          lowSinceEntry: bar.l,
+          highSinceEntry: bar.h,
         });
         continue;
       }
 
-      closeLotsFifo(order.candidate, fillPrice, barTime, dayIndex, lots, trades);
+      realized = realized.plus(closeLotsFifo(order.candidate, fillPrice, barTime, dayIndex, lots, trades, bar));
+    }
+
+    // Excursions see every bar a lot is open for, the fill bar included.
+    for (const lot of lots) {
+      const bar = barAt.get(lot.symbol)?.get(barTime);
+      if (!bar) continue;
+      if (dec(bar.l).lessThan(lot.lowSinceEntry)) lot.lowSinceEntry = bar.l;
+      if (dec(bar.h).greaterThan(lot.highSinceEntry)) lot.highSinceEntry = bar.h;
     }
 
     // ---- 2. Evaluate the rules on bars through today ---------------------
@@ -183,11 +231,26 @@ export function simulate(input: BacktestInput): BacktestResult {
     let evaluable = false;
 
     for (const symbol of symbols) {
-      const through = barsThrough(input.bars[symbol]!, barTime);
+      const through = barsThrough(input.bars[symbol]!, barTime, input.lookbackDays);
       if (through.length === 0) continue;
       if (through.length >= warmup) evaluable = true;
 
       const held = heldQuantity(lots, symbol);
+
+      // The stop loss outranks every crossing, the precedence the pipeline applies.
+      if (held !== null) {
+        const stop = evaluateStopLoss(
+          symbol,
+          through,
+          { quantity: held, averageEntryPrice: averageEntry(lots, symbol) },
+          input.strategy.stopLossPct,
+        );
+        if (stop) {
+          candidates.push(stop);
+          continue;
+        }
+      }
+
       const { candidate } = evaluateTechnical(
         symbol,
         through,
@@ -195,10 +258,12 @@ export function simulate(input: BacktestInput): BacktestResult {
         held === null ? undefined : { openQuantity: held, averageEntryPrice: averageEntry(lots, symbol) },
       );
 
-      if (candidate) {
+      if (candidate && !(candidate.side === 'buy' && !mayEnter(barTime))) {
         candidates.push(candidate);
         continue;
       }
+      // A buy outside the entry window is treated as no rule firing, so the
+      // time stop still gets its say on a held position.
 
       // The time stop is a backstop, consulted only when no rule fired —
       // the same precedence the pipeline applies.
@@ -245,7 +310,18 @@ export function simulate(input: BacktestInput): BacktestResult {
       }
     }
 
-    days.push({ barTime, openLots: lots.length, evaluable });
+    let unrealized = dec(0);
+    for (const lot of lots) {
+      const mark = barAt.get(lot.symbol)?.get(barTime)?.c;
+      if (mark) unrealized = unrealized.plus(dec(mark).minus(lot.entryPrice).times(lot.quantity));
+    }
+
+    days.push({
+      barTime,
+      openLots: lots.length,
+      evaluable,
+      equity: realized.plus(unrealized).toFixed(2),
+    });
   }
 
   // Anything still queued when the data runs out never had a bar to fill on.
@@ -270,8 +346,10 @@ function closeLotsFifo(
   dayIndex: number,
   lots: Lot[],
   trades: BacktestTrade[],
-): void {
+  fillBar: Candle,
+): Decimal {
   let remaining = dec(candidate.quantity);
+  let realized = dec(0);
 
   while (remaining.greaterThan(0)) {
     const index = lots.findIndex((lot) => lot.symbol === candidate.symbol);
@@ -290,6 +368,13 @@ function closeLotsFifo(
     lots.splice(index, 1);
     remaining = remaining.minus(lot.quantity);
 
+    // The exit fills at this bar's open, so only the open counts toward the
+    // excursion on the exit bar: what happened later that day was not held.
+    const low = dec(fillBar.o).lessThan(lot.lowSinceEntry) ? fillBar.o : lot.lowSinceEntry;
+    const high = dec(fillBar.o).greaterThan(lot.highSinceEntry) ? fillBar.o : lot.highSinceEntry;
+    const pnl = dec(fillPrice).minus(lot.entryPrice).times(lot.quantity);
+    realized = realized.plus(pnl);
+
     trades.push({
       symbol: lot.symbol,
       quantity: lot.quantity,
@@ -299,10 +384,18 @@ function closeLotsFifo(
       exitBarTime: barTime,
       exitPrice: fillPrice,
       exitRule: candidate.rule,
-      realizedPnl: dec(fillPrice).minus(lot.entryPrice).times(lot.quantity).toFixed(2),
+      realizedPnl: pnl.toFixed(2),
       holdingBars: dayIndex - lot.entryDayIndex,
+      maxAdverseExcursion: excursion(low, lot.entryPrice),
+      maxFavorableExcursion: excursion(high, lot.entryPrice),
     });
   }
+
+  return realized;
+}
+
+function excursion(price: string, entryPrice: string): number {
+  return dec(price).dividedBy(entryPrice).minus(1).toNumber();
 }
 
 function openTradeFrom(lot: Lot): BacktestTrade {
@@ -317,12 +410,26 @@ function openTradeFrom(lot: Lot): BacktestTrade {
     exitRule: null,
     realizedPnl: null,
     holdingBars: null,
+    maxAdverseExcursion: excursion(lot.lowSinceEntry, lot.entryPrice),
+    maxFavorableExcursion: excursion(lot.highSinceEntry, lot.entryPrice),
   };
 }
 
-function barsThrough(bars: readonly Candle[], barTime: string): readonly Candle[] {
-  const index = bars.findIndex((bar) => bar.t > barTime);
-  return index === -1 ? bars : bars.slice(0, index);
+function barsThrough(bars: readonly Candle[], barTime: string, lookbackDays?: number): readonly Candle[] {
+  // Bars are oldest first, so the first bar after `barTime` is a binary search.
+  let lo = 0;
+  let hi = bars.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (bars[mid]!.t > barTime) hi = mid;
+    else lo = mid + 1;
+  }
+  const end = lo;
+  if (lookbackDays === undefined) return bars.slice(0, end);
+  const cutoff = new Date(new Date(barTime).getTime() - lookbackDays * 86_400_000).toISOString();
+  let start = end;
+  while (start > 0 && bars[start - 1]!.t >= cutoff) start -= 1;
+  return bars.slice(start, end);
 }
 
 /** Total shares held, as the decimal string the strategy expects, or null. */

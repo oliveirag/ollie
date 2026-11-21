@@ -114,3 +114,18 @@ describe('derived fields', () => {
     expect(config.signalService.publicUrl).toBeNull();
   });
 });
+
+describe('STOP_LOSS_PCT', () => {
+  it('defaults to off', () => {
+    expect(buildConfig(env({})).strategy.stopLossPct).toBe(0);
+  });
+
+  it('reads a fraction below cost', () => {
+    expect(buildConfig(env({ STOP_LOSS_PCT: '0.08' })).strategy.stopLossPct).toBe(0.08);
+  });
+
+  it('refuses a stop at or past 100%, which could never fire or always would', () => {
+    expect(() => buildConfig(env({ STOP_LOSS_PCT: '1' }))).toThrow(/STOP_LOSS_PCT/);
+    expect(() => buildConfig(env({ STOP_LOSS_PCT: '-0.1' }))).toThrow(/STOP_LOSS_PCT/);
+  });
+});

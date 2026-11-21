@@ -48,6 +48,7 @@ function maximalSignal(): Signal & { estimatedPrice: string | null } {
     dedupeKey: 'CANARY_DEDUPE',
     refId: '22222222-2222-4222-8222-222222222222',
     autoDecideAt: new Date('2026-09-01T13:40:00.000Z'),
+    strategyVersion: 'r3-CANARYVR',
     estimatedPrice: '182.50',
   };
 }

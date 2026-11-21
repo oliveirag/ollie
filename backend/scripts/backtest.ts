@@ -5,6 +5,9 @@
  *   npm run backtest -- --symbols=AAPL,MSFT,SPY,QQQ   # a wider basket
  *   npm run backtest -- --from=2019-01-01 --refetch   # pull fresh history
  *   npm run backtest -- --approval-rate=0.7 --seed=3  # an imperfect owner
+ *   npm run backtest -- --trades=trades.csv           # every trade, with excursions
+ *
+ * To compare configurations side by side, use `npm run backtest:compare`.
  *
  * The first run fetches daily bars through the same Robinhood MCP the pipeline
  * uses and caches them; later runs read the cache and need no network. The
@@ -125,7 +128,22 @@ async function main(): Promise<void> {
     slippageBps: config.slippageBps,
     approvalRate,
     seed,
+    lookbackDays: config.candleLookbackDays,
   });
+
+  const tradesPath = flagValue('trades', '');
+  if (tradesPath) {
+    const header = 'symbol,quantity,entry_bar,entry_price,entry_rule,exit_bar,exit_price,exit_rule,realized_pnl,holding_bars,max_adverse,max_favorable';
+    const lines = result.trades.map((t) =>
+      [
+        t.symbol, t.quantity, t.entryBarTime.slice(0, 10), t.entryPrice, t.entryRule,
+        t.exitBarTime?.slice(0, 10) ?? '', t.exitPrice ?? '', t.exitRule ?? '', t.realizedPnl ?? '',
+        t.holdingBars ?? '', t.maxAdverseExcursion.toFixed(4), t.maxFavorableExcursion.toFixed(4),
+      ].join(','),
+    );
+    writeFileSync(tradesPath, [header, ...lines].join('\n') + '\n');
+    console.log(`wrote ${result.trades.length} trades to ${tradesPath}`);
+  }
 
   const summary = summarize(result);
   const first = result.days.find((day) => day.evaluable)?.barTime.slice(0, 10) ?? 'n/a';

@@ -265,3 +265,54 @@ describe('the MACD exit below cost', () => {
     expect(trades[0]!.exitRule).toBe('max_holding_period');
   });
 });
+
+describe('the stop loss', () => {
+  it('closes a position whose close falls past the stop, ahead of any crossing', () => {
+    // The lot fills on 2026-07-06 near 307.67. A close of 280 on 2026-07-08 is
+    // about 9% under cost, so a 5% stop fires that bar and fills the next open,
+    // long before the 2026-07-16 overbought cross.
+    const dipped = BARS.map((bar) =>
+      bar.t.startsWith('2026-07-08') ? { ...bar, c: '280.00', l: '280.00' } : bar,
+    );
+    const { trades } = run({ bars: { AAPL: dipped }, strategy: { ...STRATEGY, stopLossPct: 0.05 } });
+
+    expect(trades[0]!.exitRule).toBe('stop_loss');
+    expect(trades[0]!.exitBarTime).toBe('2026-07-09T00:00:00Z');
+    expect(trades[0]!.maxAdverseExcursion).toBeLessThan(-0.08);
+  });
+
+  it('changes nothing while it is off', () => {
+    expect(run({ strategy: { ...STRATEGY, stopLossPct: 0 } }).trades).toEqual(run().trades);
+  });
+});
+
+describe('trade excursions and equity', () => {
+  it('brackets the realized return between the worst and best excursion', () => {
+    const [trade] = run().trades;
+    const realized = Number(trade!.exitPrice) / Number(trade!.entryPrice) - 1;
+
+    expect(trade!.maxAdverseExcursion).toBeLessThanOrEqual(0.01);
+    expect(trade!.maxFavorableExcursion).toBeGreaterThanOrEqual(realized);
+    expect(trade!.maxAdverseExcursion).toBeLessThanOrEqual(trade!.maxFavorableExcursion);
+  });
+
+  it('ends with equity equal to realized P&L once every lot is closed', () => {
+    const { trades, days } = run();
+    const realized = trades.reduce((sum, trade) => sum + Number(trade.realizedPnl), 0);
+
+    expect(Number(days.at(-1)!.equity)).toBeCloseTo(realized, 2);
+  });
+});
+
+describe('the entry window', () => {
+  it('opens nothing outside it, while warm-up still uses the earlier bars', () => {
+    expect(run({ entryWindow: { from: '2026-07-03' } }).trades).toHaveLength(0);
+    expect(run({ entryWindow: { to: '2026-07-03' } }).trades).toEqual(run().trades);
+  });
+});
+
+describe('the lookback window', () => {
+  it('matches the full-history replay at the production window', () => {
+    expect(run({ lookbackDays: 180 }).trades).toEqual(run().trades);
+  });
+});

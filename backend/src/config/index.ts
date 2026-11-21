@@ -59,6 +59,12 @@ const EnvSchema = z.object({
    */
   MAX_HOLDING_DAYS: z.coerce.number().int().min(0).default(30),
 
+  /**
+   * Close-below-cost stop loss, as a fraction of the average entry price
+   * (0.08 = 8% under cost). Checked before every other rule. 0 disables it.
+   */
+  STOP_LOSS_PCT: z.coerce.number().min(0).lt(1).default(0),
+
   ORDER_NOTIONAL_CENTS: positiveInt.default(50_000),
   MAX_POSITION_CENTS: positiveInt.default(100_000),
   MAX_DAILY_TRADES: nonNegativeInt.default(3),
@@ -308,6 +314,7 @@ export function buildConfig(source: NodeJS.ProcessEnv = process.env): Config {
       macdSignal: env.MACD_SIGNAL,
       orderNotionalCents: env.ORDER_NOTIONAL_CENTS,
       maxHoldingDays: env.MAX_HOLDING_DAYS,
+      stopLossPct: env.STOP_LOSS_PCT,
     },
     risk: {
       symbolAllowlist,

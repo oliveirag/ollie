@@ -92,6 +92,11 @@ model Signal {
   /// frozen by the trigger like every other creation-time field.
   autoDecideAt DateTime? @map("auto_decide_at") @db.Timestamptz(6)
 
+  /// Rules revision plus a fingerprint of the strategy config and universe that
+  /// produced this signal, e.g. 'r3-1a2b3c4d'. Null on rows from before it was
+  /// recorded. Frozen by the trigger.
+  strategyVersion String? @map("strategy_version") @db.Text
+
   /// '{rule}:{symbol}:{side}:{barTime}'. The unique constraint is the
   /// race-proof backstop behind the pipeline's in-process dedupe check.
   dedupeKey String @unique @map("dedupe_key") @db.Text

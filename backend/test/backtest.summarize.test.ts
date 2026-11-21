@@ -15,6 +15,8 @@ const closedTrade = (holdingBars: number): BacktestTrade => ({
   exitRule: 'macd_bearish_cross',
   realizedPnl: '1.00',
   holdingBars,
+  maxAdverseExcursion: 0,
+  maxFavorableExcursion: 0.01,
 });
 
 const openTrade = (): BacktestTrade => ({
@@ -28,6 +30,8 @@ const openTrade = (): BacktestTrade => ({
   exitRule: null,
   realizedPnl: null,
   holdingBars: null,
+  maxAdverseExcursion: 0,
+  maxFavorableExcursion: 0,
 });
 
 const BARS: Candle[] = fixture.results[0]!.bars.map((bar) => ({
@@ -198,6 +202,7 @@ describe('streak distribution', () => {
       barTime: `2026-01-${String(index + 1).padStart(2, '0')}T00:00:00Z`,
       openLots: mark === 'x' ? 1 : 0,
       evaluable: true,
+      equity: '0.00',
     })),
   });
 

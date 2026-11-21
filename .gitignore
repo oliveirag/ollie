@@ -36,3 +36,5 @@ DerivedData/
 
 # Backtest bar cache: raw broker output, refetchable, sometimes large
 backend/.backtest-cache*.json
+backend/.bt-*.json
+backend/.parity-*.json

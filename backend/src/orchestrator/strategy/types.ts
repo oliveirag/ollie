@@ -17,7 +17,7 @@ export type TechnicalRule = (typeof TECHNICAL_RULES)[number];
  * indicators. Kept a separate union so "which rules look at market data" stays
  * answerable from the types.
  */
-export const EXIT_RULES = ['max_holding_period'] as const;
+export const EXIT_RULES = ['max_holding_period', 'stop_loss'] as const;
 
 export type ExitRule = (typeof EXIT_RULES)[number];
 
@@ -28,6 +28,20 @@ export interface ExitIndicators {
   /** Bars that actually traded since the lot opened; interpolated ones excluded. */
   barsHeld: number;
   maxHoldingDays: number;
+}
+
+/**
+ * What the stop loss looked at: the close against the position's cost.
+ * Replayable from these numbers plus the bar the decision was made on.
+ */
+export interface StopLossIndicators {
+  close: number;
+  /** Quantity-weighted entry price of the open lots. */
+  averageEntryPrice: number;
+  /** The configured fraction below cost that triggers the exit, e.g. 0.08. */
+  stopLossPct: number;
+  /** averageEntryPrice * (1 - stopLossPct): the close at or below this fired. */
+  stopPrice: number;
 }
 
 /**
@@ -51,7 +65,7 @@ export interface CandidateSignal {
    * the numbers *it* looked at. Writing zeroed-out RSI and MACD fields would
    * put values in the permanent record that no rule ever consulted.
    */
-  indicators: TechnicalIndicators | ExitIndicators;
+  indicators: TechnicalIndicators | ExitIndicators | StopLossIndicators;
   /** Close time of the bar the decision was made on. Feeds the dedupe key. */
   barTime: string;
   /** The close used for sizing, as a decimal string. */
@@ -89,6 +103,12 @@ export interface StrategyConfig {
   orderNotionalCents: number;
   /** Trading days a lot may stay open before the time stop proposes an exit. 0 disables it. */
   maxHoldingDays: number;
+  /**
+   * Close-below-cost exit, as a fraction of the average entry price (0.08 is
+   * 8% under cost). 0 disables it. Optional so a config written before the
+   * rule existed keeps meaning what it meant: no stop.
+   */
+  stopLossPct?: number;
 }
 
 /** Why no candidate was produced. Logged per symbol; never persisted. */

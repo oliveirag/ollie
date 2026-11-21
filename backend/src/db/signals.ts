@@ -35,6 +35,8 @@ export interface InsertSignalInput {
   dedupeKey: string;
   /** Phase 5: set while autonomy is on; the sweep may approve after this. */
   autoDecideAt?: Date | null;
+  /** From `strategyVersion()`: which rules and configuration produced it. */
+  strategyVersion?: string | null;
 }
 
 export type DecidedStatus = Extract<SignalStatus, 'approved' | 'rejected' | 'expired'>;
@@ -78,6 +80,7 @@ export async function insertSignal(
         executionMode: input.executionMode,
         dedupeKey: input.dedupeKey,
         autoDecideAt: input.autoDecideAt ?? null,
+        strategyVersion: input.strategyVersion ?? null,
       },
     });
   } catch (error) {
