@@ -43,7 +43,8 @@ final class PushRegistrar {
         do {
             let granted = try await UNUserNotificationCenter.current()
                 .requestAuthorization(options: [.alert, .sound, .badge])
-            guard granted else { return }
+            // Disconnect may have landed while the prompt was up.
+            guard granted, self.ownerToken == ownerToken else { return }
             UIApplication.shared.registerForRemoteNotifications()
         } catch {
             print("[push] authorization failed: \(error)")
@@ -52,6 +53,29 @@ final class PushRegistrar {
         // A token that arrived before the owner token existed (first launch,
         // token pasted afterwards) is sent now instead of waiting a launch.
         if let deviceToken { await upload(deviceToken) }
+    }
+
+    /// Disconnect. Forgets the owner token this device registered with, so a
+    /// later APNs token rotation is not uploaded under it, and stops this
+    /// device getting the owner's signals.
+    ///
+    /// Two ways, because either can fail alone. The backend is asked to drop
+    /// the row, authenticated with the token being dropped, which fails with
+    /// a 401 when that token was rotated (the usual reason to disconnect). So
+    /// the device also unregisters from APNs: the backend's next push to the
+    /// old token comes back unregistered and `notify.ts` prunes the row.
+    /// Connecting again registers afresh and gets a new token.
+    func disable() {
+        let ownerToken = self.ownerToken
+        let deviceToken = self.deviceToken
+        self.ownerToken = nil
+        self.deviceToken = nil
+
+        if UIApplication.shared.isRegisteredForRemoteNotifications {
+            UIApplication.shared.unregisterForRemoteNotifications()
+        }
+        guard let ownerToken, let deviceToken else { return }
+        Task { await unregister(deviceToken, ownerToken: ownerToken) }
     }
 
     func didRegister(deviceToken data: Data) async {
@@ -77,6 +101,18 @@ final class PushRegistrar {
             print("[push] device registration returned \(output)")
         } catch {
             print("[push] device registration failed: \(error)")
+        }
+    }
+
+    private func unregister(_ token: String, ownerToken: String) async {
+        let body = Components.Schemas.DeviceUnregistrationInput(apns_token: token)
+        do {
+            let output = try await OllieAPI.client(token: ownerToken)
+                .unregisterDevice(.init(body: .json(body)))
+            if case .noContent = output { return }
+            print("[push] device unregistration returned \(output)")
+        } catch {
+            print("[push] device unregistration failed: \(error)")
         }
     }
 }
@@ -138,7 +174,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification
     ) async -> UNNotificationPresentationOptions {
-        await PushRegistrar.shared.didReceivePush()
+        PushRegistrar.shared.didReceivePush()
         return [.banner, .list, .sound]
     }
 
@@ -155,7 +191,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         default:
             break
         }
-        await PushRegistrar.shared.didReceivePush()
+        PushRegistrar.shared.didReceivePush()
     }
 }
 

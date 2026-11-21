@@ -103,8 +103,8 @@ struct ControlsView: View {
 
                 DSSection(
                     "Connection",
-                    footer: "Disconnecting forgets the owner token on this device and asks for a new one. "
-                        + "It changes nothing on the backend."
+                    footer: "Disconnecting forgets the owner token on this device, stops its signal "
+                        + "notifications, and asks for a new one. Trading settings are unchanged."
                 ) {
                     VStack(alignment: .leading, spacing: DS.Space.lg) {
                         DSValueRow("Backend") {

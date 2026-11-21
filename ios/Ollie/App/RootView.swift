@@ -40,11 +40,15 @@ struct RootView: View {
         }
         .environment(owner)
         // Disconnect in Controls clears the token; go straight to token entry,
-        // since replacing it is the only reason to disconnect. Attached here,
-        // not to the owner shell, because the shell is gone by the time the
-        // change lands.
+        // since replacing it is the only reason to disconnect, and stop this
+        // device getting the owner's pushes until a token is pasted again.
+        // Attached here, not to the owner shell, because the shell is gone by
+        // the time the change lands.
         .onChange(of: owner.token) { _, token in
-            if token == nil { route = .owner }
+            if token == nil {
+                route = .owner
+                push.disable()
+            }
         }
     }
 
