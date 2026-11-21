@@ -39,6 +39,13 @@ struct RootView: View {
             }
         }
         .environment(owner)
+        // Disconnect in Controls clears the token; go straight to token entry,
+        // since replacing it is the only reason to disconnect. Attached here,
+        // not to the owner shell, because the shell is gone by the time the
+        // change lands.
+        .onChange(of: owner.token) { _, token in
+            if token == nil { route = .owner }
+        }
     }
 
     private var ownerShell: some View {
@@ -97,7 +104,7 @@ struct WelcomeView: View {
 
                     VStack(alignment: .leading, spacing: DS.Space.lg) {
                         Image(systemName: "waveform.path.ecg")
-                            .font(.system(size: 28, weight: .semibold))
+                            .dsIcon(size: 28, relativeTo: .h2)
                             .foregroundStyle(DS.Icon.primary)
                             .frame(width: 56, height: 56)
                             .background(DS.Surface.default, in: RoundedRectangle(cornerRadius: DS.Radius.lg, style: .continuous))

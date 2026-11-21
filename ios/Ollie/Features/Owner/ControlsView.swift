@@ -5,6 +5,7 @@ struct ControlsView: View {
     @Environment(SignalStore.self) private var store
 
     @State private var confirmingHalt = false
+    @State private var confirmingDisconnect = false
     @State private var isWorking = false
     @State private var failure: String?
     /// Bumped only when the owner's own halt or resume lands, so the haptic
@@ -22,7 +23,7 @@ struct ControlsView: View {
                     VStack(alignment: .leading, spacing: DS.Space.lg) {
                         HStack(alignment: .firstTextBaseline, spacing: DS.Space.sm) {
                             Image(systemName: store.killSwitch ? "octagon.fill" : "play.circle")
-                                .font(.system(size: 17, weight: .semibold))
+                                .dsIcon(size: 17, relativeTo: .body)
                                 .foregroundStyle(store.killSwitch ? DS.Icon.error : DS.Icon.primary)
                             VStack(alignment: .leading, spacing: DS.Space.xs) {
                                 Text(store.killSwitch ? "Halted" : "Running")
@@ -66,7 +67,7 @@ struct ControlsView: View {
                     DSValueRow("Execution mode") {
                         HStack(spacing: DS.Space.sm) {
                             Image(systemName: store.liveTradingEnabled ? "lock.open" : "lock.fill")
-                                .font(.system(size: 13, weight: .semibold))
+                                .dsIcon(size: 13, relativeTo: .body)
                                 .foregroundStyle(DS.Icon.tertiary)
                                 .accessibilityLabel(store.liveTradingEnabled ? "Unlocked" : "Locked")
                             Text(store.mode.rawValue.capitalized)
@@ -99,6 +100,33 @@ struct ControlsView: View {
                 if let failure {
                     ErrorRow(error: .server(failure))
                 }
+
+                DSSection(
+                    "Connection",
+                    footer: "Disconnecting forgets the owner token on this device and asks for a new one. "
+                        + "It changes nothing on the backend."
+                ) {
+                    VStack(alignment: .leading, spacing: DS.Space.lg) {
+                        DSValueRow("Backend") {
+                            Text(OllieServer.baseURL.host() ?? OllieServer.baseURL.absoluteString)
+                                .dsFont(.body)
+                                .foregroundStyle(DS.Text.secondary)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                        }
+                        .accessibilityElement(children: .combine)
+
+                        // Not red: nothing is lost that pasting the token
+                        // again does not restore.
+                        Button {
+                            confirmingDisconnect = true
+                        } label: {
+                            Label("Disconnect…", systemImage: "rectangle.portrait.and.arrow.right")
+                        }
+                        .buttonStyle(.ds(.secondary))
+                        .accessibilityIdentifier("controls.disconnect")
+                    }
+                }
             }
             .navigationTitle("Controls")
             .refreshable { await store.refresh() }
@@ -119,6 +147,16 @@ struct ControlsView: View {
                 Text(store.killSwitch
                      ? "Proposals resume on the next scheduled run."
                      : "Stops new proposals and refuses execution until you turn it back on.")
+            }
+            .confirmationDialog(
+                "Disconnect from Ollie?",
+                isPresented: $confirmingDisconnect,
+                titleVisibility: .visible
+            ) {
+                Button("Disconnect") { store.disconnect() }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("You will need to paste the owner token again to approve signals on this device.")
             }
         }
     }

@@ -9,8 +9,7 @@ import XCTest
 /// Postgres (user, acceptance, hashed token) are checked afterwards; see the
 /// README.
 ///
-/// Sign in with Apple cannot run on the simulator without a paid team, so the
-/// app under test is launched with `SUBSCRIBER_TEST_IDENTITY=1`, which enables
+/// Sign in with Apple cannot complete on the simulator, so the app under test is launched with `SUBSCRIBER_TEST_IDENTITY=1`, which enables
 /// the Debug-only test identity button, and the service must run with
 /// `SIWA_STUB=true`. That path exists for exactly this test.
 ///
@@ -107,6 +106,19 @@ final class SubscriberOnboardingUITests: XCTestCase {
         app.tabBars.buttons["Agent"].tap()
         XCTAssertTrue(app.buttons["token.revoke"].waitForExistence(timeout: 10), "the minted token is not listed")
         XCTAssertFalse(app.staticTexts[tokenText].exists, "the plaintext token leaked into the list")
+
+        // Revoke goes through a confirmation, and the confirmed action must
+        // actually run. The dialog's button shares the row button's label, so
+        // it is found by label without the row's identifier.
+        app.buttons["token.revoke"].tap()
+        let confirm = app.buttons
+            .matching(NSPredicate(format: "label == 'Revoke' AND identifier != 'token.revoke'"))
+            .firstMatch
+        XCTAssertTrue(confirm.waitForExistence(timeout: 5), "revoke confirmation did not appear")
+        confirm.tap()
+        // That was the only agent token, so onboarding goes back to the
+        // handoff screen to offer a new one. Reaching it proves the revoke ran.
+        XCTAssertTrue(app.buttons["handoff.mint"].waitForExistence(timeout: 10), "revoke never reached the server")
     }
 
     /// The gate, at the largest accessibility text size, where the disclaimer

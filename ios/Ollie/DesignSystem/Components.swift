@@ -273,7 +273,7 @@ struct DSRowButtonStyle: ButtonStyle {
         HStack(spacing: DS.Space.sm) {
             configuration.label
             Image(systemName: "chevron.right")
-                .font(.system(size: 13, weight: .semibold))
+                .dsIcon(size: 13, relativeTo: .bodySmall)
                 .foregroundStyle(DS.Icon.tertiary)
                 .accessibilityHidden(true)
         }
@@ -296,7 +296,7 @@ struct DSBadge: View {
         HStack(spacing: DS.Space.xs) {
             if let icon {
                 Image(systemName: icon)
-                    .font(.system(size: 11, weight: .semibold))
+                    .dsIcon(size: 11, relativeTo: .caption)
                     .accessibilityHidden(true)
             }
             Text(label).dsFont(.caption)
@@ -351,7 +351,7 @@ struct DSNotice: View {
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: DS.Space.md) {
             Image(systemName: icon)
-                .font(.system(size: 15, weight: .semibold))
+                .dsIcon(size: 15, relativeTo: .bodySmall)
                 .foregroundStyle(isError ? DS.Icon.error : DS.Icon.primary)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: DS.Space.xs) {
@@ -388,7 +388,7 @@ struct DSEmptyState: View {
     var body: some View {
         VStack(alignment: .leading, spacing: DS.Space.sm) {
             Image(systemName: icon)
-                .font(.system(size: 22, weight: .regular))
+                .dsIcon(size: 22, weight: .regular, relativeTo: .h4)
                 .foregroundStyle(DS.Icon.secondary)
                 .padding(.bottom, DS.Space.xs)
                 .accessibilityHidden(true)

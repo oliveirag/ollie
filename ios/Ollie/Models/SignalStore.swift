@@ -36,6 +36,13 @@ final class SignalStore {
         self.token = token
     }
 
+    /// Forgets the owner token on this device. RootView sends the owner back
+    /// to token entry, which is how a rotated or wrong token gets replaced.
+    func disconnect() {
+        TokenStore.delete(.owner)
+        token = nil
+    }
+
     private func reset() {
         pending = []
         decided = []

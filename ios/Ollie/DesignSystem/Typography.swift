@@ -168,10 +168,32 @@ private struct DSFontModifier: ViewModifier {
     }
 }
 
+/// SF Symbols at a point size that grows with Dynamic Type, by the same curve
+/// as the text style they sit beside. A bare `.system(size:)` stays fixed, so
+/// an icon shrinks next to its label at large text sizes. `Countdown` scales
+/// its ring the same way.
+private struct DSIconModifier: ViewModifier {
+    let size: CGFloat
+    let weight: Font.Weight
+    let style: DSTextStyle
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    func body(content: Content) -> some View {
+        content.font(.system(size: size * DSType.scale(style, dynamicTypeSize), weight: weight))
+    }
+}
+
 extension View {
     /// The design system's type, scaled with Dynamic Type.
     func dsFont(_ style: DSTextStyle, weight: DSWeight? = nil) -> some View {
         modifier(DSFontModifier(style: style, weight: weight))
+    }
+
+    /// A symbol at `size` points at the default text size, scaled with
+    /// Dynamic Type relative to `style`, the text it accompanies.
+    func dsIcon(size: CGFloat, weight: Font.Weight = .semibold, relativeTo style: DSTextStyle) -> some View {
+        modifier(DSIconModifier(size: size, weight: weight, style: style))
     }
 }
 

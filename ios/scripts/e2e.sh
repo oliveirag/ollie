@@ -123,7 +123,9 @@ wait_for http://localhost:3100/healthz signal
 
 log "app build"
 cd "$IOS"
-[ -d Ollie.xcodeproj ] || xcodegen >/dev/null
+# Always regenerate: project.yml is the source of truth, and an existing
+# project from an older checkout would build without newly added files.
+xcodegen >/dev/null
 DEVICE="$(xcrun simctl list devices available | grep -m1 "    $SIMULATOR (" | sed -E 's/.*\(([0-9A-F-]{36})\).*/\1/')"
 [ -n "$DEVICE" ] || { echo "no '$SIMULATOR' simulator installed" >&2; exit 1; }
 # Booted up front, so the first suite does not pay for the boot inside the

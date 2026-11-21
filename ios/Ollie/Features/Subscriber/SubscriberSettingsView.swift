@@ -6,7 +6,7 @@ import SwiftUI
 struct SubscriberSettingsView: View {
     @Environment(SubscriberStore.self) private var store
 
-    @State private var revoking: String?
+    @State private var revoking: McpToken?
     @State private var failure: String?
     @State private var isMinting = false
 
@@ -39,7 +39,7 @@ struct SubscriberSettingsView: View {
                     } else {
                         DSRows(store.tokens, id: \.id) { token in
                             TokenRow(token: token) {
-                                revoking = token.id
+                                revoking = token
                             }
                         }
                     }
@@ -92,16 +92,21 @@ struct SubscriberSettingsView: View {
             }
             .navigationTitle("Agent")
             .refreshable { await store.refresh() }
+            // `presenting:` hands the token to the action. Reading `revoking`
+            // inside the action instead races the dismissal, which clears the
+            // binding before the button's closure runs, so the revoke was
+            // silently skipped.
             .confirmationDialog(
                 "Revoke this token?",
                 isPresented: .init(get: { revoking != nil }, set: { if !$0 { revoking = nil } }),
-                titleVisibility: .visible
-            ) {
+                titleVisibility: .visible,
+                presenting: revoking
+            ) { token in
                 Button("Revoke", role: .destructive) {
-                    if let id = revoking { Task { await revoke(id) } }
+                    Task { await revoke(token.id) }
                 }
-                Button("Cancel", role: .cancel) { revoking = nil }
-            } message: {
+                Button("Cancel", role: .cancel) {}
+            } message: { _ in
                 Text("Any agent using it stops working on its next call.")
             }
         }
@@ -109,7 +114,6 @@ struct SubscriberSettingsView: View {
 
     private func revoke(_ id: String) async {
         failure = nil
-        defer { revoking = nil }
         do {
             try await store.revoke(id: id)
         } catch let error as OllieError {

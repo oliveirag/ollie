@@ -6,10 +6,10 @@ import SwiftUI
 /// which verifies it against Apple's keys; the app never learns anything from
 /// it but a session token.
 ///
-/// The Debug-only "test identity" button exists because Sign in with Apple
-/// needs a paid Apple Developer team and per-app configuration the simulator
-/// does not have. It sends a `fake:` token the service accepts only with
-/// `SIWA_STUB=true`, which it refuses in production.
+/// The Debug-only "test identity" button exists because the simulator cannot
+/// complete Sign in with Apple, so the UI tests need a stand-in. It sends a
+/// `fake:` token the service accepts only with `SIWA_STUB=true`, which it
+/// refuses in production.
 struct SubscriberSignInView: View {
     let onBack: () -> Void
 

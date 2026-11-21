@@ -63,7 +63,7 @@ struct PnLText: View {
         HStack(spacing: DS.Space.xs) {
             if !zero {
                 Image(systemName: negative ? "arrowtriangle.down.fill" : "arrowtriangle.up.fill")
-                    .font(.system(size: style.size * 0.55, weight: .bold))
+                    .dsIcon(size: style.size * 0.55, weight: .bold, relativeTo: style)
                     .accessibilityHidden(true)
             }
             MoneyText(
@@ -88,7 +88,7 @@ struct SideGlyph: View {
 
     var body: some View {
         Image(systemName: isBuy ? "plus.circle" : "minus.circle")
-            .font(.system(size: size, weight: .semibold))
+            .dsIcon(size: size, relativeTo: .caption)
             .foregroundStyle(DS.Icon.primary)
             .accessibilityHidden(true)
     }
