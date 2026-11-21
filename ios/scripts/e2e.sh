@@ -221,7 +221,7 @@ if [ "$SUITE" = screenshots ]; then
   # Apple's marketing status bar: 9:41, full signal and battery, no carrier.
   xcrun simctl status_bar "$DEVICE" override --time "9:41" --dataNetwork wifi \
     --wifiMode active --wifiBars 3 --cellularMode active --cellularBars 4 \
-    --batteryState charged --batteryLevel 100 --operatorName "" 2>/dev/null || true
+    --batteryState discharged --batteryLevel 100 --operatorName "" 2>/dev/null || true
   run_tests screenshots Ollie AppStoreScreenshotUITests
   xcrun simctl status_bar "$DEVICE" clear 2>/dev/null || true
   rm -rf "$OUT/screenshots"
