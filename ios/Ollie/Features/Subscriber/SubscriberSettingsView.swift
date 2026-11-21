@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// Agent tokens (list, revoke, mint another), the MCP URL, and sign-out.
+/// Agent tokens (list, revoke, mint another), the MCP URL, sign-out, account
+/// deletion, and the privacy policy.
 /// The plaintext of an existing token is never here — the service holds only
 /// a hash — so "I lost it" is answered by revoke-and-mint, not by lookup.
 struct SubscriberSettingsView: View {
@@ -9,6 +10,9 @@ struct SubscriberSettingsView: View {
     @State private var revoking: McpToken?
     @State private var failure: String?
     @State private var isMinting = false
+    @State private var confirmingDelete = false
+    @State private var isDeleting = false
+    @State private var reauthorizer = AppleReauthorizer()
 
     var body: some View {
         NavigationStack {
@@ -82,6 +86,31 @@ struct SubscriberSettingsView: View {
                         .padding(.horizontal, DS.Space.xs)
                 }
 
+                VStack(alignment: .leading, spacing: DS.Space.sm) {
+                    Button {
+                        confirmingDelete = true
+                    } label: {
+                        ZStack {
+                            Text("Delete account").opacity(isDeleting ? 0 : 1)
+                            if isDeleting { ProgressView() }
+                        }
+                    }
+                    .buttonStyle(.ds(.destructive))
+                    .disabled(isDeleting)
+                    .accessibilityIdentifier("settings.deleteAccount")
+                    Text("Removes your account and revokes every agent token. You'll confirm with Apple first.")
+                        .dsFont(.caption)
+                        .foregroundStyle(DS.Text.secondary)
+                        .padding(.horizontal, DS.Space.xs)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Link(destination: SignalServer.baseURL.appending(path: "privacy")) {
+                    Label("Privacy policy", systemImage: "hand.raised")
+                }
+                .buttonStyle(.ds(.ghost))
+                .accessibilityIdentifier("settings.privacy")
+
                 if let version = store.onboarding?.disclaimer.version {
                     DSSection("Disclaimer") {
                         Text("Accepted version \(version.prefix(12))…")
@@ -109,6 +138,18 @@ struct SubscriberSettingsView: View {
             } message: { _ in
                 Text("Any agent using it stops working on its next call.")
             }
+            .confirmationDialog(
+                "Delete your account?",
+                isPresented: $confirmingDelete,
+                titleVisibility: .visible
+            ) {
+                Button("Delete account", role: .destructive) {
+                    Task { await deleteAccount() }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Ollie removes your Apple ID link, email and invite code, and revokes every agent token. Agents using them stop working. This can't be undone.")
+            }
         }
     }
 
@@ -116,6 +157,30 @@ struct SubscriberSettingsView: View {
         failure = nil
         do {
             try await store.revoke(id: id)
+        } catch let error as OllieError {
+            failure = error.errorDescription
+        } catch {
+            failure = error.localizedDescription
+        }
+    }
+
+    /// Signs in with Apple once more for a fresh authorization code, which the
+    /// service uses to revoke Ollie's Apple tokens, then deletes. A cancelled
+    /// or failed Apple prompt still deletes: the account is what was asked for.
+    private func deleteAccount() async {
+        isDeleting = true
+        failure = nil
+        defer { isDeleting = false }
+        var code: String?
+        #if DEBUG
+        // The simulator cannot complete Sign in with Apple; the test identity
+        // has no Apple tokens to revoke anyway.
+        if !TokenStore.testIdentityEnabled { code = await reauthorizer.authorizationCode() }
+        #else
+        code = await reauthorizer.authorizationCode()
+        #endif
+        do {
+            try await store.deleteAccount(authorizationCode: code)
         } catch let error as OllieError {
             failure = error.errorDescription
         } catch {

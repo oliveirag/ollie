@@ -16,8 +16,9 @@ import { requireSubscriberToken } from './auth.js';
 import { registerMcpEndpoint } from './mcp.js';
 import { registerFeedRoutes } from './routes/feed.js';
 import { registerOnboardingRoutes, registerSessionRoute } from './routes/onboarding.js';
+import { registerPrivacyRoute } from './routes/privacy.js';
 import { SignalHealthSchema } from './schemas.js';
-import type { SiwaVerifier } from './siwa.js';
+import type { SiwaRevoker, SiwaVerifier } from './siwa.js';
 import { installValidationErrorHandler } from '../server/validationErrors.js';
 
 /**
@@ -35,6 +36,8 @@ export interface SignalAppDeps {
   /** Connected as `ollie_signal`. Every repository call receives it explicitly. */
   prisma: PrismaClient;
   siwa: SiwaVerifier;
+  /** Revokes Apple tokens on account deletion; null when no key is configured. */
+  siwaRevoker?: SiwaRevoker | null;
   /** Per-IP. Overridable so a test can hit the ceiling in three requests. */
   rateLimit?: { max: number; timeWindow: string };
 }
@@ -59,6 +62,7 @@ export const SUBSCRIBER_OPENAPI_SERVERS = [
 
 export async function buildSignalApp(deps: SignalAppDeps): Promise<OllieApp> {
   const { config, logger, prisma, siwa } = deps;
+  const siwaRevoker = deps.siwaRevoker ?? null;
   const rateLimit = deps.rateLimit ?? { max: 240, timeWindow: '1 minute' };
 
   const app = Fastify({
@@ -133,6 +137,9 @@ export async function buildSignalApp(deps: SignalAppDeps): Promise<OllieApp> {
     },
   );
 
+  // Public: the privacy policy App Review requires a link to.
+  registerPrivacyRoute(app);
+
   await app.register(
     async (scope) => {
       // The one public /v1 route: it is where tokens come from.
@@ -144,7 +151,7 @@ export async function buildSignalApp(deps: SignalAppDeps): Promise<OllieApp> {
         // onRequest hooks. Authenticating one stage later is what puts the
         // throttle in front of the token check.
         authed.addHook('preValidation', requireSubscriberToken(prisma, 'app'));
-        await authed.register(registerOnboardingRoutes, { config, prisma, siwa });
+        await authed.register(registerOnboardingRoutes, { config, prisma, siwa, siwaRevoker });
         await authed.register(registerFeedRoutes, { prisma });
       });
     },

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Push Notifications. Xcode swaps "development" for "production" when
+	     the build is archived for distribution; a Debug device build gets
+	     sandbox tokens, which the backend must send to the sandbox host. -->
+	<key>aps-environment</key>
+	<string>development</string>
+	<!-- The backend sends signals as interruption-level time-sensitive, so they
+	     break through Focus. Without this entitlement iOS downgrades them to
+	     active and a 15-minute window can pass unseen. -->
+	<key>com.apple.developer.usernotifications.time-sensitive</key>
+	<true/>
+</dict>
+</plist>

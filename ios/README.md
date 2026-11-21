@@ -1,21 +1,29 @@
 # Ollie — iOS app
 
-SwiftUI, iOS 17+. One binary, two sides that share nothing but the design
-system:
+SwiftUI, iOS 17+. One codebase, two apps that share nothing but the design
+system and networking plumbing:
 
-- **Owner** (PRD §4.2–4.3): approve or reject proposed trades — with a second,
-  red confirmation when the signal is live money — watch positions, flip the
-  kill switch, and turn autonomy on or off. Launches when the owner token is in
-  the Keychain.
-- **Subscriber** (PRD §4.6): Sign in with Apple, the disclaimer, the one-time
-  agent token, the feed, and the track record. Talks only to the signal
-  service, never to the owner API.
+- **Ollie** (`com.guilhermeoliveira.Ollie`, the App Store app, PRD §4.6): the
+  subscriber side only. Sign in with Apple, the disclaimer, the one-time agent
+  token, the feed, the track record, account deletion. Talks only to the signal
+  service, never to the owner API. No push.
+- **OllieOwner** (`com.guilhermeoliveira.OllieOwner`, TestFlight internal
+  testing only, PRD §4.2–4.3): approve or reject proposed trades, with a
+  second, red confirmation when the signal is live money, watch positions,
+  flip the kill switch, and turn autonomy on or off. Compiled with
+  `OWNER_CONSOLE`; owns push, so the backend's `APNS_BUNDLE_ID` names it.
+
+The owner console stays out of the App Store binary because App Review treats
+an app that approves trades on a brokerage account as a trading app, which
+guideline 3.2.1(viii) reserves for the financial institution.
 
 ## Testing without a device
 
 ```bash
 ios/scripts/e2e.sh              # all UI tests, about 10 minutes
 ios/scripts/e2e.sh live         # or one suite: owner, live, subscriber
+SIMULATOR="iPhone 17 Pro Max" ios/scripts/e2e.sh screenshots
+                                # the App Store screenshots, on a seeded feed
 ```
 
 Runs every UI test on the iPhone 17 Pro simulator against a throwaway local
@@ -73,6 +81,8 @@ plugin. Approve it once. From the command line, pass
 ## The API client is generated, not written
 
 `Ollie/Networking/openapi.yaml` is a **symlink** to `../../../docs/openapi.yaml`.
+Only the OllieOwner target runs the generator on it; the App Store target
+excludes it and builds only the subscriber client (`SignalAPI`).
 The Swift client is produced from it at build time by
 [swift-openapi-generator](https://github.com/apple/swift-openapi-generator), so
 there is no checked-in client to go stale.
@@ -114,12 +124,12 @@ PORT=3000 npm --prefix backend run dev
 # 2. compile first, so the expiry window is not spent building
 cd ios
 export TEST_RUNNER_OWNER_API_TOKEN=$(grep '^OWNER_API_TOKEN=' ../backend/.env | cut -d= -f2)
-xcodebuild build-for-testing -project Ollie.xcodeproj -scheme Ollie \
+xcodebuild build-for-testing -project Ollie.xcodeproj -scheme OllieOwner \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -skipPackagePluginValidation
 
 # 3. seed, then run
 npm --prefix ../backend run signal:write-test
-xcodebuild test-without-building -project Ollie.xcodeproj -scheme Ollie \
+xcodebuild test-without-building -project Ollie.xcodeproj -scheme OllieOwner \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -skipPackagePluginValidation
 ```
 
@@ -131,7 +141,7 @@ the token would never reach the test.
 against the design system:
 
 ```bash
-xcodebuild test ... -only-testing:OllieUITests/ScreenshotUITests -resultBundlePath /tmp/shots.xcresult
+xcodebuild test ... -scheme OllieOwner -only-testing:OllieOwnerUITests/ScreenshotUITests -resultBundlePath /tmp/shots.xcresult
 xcrun xcresulttool export attachments --path /tmp/shots.xcresult --output-path /tmp/shots
 ```
 

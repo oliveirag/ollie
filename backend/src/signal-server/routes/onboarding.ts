@@ -12,11 +12,12 @@ import {
   revokeAllButNewest,
   revokeToken,
 } from '../../db/subscriberTokens.js';
-import { createSubscriber, findUserByAppleId } from '../../db/users.js';
+import { createSubscriber, deleteSubscriberAccount, findUserByAppleId } from '../../db/users.js';
 import { currentDisclaimer } from '../../published/disclaimer.js';
 import { secretsMatch } from '../../secrets.js';
 import {
   AcceptDisclaimerRequestSchema,
+  DeleteAccountRequestSchema,
   DisclaimerAcceptanceSchema,
   ErrorSchema,
   McpTokenListSchema,
@@ -25,7 +26,7 @@ import {
   SessionRequestSchema,
   SessionSchema,
 } from '../schemas.js';
-import { InvalidIdentityTokenError, type SiwaVerifier } from '../siwa.js';
+import { InvalidIdentityTokenError, SiwaRevokeError, type SiwaRevoker, type SiwaVerifier } from '../siwa.js';
 
 /**
  * Onboarding (Phase 4, decisions 3, 6, 8). Every step's completion is a row,
@@ -39,6 +40,8 @@ export interface OnboardingRouteOptions {
   config: Config;
   prisma: PrismaClient;
   siwa: SiwaVerifier;
+  /** null when no Sign in with Apple key is configured; deletion then skips revocation. */
+  siwaRevoker?: SiwaRevoker | null;
 }
 
 function mcpUrl(config: Config): string | null {
@@ -141,6 +144,7 @@ export const registerOnboardingRoutes: FastifyPluginAsyncZod<OnboardingRouteOpti
   opts,
 ) => {
   const { config, prisma } = opts;
+  const siwaRevoker = opts.siwaRevoker ?? null;
 
   app.get(
     '/onboarding',
@@ -305,6 +309,59 @@ export const registerOnboardingRoutes: FastifyPluginAsyncZod<OnboardingRouteOpti
       if (await revokeToken(request.params.id, user.id, { prisma })) {
         request.log.info({ user_id: user.id, token_id: request.params.id }, 'mcp token revoked');
       }
+      return reply.code(204).send(null);
+    },
+  );
+
+  app.post(
+    '/account/delete',
+    {
+      schema: {
+        operationId: 'deleteAccount',
+        summary: 'Delete this subscriber\'s account',
+        description:
+          'App Store guideline 5.1.1(v). Revokes the subscriber\'s Sign in with Apple tokens ' +
+          'when an authorization code is supplied, then tombstones the account: the Apple ' +
+          'subject, email and invite code are removed and every app and MCP token is revoked, ' +
+          'so the session token used for this call stops working with it. Disclaimer ' +
+          'acceptances stay, attached to the anonymous row, because they are an append-only ' +
+          'record. A failed revocation is logged and does not stop the deletion.',
+        tags: ['onboarding'],
+        security: [{ subscriberToken: [] }],
+        body: DeleteAccountRequestSchema,
+        response: {
+          204: z.null().describe('Deleted'),
+          400: ErrorSchema.describe('The request failed schema validation'),
+          401: ErrorSchema.describe('Missing or invalid app token'),
+        },
+      },
+    },
+    async (request, reply) => {
+      const user = request.subscriber!;
+      const code = request.body.authorization_code;
+
+      if (code && siwaRevoker) {
+        try {
+          await siwaRevoker.revokeAuthorizationCode(code);
+          request.log.info({ user_id: user.id }, 'apple tokens revoked');
+        } catch (error) {
+          // Apple's guidance is that the deletion must happen even when the
+          // tokens cannot be revoked, so this is logged, not returned.
+          const detail =
+            error instanceof SiwaRevokeError
+              ? { stage: error.stage, status: error.status, reason: error.reason }
+              : { reason: error instanceof Error ? error.message : 'unknown' };
+          request.log.warn({ user_id: user.id, ...detail }, 'apple token revocation failed');
+        }
+      } else {
+        request.log.warn(
+          { user_id: user.id, has_code: Boolean(code), revoker: Boolean(siwaRevoker) },
+          'apple token revocation skipped',
+        );
+      }
+
+      await deleteSubscriberAccount(user.id, prisma);
+      request.log.info({ user_id: user.id }, 'subscriber account deleted');
       return reply.code(204).send(null);
     },
   );

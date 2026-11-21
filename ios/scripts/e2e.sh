@@ -1,10 +1,15 @@
 #!/usr/bin/env bash
 # Runs every iOS UI test on the simulator against a throwaway local stack.
 #
-#   ios/scripts/e2e.sh                # all suites
-#   ios/scripts/e2e.sh owner          # paper approval, record, screenshots
-#   ios/scripts/e2e.sh live           # the real-money acknowledgement, on a mock broker
-#   ios/scripts/e2e.sh subscriber     # onboarding through the stubbed Sign in with Apple
+#   ios/scripts/e2e.sh                # all suites but screenshots
+#   ios/scripts/e2e.sh owner          # owner app: paper approval, record, screenshots
+#   ios/scripts/e2e.sh live           # owner app: the real-money acknowledgement, on a mock broker
+#   ios/scripts/e2e.sh subscriber     # App Store app: onboarding, account deletion
+#   SIMULATOR="iPhone 17 Pro Max" ios/scripts/e2e.sh screenshots
+#                                     # App Store app: the store screenshots, on a seeded feed
+#
+# Two apps, two schemes: OllieOwner (owner, TestFlight only) runs the owner and
+# live suites; Ollie (the App Store app, subscriber only) runs the rest.
 #
 # No device, no Developer Mode, nobody at the keyboard. What makes it safe to
 # run unattended:
@@ -42,13 +47,13 @@ DB_URL="postgresql://ollie:ollie@localhost:$PG_PORT/ollie_e2e"
 SIGNAL_DB_URL="postgresql://ollie_signal:ollie_signal@localhost:$PG_PORT/ollie_e2e"
 OWNER_TOKEN="$(openssl rand -hex 32)"
 INVITE_CODE="E2E-$(openssl rand -hex 4 | tr a-f A-F)"
-SIMULATOR="iPhone 17 Pro"
+SIMULATOR="${SIMULATOR:-iPhone 17 Pro}"
 
 log() { printf '\n== %s\n' "$*"; }
 
 case "$SUITE" in
-  all|owner|live|subscriber) ;;
-  *) echo "unknown suite: $SUITE (all, owner, live, subscriber)" >&2; exit 2 ;;
+  all|owner|live|subscriber|screenshots) ;;
+  *) echo "unknown suite: $SUITE (all, owner, live, subscriber, screenshots)" >&2; exit 2 ;;
 esac
 
 [ -x "$PG_BIN/initdb" ] || { echo "needs Homebrew postgresql@16: brew install postgresql@16" >&2; exit 1; }
@@ -133,23 +138,37 @@ DEVICE="$(xcrun simctl list devices available | grep -m1 "    $SIMULATOR (" | se
 xcrun simctl boot "$DEVICE" 2>/dev/null || true
 xcrun simctl bootstatus "$DEVICE" -b >/dev/null
 
-XCODEBUILD=(xcodebuild -project Ollie.xcodeproj -scheme Ollie
+XCODEBUILD=(xcodebuild -project Ollie.xcodeproj
   -destination "id=$DEVICE" -skipPackagePluginValidation)
-"${XCODEBUILD[@]}" build-for-testing -quiet >"$OUT/build.log" 2>&1 \
-  || { tail -40 "$OUT/build.log"; exit 1; }
+
+SCHEMES=()
+case "$SUITE" in
+  all) SCHEMES=(OllieOwner Ollie) ;;
+  owner|live) SCHEMES=(OllieOwner) ;;
+  subscriber|screenshots) SCHEMES=(Ollie) ;;
+esac
+for scheme in "${SCHEMES[@]}"; do
+  "${XCODEBUILD[@]}" -scheme "$scheme" build-for-testing -quiet >"$OUT/build-$scheme.log" 2>&1 \
+    || { tail -40 "$OUT/build-$scheme.log"; exit 1; }
+done
+
+# Each scheme's UI test target.
+test_target() { [ "$1" = OllieOwner ] && echo OllieOwnerUITests || echo OllieUITests; }
 
 FAILED=()
 run_tests() {
-  local name="$1"; shift
+  local name="$1" scheme="$2"; shift 2
+  local target
+  target="$(test_target "$scheme")"
   local only=()
-  for t in "$@"; do only+=("-only-testing:OllieUITests/$t"); done
+  for t in "$@"; do only+=("-only-testing:$target/$t"); done
   log "tests: $name"
   local attempt
   for attempt in 1 2; do
     rm -rf "$OUT/$name.xcresult"
     if TEST_RUNNER_OWNER_API_TOKEN="$OWNER_TOKEN" \
        TEST_RUNNER_SUBSCRIBER_INVITE_CODE="$INVITE_CODE" \
-       "${XCODEBUILD[@]}" test-without-building "${only[@]}" \
+       "${XCODEBUILD[@]}" -scheme "$scheme" test-without-building "${only[@]}" \
          -resultBundlePath "$OUT/$name.xcresult" >"$OUT/$name.log" 2>&1; then
       grep -E "Executed [0-9]+ tests?" "$OUT/$name.log" | tail -1 || true
       return 0
@@ -178,7 +197,7 @@ set_mode() {
 if [ "$SUITE" = all ] || [ "$SUITE" = live ]; then
   set_mode live
   seed write-test-signal.ts
-  run_tests live LiveApprovalUITests
+  run_tests live OllieOwner LiveApprovalUITests
   set_mode paper
 fi
 
@@ -186,11 +205,25 @@ if [ "$SUITE" = all ] || [ "$SUITE" = owner ]; then
   # Signals expire 15 minutes after they are written, so seed right before.
   seed seed-track-record.ts
   seed write-test-signal.ts
-  run_tests owner ApprovalFlowUITests TrackRecordUITests ScreenshotUITests
+  run_tests owner OllieOwner ApprovalFlowUITests TrackRecordUITests ScreenshotUITests
 fi
 
 if [ "$SUITE" = all ] || [ "$SUITE" = subscriber ]; then
-  run_tests subscriber SubscriberOnboardingUITests
+  run_tests subscriber Ollie SubscriberOnboardingUITests AccountDeletionUITests
+fi
+
+if [ "$SUITE" = screenshots ]; then
+  seed seed-published-feed.ts
+  # Apple's marketing status bar: 9:41, full signal and battery, no carrier.
+  xcrun simctl status_bar "$DEVICE" override --time "9:41" --dataNetwork wifi \
+    --wifiMode active --wifiBars 3 --cellularMode active --cellularBars 4 \
+    --batteryState charged --batteryLevel 100 --operatorName "" 2>/dev/null || true
+  run_tests screenshots Ollie AppStoreScreenshotUITests
+  xcrun simctl status_bar "$DEVICE" clear 2>/dev/null || true
+  rm -rf "$OUT/screenshots"
+  xcrun xcresulttool export attachments --path "$OUT/screenshots.xcresult" \
+    --output-path "$OUT/screenshots" >/dev/null 2>&1 \
+    && echo "screenshots in $OUT/screenshots" || echo "attachment export failed; open $OUT/screenshots.xcresult"
 fi
 
 log "results in $OUT"

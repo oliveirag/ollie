@@ -32,6 +32,21 @@ export const SessionRequestSchema = z
   })
   .meta({ id: 'SessionRequest' });
 
+export const DeleteAccountRequestSchema = z
+  .object({
+    authorization_code: z
+      .string()
+      .min(1)
+      .max(1024)
+      .optional()
+      .describe(
+        'A fresh Sign in with Apple authorization code from signing in again just before ' +
+          'deleting. The service exchanges it for a token and revokes it with Apple. Optional: ' +
+          'the account is deleted either way.',
+      ),
+  })
+  .meta({ id: 'DeleteAccountRequest' });
+
 export const SubscriberSchema = z
   .object({
     id: z.string().uuid(),

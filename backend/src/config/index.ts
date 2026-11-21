@@ -156,6 +156,16 @@ const EnvSchema = z.object({
    * on in production.
    */
   SIWA_STUB: bool.default(false),
+  /**
+   * A Sign in with Apple key from the developer account, used to revoke a
+   * subscriber's Apple tokens when they delete their account (App Store
+   * guideline 5.1.1(v)). All three or none. Unset, deletion still removes the
+   * account and logs that revocation was skipped.
+   */
+  SIWA_TEAM_ID: z.string().default(''),
+  SIWA_KEY_ID: z.string().default(''),
+  /** The .p8 file's PEM. Newlines may be written as literal `\n`. */
+  SIWA_PRIVATE_KEY: z.string().default(''),
 });
 
 export type Env = z.infer<typeof EnvSchema>;
@@ -221,6 +231,8 @@ export interface Config {
     /** null when unset; the mint response then omits the URL. */
     publicUrl: string | null;
     siwaStub: boolean;
+    /** null unless SIWA_TEAM_ID, SIWA_KEY_ID and SIWA_PRIVATE_KEY are all set. */
+    siwaRevocation: { teamId: string; keyId: string; privateKey: string } | null;
   };
 }
 
@@ -346,6 +358,10 @@ export function buildConfig(source: NodeJS.ProcessEnv = process.env): Config {
       appleAudience: env.APPLE_APP_BUNDLE_ID,
       publicUrl: env.SIGNAL_PUBLIC_URL || null,
       siwaStub: env.SIWA_STUB,
+      siwaRevocation:
+        env.SIWA_TEAM_ID && env.SIWA_KEY_ID && env.SIWA_PRIVATE_KEY
+          ? { teamId: env.SIWA_TEAM_ID, keyId: env.SIWA_KEY_ID, privateKey: env.SIWA_PRIVATE_KEY }
+          : null,
     },
   };
 }

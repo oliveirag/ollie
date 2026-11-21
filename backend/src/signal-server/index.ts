@@ -3,7 +3,7 @@ import { PrismaClient } from '@prisma/client';
 import { buildConfig } from '../config/index.js';
 import { buildLogger } from '../logger.js';
 import { buildSignalApp } from './app.js';
-import { buildSiwaVerifier, stubSiwaVerifier } from './siwa.js';
+import { buildSiwaRevoker, buildSiwaVerifier, stubSiwaVerifier } from './siwa.js';
 import { assertWallHolds } from './wall.js';
 
 /**
@@ -44,6 +44,7 @@ async function main(): Promise<void> {
       invite_codes: config.signalService.inviteCodes.length,
       public_url: config.signalService.publicUrl,
       apple_audience: config.signalService.appleAudience,
+      siwa_revocation: Boolean(config.signalService.siwaRevocation),
     },
     'ollie signal service starting',
   );
@@ -60,6 +61,14 @@ async function main(): Promise<void> {
     logger.warn('SIWA_STUB is on: identity tokens are NOT verified. Local use only.');
   }
 
+  const revocation = config.signalService.siwaRevocation;
+  if (!revocation && !config.signalService.siwaStub) {
+    logger.warn(
+      'SIWA_TEAM_ID, SIWA_KEY_ID and SIWA_PRIVATE_KEY are not all set: account deletion will not ' +
+        'revoke Apple tokens, which App Review expects. See docs/deploy-railway.md.',
+    );
+  }
+
   const app = await buildSignalApp({
     config,
     logger,
@@ -67,6 +76,9 @@ async function main(): Promise<void> {
     siwa: config.signalService.siwaStub
       ? stubSiwaVerifier
       : buildSiwaVerifier({ audience: config.signalService.appleAudience }),
+    siwaRevoker: revocation
+      ? buildSiwaRevoker({ clientId: config.signalService.appleAudience, ...revocation })
+      : null,
   });
   await app.listen({ port: config.signalService.port, host: '0.0.0.0' });
   logger.info({ port: config.signalService.port }, 'signal service listening on /healthz, /v1 and /mcp');

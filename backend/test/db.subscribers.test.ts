@@ -11,7 +11,13 @@ import {
   revokeToken,
   verifyToken,
 } from '../src/db/subscriberTokens.js';
-import { createSubscriber, eraseEmail, findUserByAppleId, getUser } from '../src/db/users.js';
+import {
+  createSubscriber,
+  deleteSubscriberAccount,
+  eraseEmail,
+  findUserByAppleId,
+  getUser,
+} from '../src/db/users.js';
 import { insertSignal, publishSignal, transitionSignal } from '../src/db/signals.js';
 import { OWNER_ONLY_TABLES } from '../src/signal-server/wall.js';
 import { appendTrackRecord } from '../src/db/trackRecord.js';
@@ -334,3 +340,50 @@ describe('the ollie_signal role', () => {
     ).rejects.toThrow(/permission denied/);
   });
 });
+
+describe('account deletion', () => {
+  it('tombstones the user, revokes every token, and keeps the acceptances', async () => {
+    const user = await seedUser({ appleUserId: 'to-delete' });
+    await recordAcceptance({ userId: user.id, disclaimerVersion: 'v1' }, db);
+    const app = await mintToken(user.id, 'app', db);
+    const mcp = await mintToken(user.id, 'mcp', db);
+
+    expect(await deleteSubscriberAccount(user.id, signal)).toBe(true);
+
+    const after = await getUser(user.id, db);
+    expect(after).toMatchObject({
+      appleUserId: `deleted:${user.id}`,
+      email: null,
+      inviteCode: null,
+    });
+    expect(after?.deletedAt).toBeInstanceOf(Date);
+    expect(await findUserByAppleId('to-delete', db)).toBeNull();
+    expect(await verifyToken(app.plaintext, 'app', { prisma: db })).toBeNull();
+    expect(await verifyToken(mcp.plaintext, 'mcp', { prisma: db })).toBeNull();
+    expect(await listAcceptances(user.id, db)).toHaveLength(1);
+  });
+
+  it('deletes only once, and never the owner or an unknown id', async () => {
+    const user = await seedUser();
+    expect(await deleteSubscriberAccount(user.id, signal)).toBe(true);
+    expect(await deleteSubscriberAccount(user.id, signal)).toBe(false);
+
+    const owner = await db.user.create({ data: { role: 'owner', appleUserId: 'the-owner' } });
+    expect(await deleteSubscriberAccount(owner.id, signal)).toBe(false);
+    expect((await getUser(owner.id, db))?.appleUserId).toBe('the-owner');
+
+    expect(await deleteSubscriberAccount('00000000-0000-0000-0000-000000000000', signal)).toBe(false);
+  });
+
+  it('leaves other subscribers alone', async () => {
+    const gone = await seedUser();
+    const kept = await seedUser({ appleUserId: 'kept' });
+    const keptToken = await mintToken(kept.id, 'mcp', db);
+
+    await deleteSubscriberAccount(gone.id, signal);
+
+    expect((await getUser(kept.id, db))?.appleUserId).toBe('kept');
+    expect(await verifyToken(keptToken.plaintext, 'mcp', { prisma: db })).not.toBeNull();
+  });
+});
+
