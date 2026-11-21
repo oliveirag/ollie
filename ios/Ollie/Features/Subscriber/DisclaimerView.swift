@@ -7,10 +7,16 @@ import SwiftUI
 /// is enforced by a sentinel at the bottom of a lazy stack — it only appears,
 /// and so only flips the flag, once scrolled into view. The version accepted
 /// is the hash of exactly this text; the service refuses any other.
+///
+/// Reaching the end is remembered per version. When an accept gets a 409
+/// because the text changed, the store swaps in the new version, which
+/// rebuilds the scroll view from the top (`.id(version)`) and leaves the new
+/// text unread until its own sentinel appears.
 struct DisclaimerView: View {
     @Environment(SubscriberStore.self) private var store
 
-    @State private var reachedEnd = false
+    /// The version whose end has been on screen, if any.
+    @State private var reachedEndVersion: String?
     @State private var isWorking = false
     @State private var failure: String?
 
@@ -31,12 +37,15 @@ struct DisclaimerView: View {
                         // means the reader scrolled to the end.
                         Color.clear
                             .frame(height: 1)
-                            .onAppear { reachedEnd = true }
+                            .onAppear { reachedEndVersion = version }
                             .accessibilityIdentifier("disclaimer.end")
                     }
                     .padding(.horizontal, DS.pageMargin)
                     .padding(.vertical, DS.Space.xl)
                 }
+                // A new version is a new scroll view: back to the top, and a
+                // fresh sentinel that has not appeared yet.
+                .id(version)
                 .accessibilityIdentifier("disclaimer.scroll")
 
                 VStack(spacing: DS.Space.sm) {
@@ -77,6 +86,10 @@ struct DisclaimerView: View {
     }
 
     private var text: String { store.onboarding?.disclaimer.text ?? "" }
+
+    private var version: String? { store.onboarding?.disclaimer.version }
+
+    private var reachedEnd: Bool { version != nil && reachedEndVersion == version }
 
     /// The first `# ` line is the title; the rest are paragraphs with inline
     /// markdown (bold), which `AttributedString` renders and SwiftUI shows.

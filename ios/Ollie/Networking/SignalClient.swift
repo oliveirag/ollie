@@ -10,12 +10,7 @@ import SignalAPI
 /// owner's endpoint.
 enum SignalServer {
     static var baseURL: URL {
-        if let override = Bundle.main.object(forInfoDictionaryKey: "OllieSignalBaseURL") as? String,
-           !override.isEmpty,
-           let url = URL(string: override) {
-            return url
-        }
-        return URL(string: "http://localhost:3100")!
+        OllieServer.configuredURL(infoKey: "OllieSignalBaseURL", debugFallback: "http://localhost:3100")
     }
 }
 

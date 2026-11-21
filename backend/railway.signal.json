@@ -1,0 +1,15 @@
+{
+  "$schema": "https://railway.app/railway.schema.json",
+  "build": {
+    "builder": "NIXPACKS",
+    "buildCommand": "npm run build"
+  },
+  "deploy": {
+    "_comment_startCommand": "The subscriber signal service. No migrations: the orchestrator's deploy owns the schema, and this service's role could not run them anyway. Railway injects PORT; the service reads SIGNAL_SERVICE_PORT.",
+    "startCommand": "SIGNAL_SERVICE_PORT=${PORT:-3100} node dist/signal-server/index.js",
+    "healthcheckPath": "/healthz",
+    "healthcheckTimeout": 30,
+    "restartPolicyType": "ON_FAILURE",
+    "restartPolicyMaxRetries": 5
+  }
+}

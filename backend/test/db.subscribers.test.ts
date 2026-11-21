@@ -3,14 +3,16 @@ import { IMMUTABILITY_ERRCODE } from '../src/db/client.js';
 import { hasAccepted, listAcceptances, recordAcceptance } from '../src/db/disclaimerAcceptances.js';
 import { hashSecret } from '../src/secrets.js';
 import {
+  APP_TOKEN_IDLE_MS,
   hasLiveToken,
   listTokens,
   mintToken,
+  revokeAllButNewest,
   revokeToken,
   verifyToken,
 } from '../src/db/subscriberTokens.js';
 import { createSubscriber, eraseEmail, findUserByAppleId, getUser } from '../src/db/users.js';
-import { insertSignal } from '../src/db/signals.js';
+import { insertSignal, publishSignal, transitionSignal } from '../src/db/signals.js';
 import { OWNER_ONLY_TABLES } from '../src/signal-server/wall.js';
 import { appendTrackRecord } from '../src/db/trackRecord.js';
 import {
@@ -132,6 +134,45 @@ describe('subscriber tokens', () => {
     const [row] = await listTokens(user.id, 'mcp', db);
     expect(row?.lastUsedAt).toEqual(now);
   });
+
+  it('rewrites last_used_at at most once a minute', async () => {
+    const user = await seedUser();
+    const minted = await mintToken(user.id, 'mcp', db);
+    const first = new Date('2026-09-20T12:00:00.000Z');
+
+    await verifyToken(minted.plaintext, 'mcp', { prisma: db, now: first });
+    await verifyToken(minted.plaintext, 'mcp', { prisma: db, now: new Date(first.getTime() + 59_000) });
+    expect((await listTokens(user.id, 'mcp', db))[0]?.lastUsedAt).toEqual(first);
+
+    const later = new Date(first.getTime() + 60_000);
+    await verifyToken(minted.plaintext, 'mcp', { prisma: db, now: later });
+    expect((await listTokens(user.id, 'mcp', db))[0]?.lastUsedAt).toEqual(later);
+  });
+
+  it('lapses an app token left unused past the idle limit, but not an mcp token', async () => {
+    const user = await seedUser();
+    const app = await mintToken(user.id, 'app', db);
+    const mcp = await mintToken(user.id, 'mcp', db);
+    const idle = new Date(app.token.createdAt.getTime() + APP_TOKEN_IDLE_MS + 1000);
+
+    expect(await verifyToken(app.plaintext, 'app', { prisma: db, now: idle })).toBeNull();
+    expect(await verifyToken(mcp.plaintext, 'mcp', { prisma: db, now: idle })).not.toBeNull();
+  });
+
+  it('keeps only the newest app tokens live', async () => {
+    const user = await seedUser();
+    const minted = [];
+    for (let i = 0; i < 4; i += 1) minted.push(await mintToken(user.id, 'app', db));
+    const mcp = await mintToken(user.id, 'mcp', db);
+
+    expect(await revokeAllButNewest(user.id, 'app', 2, { prisma: db })).toBe(2);
+
+    expect(await verifyToken(minted[0]!.plaintext, 'app', { prisma: db })).toBeNull();
+    expect(await verifyToken(minted[1]!.plaintext, 'app', { prisma: db })).toBeNull();
+    expect(await verifyToken(minted[2]!.plaintext, 'app', { prisma: db })).not.toBeNull();
+    expect(await verifyToken(minted[3]!.plaintext, 'app', { prisma: db })).not.toBeNull();
+    expect(await verifyToken(mcp.plaintext, 'mcp', { prisma: db })).not.toBeNull();
+  });
 });
 
 describe('disclaimer acceptances', () => {
@@ -177,7 +218,7 @@ describe('disclaimer acceptances', () => {
  * its own code is compromised.
  */
 describe('the ollie_signal role', () => {
-  it('can read signals and track_record', async () => {
+  async function seedRoleSignal(published: boolean) {
     const s = await insertSignal(
       {
         symbol: 'AAPL',
@@ -187,16 +228,48 @@ describe('the ollie_signal role', () => {
         thesis: null,
         thesisSource: 'llm',
         indicators: {},
-        reviewSnapshot: { estimated_price: '1' },
+        reviewSnapshot: { estimated_price: '1.25', raw: { order_checks: 'CANARY_BP' } },
         executionMode: 'paper',
         dedupeKey: uniqueDedupeKey(),
       },
       db,
     );
     await appendTrackRecord({ signalId: s.id, entryPrice: '1', status: 'open' }, db);
+    if (published) {
+      await transitionSignal(s.id, 'approved', 'approved', { prisma: db });
+      await publishSignal(s.id, { prisma: db });
+    }
+    return s;
+  }
 
-    expect(await signal.signal.count()).toBe(1);
-    expect(await signal.trackRecord.count()).toBe(1);
+  it('sees only published signals and their track_record rows', async () => {
+    const pending = await seedRoleSignal(false);
+    const published = await seedRoleSignal(true);
+
+    const signals = await signal.signal.findMany({ select: { id: true } });
+    expect(signals.map((r) => r.id)).toEqual([published.id]);
+    const rows = await signal.trackRecord.findMany({ select: { signalId: true } });
+    expect(rows.map((r) => r.signalId)).toEqual([published.id]);
+    expect(await signal.signal.findFirst({ where: { id: pending.id }, select: { id: true } })).toBeNull();
+  });
+
+  it('cannot read review_snapshot or the decision columns, even on a published signal', async () => {
+    await seedRoleSignal(true);
+    for (const column of ['review_snapshot', 'status', 'decide_reason', 'dedupe_key', 'ref_id']) {
+      await expect(signal.$queryRawUnsafe(`SELECT "${column}" FROM signals`)).rejects.toThrow(
+        /permission denied/,
+      );
+    }
+  });
+
+  it('reads the estimate of published signals only, through the view', async () => {
+    const pending = await seedRoleSignal(false);
+    const published = await seedRoleSignal(true);
+    const rows = await signal.$queryRawUnsafe<Array<{ signal_id: string; estimated_price: string }>>(
+      'SELECT signal_id::text AS signal_id, estimated_price FROM published_signal_estimates',
+    );
+    expect(rows).toEqual([{ signal_id: published.id, estimated_price: '1.25' }]);
+    expect(rows.some((r) => r.signal_id === pending.id)).toBe(false);
   });
 
   it('can create a user, insert an acceptance, and mint and revoke a token', async () => {
@@ -235,6 +308,20 @@ describe('the ollie_signal role', () => {
         /permission denied/,
       );
     }
+  });
+
+  it('can update a token only in last_used_at and revoked_at', async () => {
+    const user = await seedUser();
+    await mintToken(user.id, 'mcp', db);
+    await expect(
+      signal.$executeRawUnsafe(`UPDATE subscriber_tokens SET kind = 'app'`),
+    ).rejects.toThrow(/permission denied/);
+    await expect(
+      signal.$executeRawUnsafe(`UPDATE subscriber_tokens SET token_hash = 'x'`),
+    ).rejects.toThrow(/permission denied/);
+    await expect(
+      signal.$executeRawUnsafe(`UPDATE subscriber_tokens SET last_used_at = now(), revoked_at = now()`),
+    ).resolves.toBe(1);
   });
 
   it('cannot rewrite a user beyond the email column', async () => {

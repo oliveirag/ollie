@@ -30,6 +30,8 @@ export interface Quote {
   officialClose: string | null;
   hasTraded: boolean;
   state: string;
+  /** When the venue last traded, if the server said. What a quote's age is measured from. */
+  lastTradeAt?: string | null;
 }
 
 export interface Portfolio {

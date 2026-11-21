@@ -69,8 +69,9 @@ struct SubscriberRootView: View {
         }
         .tint(DS.Text.action)
         // Onboarding only loads what onboarding needs. Arriving at the shell,
-        // after the handoff or on a relaunch, is when the feed and record load.
-        .task { await store.refresh() }
+        // after the handoff or on a relaunch, is when the feed and record load,
+        // unless the refresh that brought the shell up already loaded them.
+        .task { await store.refreshIfStale() }
     }
 }
 
@@ -81,7 +82,7 @@ struct DisclaimerRail: View {
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: DS.Space.sm) {
             Image(systemName: "info.circle")
-                .font(.system(size: 11, weight: .semibold))
+                .dsIcon(size: 11, relativeTo: .caption)
             Text("Not advice. Same signals for everyone. Your agent decides.")
                 .dsFont(.caption)
                 .multilineTextAlignment(.center)

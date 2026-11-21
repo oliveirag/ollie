@@ -2,10 +2,10 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<!-- Sign in with Apple (Phase 4). Needs a paid Apple Developer team and an
-	     App ID with the capability enabled before it works on a device; the
-	     simulator build carries it so the button renders and the Debug test
-	     identity path can stand in until the membership lands. -->
+	<!-- Sign in with Apple (Phase 4). The paid team (NL5855QHYU) registers the
+	     App ID with this capability through automatic signing. It has not run
+	     end to end on a device yet, and the simulator cannot complete it, so
+	     Debug builds also offer the stubbed test identity. -->
 	<key>com.apple.developer.applesignin</key>
 	<array>
 		<string>Default</string>

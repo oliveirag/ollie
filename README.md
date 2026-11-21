@@ -11,9 +11,9 @@ Two strictly separated sides:
   at the signal feed and act on it themselves. Ollie never holds subscriber credentials and never
   places a trade for anyone but the owner.
 
-Full product spec: [Ollie.md](Ollie.md).
-Build plans: [phases 0–1](docs/implementation-plan-phases-0-1.md) (complete) ·
-[phase 2](docs/implementation-plan-phase-2.md) (complete) ·
+Original product spec (July 2026, partly superseded): [Ollie.md](Ollie.md).
+Build plans: [phases 0–1](docs/archive/implementation-plan-phases-0-1.md) (complete, archived) ·
+[phase 2](docs/archive/implementation-plan-phase-2.md) (complete, archived) ·
 [phase 3](docs/implementation-plan-phase-3.md) (built; sustained run in progress) ·
 [phase 4](docs/implementation-plan-phase-4.md) (built; deploy and soft launch gated) ·
 [phase 5](docs/implementation-plan-phase-5.md) (built; flips are owner actions).
@@ -76,7 +76,10 @@ These are enforced in code, not by convention:
    `NOT NULL` column.
 4. **`place_equity_order` has one call site**, in `LiveExecutor`, behind three gates: the
    `LIVE_TRADING_ENABLED` deploy variable, the runtime execution mode, and `confirm_live` on the
-   approval itself. A test greps for it. The subscriber service cannot reach it at all — its import
+   approval itself. The one exception to `confirm_live` is autonomy (Phase 5, decision 6): the
+   autonomy sweep approves a signal only after its veto window, and only with both autonomy gates
+   on (`AUTONOMY_ENABLED` and `app_settings.autonomy`), so the owner's standing choice to turn
+   autonomy on stands in for the per-approval confirmation. A test greps for the call site. The subscriber service cannot reach it at all — its import
    graph and its database role are both tested.
 5. **Risk caps and the kill switch are enforced in the pipeline** from day one, so paper runs
    exercise the same guardrails live runs will.

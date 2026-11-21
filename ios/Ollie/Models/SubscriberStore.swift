@@ -45,6 +45,14 @@ final class SubscriberStore {
     private(set) var lastRefreshed: Date?
     var error: OllieError?
 
+    /// The refresh in progress, if any. Signing in sets the token, refreshes,
+    /// and swaps the screen to one whose own task refreshes again, so without
+    /// this the onboarding read ran three times and everything else twice.
+    @ObservationIgnored private var inFlight: Task<Void, Never>?
+    /// Bumped per refresh, so a finished refresh clears `inFlight` only if no
+    /// newer one replaced it (compared by number, not by Task identity).
+    @ObservationIgnored private var refreshGeneration = 0
+
     var token: String? {
         didSet { if token != oldValue { reset() } }
     }
@@ -71,11 +79,24 @@ final class SubscriberStore {
         minted = nil
         lastRefreshed = nil
         error = nil
+        // A refresh started under the previous token must not be joined by
+        // one for the new token. It still finishes, but nothing awaits it.
+        inFlight = nil
+        refreshGeneration += 1
     }
 
     private func client() throws -> SignalAPI.Client {
-        guard let token, !token.isEmpty else { throw OllieError.unauthorized }
+        guard let token, !token.isEmpty else { throw sessionEnded() }
         return SignalClientFactory.client(token: token)
+    }
+
+    /// A 401 here means the session token was revoked or never existed
+    /// server-side. `OllieError.unauthorized` speaks about the owner token, so
+    /// the subscriber is signed out instead, as onboarding already does; the
+    /// sign-in screen replaces whatever was showing.
+    private func sessionEnded() -> OllieError {
+        if token != nil { signOut() }
+        return .server("Your session ended. Sign in again.")
     }
 
     // MARK: Onboarding
@@ -124,7 +145,7 @@ final class SubscriberStore {
             await loadOnboarding()
             throw OllieError.server("The disclaimer was updated. Please read the new version.")
         case .unauthorized:
-            throw OllieError.unauthorized
+            throw sessionEnded()
         case .badRequest:
             throw OllieError.server("The acceptance failed validation.")
         case .undocumented(let status, _):
@@ -143,7 +164,7 @@ final class SubscriberStore {
             await loadOnboarding()
             throw OllieError.server("Accept the disclaimer before creating an agent token.")
         case .unauthorized:
-            throw OllieError.unauthorized
+            throw sessionEnded()
         case .undocumented(let status, _):
             throw OllieError.server("Token mint returned \(status).")
         }
@@ -163,7 +184,7 @@ final class SubscriberStore {
         case .notFound:
             await loadTokens()
         case .unauthorized:
-            throw OllieError.unauthorized
+            throw sessionEnded()
         case .badRequest:
             throw OllieError.server("The revoke request failed validation.")
         case .undocumented(let status, _):
@@ -173,7 +194,28 @@ final class SubscriberStore {
 
     // MARK: Reads
 
+    /// Joins a refresh already under way instead of starting a second one.
     func refresh() async {
+        if let inFlight {
+            await inFlight.value
+            return
+        }
+        refreshGeneration += 1
+        let generation = refreshGeneration
+        let task = Task { await performRefresh() }
+        inFlight = task
+        await task.value
+        if refreshGeneration == generation { inFlight = nil }
+    }
+
+    /// For screens that refresh on appear: skips the fetch when one finished
+    /// moments ago, such as the one that just moved onboarding to this screen.
+    func refreshIfStale(olderThan seconds: TimeInterval = 5) async {
+        if let lastRefreshed, Date().timeIntervalSince(lastRefreshed) < seconds { return }
+        await refresh()
+    }
+
+    private func performRefresh() async {
         isLoading = true
         defer { isLoading = false }
 
@@ -206,8 +248,10 @@ final class SubscriberStore {
 
     private func loadFeed() async {
         do {
-            if case .ok(let ok) = try await client().getFeed(.init(query: .init(limit: 50))) {
-                feed = try ok.body.json.signals
+            switch try await client().getFeed(.init(query: .init(limit: 50))) {
+            case .ok(let ok): feed = try ok.body.json.signals
+            case .unauthorized: _ = sessionEnded()
+            default: break
             }
         } catch {
             // Left as it was; the view reports staleness.
@@ -216,8 +260,10 @@ final class SubscriberStore {
 
     private func loadRecord() async {
         do {
-            if case .ok(let ok) = try await client().getSubscriberTrackRecord(.init()) {
-                record = try ok.body.json
+            switch try await client().getSubscriberTrackRecord(.init()) {
+            case .ok(let ok): record = try ok.body.json
+            case .unauthorized: _ = sessionEnded()
+            default: break
             }
         } catch {
             // Left as it was.
@@ -226,8 +272,10 @@ final class SubscriberStore {
 
     private func loadTokens() async {
         do {
-            if case .ok(let ok) = try await client().listMcpTokens(.init()) {
-                tokens = try ok.body.json.tokens
+            switch try await client().listMcpTokens(.init()) {
+            case .ok(let ok): tokens = try ok.body.json.tokens
+            case .unauthorized: _ = sessionEnded()
+            default: break
             }
         } catch {
             // Left as it was.
@@ -241,7 +289,7 @@ final class SubscriberStore {
         case .notFound, .badRequest:
             throw OllieError.notFound
         case .unauthorized:
-            throw OllieError.unauthorized
+            throw sessionEnded()
         case .undocumented(let status, _):
             throw OllieError.server("Signal returned \(status).")
         }

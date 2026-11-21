@@ -2,7 +2,7 @@ import { Prisma, type PrismaClient } from '@prisma/client';
 import type { Logger } from 'pino';
 import { newRunLogger } from '../logger.js';
 import { getAppSettings } from '../db/settings.js';
-import { appendTrackRecord, hasMarkForDay, listOpenLots } from '../db/trackRecord.js';
+import { appendTrackRecord, listOpenLots, lotsMarkedOnDay } from '../db/trackRecord.js';
 import type { Config } from '../config/index.js';
 import { exchangeDate, isMarketHoliday } from './marketCalendar.js';
 import type { BrokerAdapter } from './robinhood/client.js';
@@ -100,6 +100,7 @@ export async function runMarkToMarket(deps: MarkDeps): Promise<MarkResult> {
   let marked = 0;
   let skippedAlreadyMarked = 0;
   const gaps = new Set<string>();
+  const alreadyMarked = await lotsMarkedOnDay(now, deps.prisma);
 
   for (const lot of lots) {
     const price = quotes[lot.symbol]?.lastTradePrice;
@@ -113,7 +114,7 @@ export async function runMarkToMarket(deps: MarkDeps): Promise<MarkResult> {
 
     // Idempotence, because the alternative is permanent: a second mark for the
     // same lot on the same day would double-count it in that day's curve point.
-    if (await hasMarkForDay(lot.signalId, now, deps.prisma)) {
+    if (alreadyMarked.has(lot.signalId)) {
       skippedAlreadyMarked += 1;
       continue;
     }

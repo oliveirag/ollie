@@ -39,7 +39,7 @@ enum OllieError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .unauthorized:
-            "The owner token was rejected. Check it in Settings."
+            "The owner token was rejected. Disconnect in Controls and paste the current one."
         case .notPending(let status):
             "Already \(status)."
         case .notFound:
@@ -93,16 +93,28 @@ enum OllieError: LocalizedError, Equatable {
     }
 }
 
-/// Where the backend lives. Defaults to the simulator's view of the host
-/// machine; overridable so a device build can point at Railway.
+/// Where the backend lives: `OllieBaseURL` in Info.plist, set per build
+/// configuration in project.yml.
 enum OllieServer {
     static var baseURL: URL {
-        if let override = Bundle.main.object(forInfoDictionaryKey: "OllieBaseURL") as? String,
-           !override.isEmpty,
-           let url = URL(string: override) {
+        configuredURL(infoKey: "OllieBaseURL", debugFallback: "http://localhost:3000")
+    }
+
+    /// Reads a base URL from Info.plist. Only a Debug build may fall back to
+    /// localhost when the key is missing; a Release build that silently talked
+    /// to localhost would just fail every call with a misleading offline
+    /// message, so it stops on first use instead and the broken build never ships.
+    static func configuredURL(infoKey: String, debugFallback: String) -> URL {
+        if let value = Bundle.main.object(forInfoDictionaryKey: infoKey) as? String,
+           !value.isEmpty,
+           let url = URL(string: value) {
             return url
         }
-        return URL(string: "http://localhost:3000")!
+        #if DEBUG
+        return URL(string: debugFallback)!
+        #else
+        fatalError("\(infoKey) is missing or invalid in Info.plist; check the Release settings in project.yml")
+        #endif
     }
 }
 

@@ -22,6 +22,7 @@ import { registerHealthRoutes } from './routes/health.js';
 import { registerSettingsRoutes } from './routes/settings.js';
 import { registerSignalRoutes } from './routes/signals.js';
 import { registerTrackRecordRoutes } from './routes/trackRecord.js';
+import { installValidationErrorHandler } from './validationErrors.js';
 
 /**
  * The owner API (PRD §4.2-4.3, Phase 2).
@@ -101,6 +102,7 @@ export async function buildApp(deps: ApiDeps): Promise<OllieApp> {
 
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
+  installValidationErrorHandler(app);
 
   await app.register(fastifySwagger, {
     openapi: {

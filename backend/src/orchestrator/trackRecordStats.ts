@@ -6,7 +6,12 @@
  * recompute these and get the same answer. That reproducibility *is* the
  * credibility argument (PRD §9), so a stored copy of any of it would be a
  * second version of the truth that can drift from the record it summarises.
+ *
+ * Money is summed as Decimal (see money.ts). Ratios (win rate, returns) and
+ * curve points leave as numbers because the wire carries them as numbers;
+ * each is converted once, at the end, from an exact sum.
  */
+import { dec, type Decimal } from '../money.js';
 
 export interface TrackRecordRow {
   signalId: string;
@@ -38,7 +43,8 @@ export interface TrackRecordStats {
   winRate: number | null;
   /** Unweighted mean of per-trade returns. Null with zero closed trades. */
   averageReturn: number | null;
-  totalRealizedPnl: number;
+  /** Exact. Callers format it (`toFixed(2)` on the wire). */
+  totalRealizedPnl: Decimal;
   curve: CurvePoint[];
 }
 
@@ -60,12 +66,12 @@ export function computeTrackRecord(rows: readonly TrackRecordRow[]): TrackRecord
   const closed = current.filter((row) => row.status === 'closed');
   const open = current.filter((row) => row.status === 'open');
 
-  const wins = closed.filter((row) => Number(row.realizedPnl ?? 0) > 0).length;
-  const totalRealizedPnl = closed.reduce((sum, row) => sum + Number(row.realizedPnl ?? 0), 0);
+  const wins = closed.filter((row) => dec(row.realizedPnl ?? 0).gt(0)).length;
+  const totalRealizedPnl = closed.reduce((sum, row) => sum.plus(row.realizedPnl ?? 0), dec(0));
 
   const returns = closed.map((row) => {
-    const basis = Number(row.entryPrice) * Number(row.quantity);
-    return basis === 0 ? 0 : Number(row.realizedPnl ?? 0) / basis;
+    const basis = dec(row.entryPrice).times(row.quantity);
+    return basis.isZero() ? 0 : dec(row.realizedPnl ?? 0).dividedBy(basis).toNumber();
   });
 
   return {
@@ -107,13 +113,13 @@ function buildCurve(rows: readonly TrackRecordRow[]): CurvePoint[] {
 
     const realized = [...asOf.values()]
       .filter((row) => row.status === 'closed')
-      .reduce((sum, row) => sum + Number(row.realizedPnl ?? 0), 0);
+      .reduce((sum, row) => sum.plus(row.realizedPnl ?? 0), dec(0));
 
     const openLots = [...asOf.values()].filter((row) => row.status === 'open');
-    const marksToday = new Map<string, number>();
+    const marksToday = new Map<string, Decimal>();
     for (const row of rows) {
       if (row.markPrice != null && dayOf(row.recordedAt) === date) {
-        marksToday.set(row.signalId, Number(row.unrealizedPnl ?? 0));
+        marksToday.set(row.signalId, dec(row.unrealizedPnl ?? 0));
       }
     }
 
@@ -126,9 +132,9 @@ function buildCurve(rows: readonly TrackRecordRow[]): CurvePoint[] {
     // marked earlier today and then closed today already has its result in
     // `realized`, and summing its stale mark too would double-count it.
     const unrealized = openLots.reduce(
-      (sum, row) => sum + (marksToday.get(row.signalId) ?? 0),
-      0,
+      (sum, row) => sum.plus(marksToday.get(row.signalId) ?? 0),
+      dec(0),
     );
-    return { date, value: realized + unrealized, withheld: false };
+    return { date, value: realized.plus(unrealized).toNumber(), withheld: false };
   });
 }

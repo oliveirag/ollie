@@ -15,7 +15,7 @@
     "pretest": "tsx scripts/setup-test-db.ts",
     "test": "vitest run",
     "db:test:setup": "tsx scripts/setup-test-db.ts",
-    "test:watch": "vitest",
+    "test:watch": "tsx scripts/setup-test-db.ts && vitest",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",

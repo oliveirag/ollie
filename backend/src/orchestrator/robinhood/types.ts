@@ -93,6 +93,7 @@ export const QuoteSchema = z
     previous_close: DecimalString.nullish(),
     adjusted_previous_close: DecimalString.nullish(),
     previous_close_date: z.string().nullish(),
+    venue_last_trade_time: z.string().nullish(),
     has_traded: z.boolean().optional(),
     /** Anything other than 'active' means the price is not tradeable-fresh. */
     state: z.string().optional(),

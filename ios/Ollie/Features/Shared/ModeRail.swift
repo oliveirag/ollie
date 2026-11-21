@@ -12,7 +12,7 @@ struct ModeRail: View {
     var body: some View {
         HStack(spacing: DS.Space.sm) {
             Image(systemName: mode.railSymbol)
-                .font(.system(size: 11, weight: .semibold))
+                .dsIcon(size: 11, relativeTo: .caption)
             Text(mode.railText)
                 .dsFont(.caption, weight: .bold)
                 .lineLimit(1)

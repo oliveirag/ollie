@@ -109,9 +109,8 @@ describe('derived fields', () => {
     expect(buildConfig(env()).robinhood.accountNumber).toBeNull();
   });
 
-  it('reports the signal service database url and public url as null when unset', () => {
+  it('reports the signal service public url as null when unset', () => {
     const config = buildConfig(env());
-    expect(config.signalService.databaseUrl).toBeNull();
     expect(config.signalService.publicUrl).toBeNull();
   });
 });

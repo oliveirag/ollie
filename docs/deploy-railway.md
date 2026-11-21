@@ -3,8 +3,8 @@
 The orchestrator is a single always-on service plus a managed Postgres. It
 serves the owner API under `/v1` (bearer `OWNER_API_TOKEN`) and a public
 `/healthz`; everything else is observed through logs and the database. The
-subscriber signal service (Phase 4.7) is not deployed yet and is not covered
-here.
+subscriber signal service (Phase 4.7) is a second service from the same
+directory, set up as described in [The signal service](#the-signal-service).
 
 ## One-time setup
 
@@ -108,34 +108,57 @@ here.
    and fails the release if it cannot.
 
 
-## Clearing the record before it starts
+## The record cannot be cleared
 
-The record tables refuse `TRUNCATE` as of the `reject_truncate` migration, which
-closes the last way to erase history: the Phase 0 triggers are row-level and
-fire on UPDATE and DELETE, so before this a `TRUNCATE` wiped the whole record in
-one statement while every "immutable" guarantee looked intact.
+The record tables refuse `UPDATE`, `DELETE` and `TRUNCATE` (the immutability
+and `reject_truncate` migrations). The window for a clean slate closed when the
+sustained paper run began on 2026-09-24; there is no supported way to clear
+production now, and that is the point. The only place the record is wiped is
+the test database, through the replica-mode bypass in `test/helpers/db.ts`.
 
-**Order matters.** The migration ships with the deploy, so a clean slate is far
-easier before that deploy than after:
+## The signal service
 
-```bash
-# Before deploying the trigger — an ordinary truncate still works.
-railway run psql $DATABASE_URL \
-  -c 'TRUNCATE track_record, executions, signal_events, signals RESTART IDENTITY CASCADE'
-```
+The subscriber REST API and the Ollie Signal MCP server, one process, deployed
+as a second Railway service in the same project. It shares the orchestrator's
+code and database but none of its secrets, and it connects as the restricted
+`ollie_signal` role, which it probes at boot: if the role can read any
+owner-only table, the service refuses to start.
 
-Afterwards it takes a deliberate bypass, which is the intended friction rather
-than an obstacle to work around casually:
+1. **Give the role a password.** The migration creates `ollie_signal` without
+   one, so no credential lives in the repo. Once, on the production database:
 
-```bash
-railway run psql $DATABASE_URL \
-  -c "SET session_replication_role = 'replica';
-      TRUNCATE track_record, executions, signal_events, signals RESTART IDENTITY CASCADE;
-      SET session_replication_role = 'origin';"
-```
+   ```bash
+   railway run psql $DATABASE_URL -c "ALTER ROLE ollie_signal WITH PASSWORD '<openssl rand -hex 24>'"
+   ```
 
-Once the sustained run begins, neither should ever be used again — at that point
-they are not a clean slate, they are editing the published record.
+2. **Add the service.** `+ New` → `GitHub Repo` → this repo, **Root Directory
+   `backend`**, and set its config-as-code file path to
+   `backend/railway.signal.json` in the service settings. Without that path it
+   would read `railway.json`, run migrations and boot the orchestrator a second
+   time. The signal config runs no migrations and starts
+   `dist/signal-server/index.js` on Railway's `PORT`.
+
+3. **Set its variables.** Only these; in particular not `DATABASE_URL`,
+   `OWNER_API_TOKEN`, the Robinhood, Anthropic or APNs values:
+
+   ```
+   SIGNAL_DATABASE_URL=postgresql://ollie_signal:<password>@${{Postgres.PGHOST}}:${{Postgres.PGPORT}}/${{Postgres.PGDATABASE}}
+   SIGNAL_PUBLIC_URL=https://<the service's public domain>
+   SUBSCRIBER_INVITE_CODES=<comma-separated codes>
+   APPLE_APP_BUNDLE_ID=com.guilhermeoliveira.Ollie
+   NODE_ENV=production
+   ```
+
+   `SIWA_STUB` must stay unset; the service refuses it in production.
+
+4. **Check the rate limiter's proxy hop.** The service trusts exactly one
+   proxy hop (`trustProxy: 1`), Railway's edge, so the per-IP rate limit keys
+   on the address the edge appended rather than a client-written
+   `X-Forwarded-For`. After the first deploy, confirm the logged client IP for
+   a request from your phone is your public IP, not a Railway address.
+
+5. **Verify.** `curl https://<domain>/healthz` returns `database: up`, and a
+   request to `/v1/feed` without a token returns 401.
 
 ## Verifying a deploy
 
@@ -170,17 +193,11 @@ platform health check keys on.
 
 ## Running scripts against the deployed database
 
-`railway run` injects the service's environment into a local shell, which is how
-the Phase 0 exit check gets repeated against managed Postgres for parity:
-
-```bash
-cd backend
-railway run npm run signal:write-test
-```
-
-That writes a real, permanent row to production. It is fabricated data that
-cannot be deleted — the immutability triggers see to that — so do it once
-during setup and mark it in the `thesis` field, which the script already does.
+`railway run` injects the service's environment into a local shell. Do not use
+it with `signal:write-test` or `seed:track-record`: both refuse any
+`DATABASE_URL` that is not localhost, because the rows they write are
+fabricated and permanent. The parity check that once ran here is covered by the
+test suite, which migrates and exercises a real Postgres on every run.
 
 ## Operational notes
 

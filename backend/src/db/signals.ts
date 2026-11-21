@@ -162,37 +162,99 @@ export async function listFilledUnpublishedSignals(
 }
 
 /**
+ * The columns of `signals` the subscriber service's role is granted (see the
+ * signal_role_published_only migration). Selecting anything else as that role
+ * is a permission error, so the subscriber reads name them explicitly.
+ */
+export const PUBLISHED_SIGNAL_SELECT = {
+  id: true,
+  createdAt: true,
+  symbol: true,
+  side: true,
+  signalType: true,
+  quantity: true,
+  thesis: true,
+  thesisSource: true,
+  indicators: true,
+  published: true,
+  publishedAt: true,
+} as const satisfies Prisma.SignalSelect;
+
+/** A published signal as the subscriber role can read it, plus its review estimate. */
+export type PublishedSignalRow = Prisma.SignalGetPayload<{ select: typeof PUBLISHED_SIGNAL_SELECT }> & {
+  /** From the published_signal_estimates view; null when the snapshot has none. */
+  estimatedPrice: string | null;
+};
+
+/** Keyset position in the feed: strictly older than this (published_at, id). */
+export interface FeedCursor {
+  publishedAt: Date;
+  /** Breaks ties when a sweep published several signals at one instant. */
+  id?: string;
+}
+
+async function withEstimates(
+  rows: Array<Prisma.SignalGetPayload<{ select: typeof PUBLISHED_SIGNAL_SELECT }>>,
+  prisma: PrismaClient,
+): Promise<PublishedSignalRow[]> {
+  if (rows.length === 0) return [];
+  const estimates = await prisma.$queryRaw<Array<{ signal_id: string; estimated_price: string | null }>>`
+    SELECT signal_id::text AS signal_id, estimated_price
+    FROM published_signal_estimates
+    WHERE signal_id = ANY(${rows.map((row) => row.id)}::uuid[])
+  `;
+  const byId = new Map(estimates.map((row) => [row.signal_id, row.estimated_price]));
+  return rows.map((row) => ({ ...row, estimatedPrice: byId.get(row.id) ?? null }));
+}
+
+/**
  * The subscriber feed's read: published signals, newest publication first,
- * keyset-paginated on `published_at` so a page stays stable while new signals
- * land ahead of it. `before` is exclusive.
+ * keyset-paginated on (`published_at`, `id`) so a page stays stable while new
+ * signals land ahead of it, and so signals one sweep published at the same
+ * instant are not skipped at a page boundary. `before` is exclusive.
  */
 export async function listPublishedSignals(
-  options: { limit: number; before?: Date; since?: Date },
+  options: { limit: number; before?: FeedCursor; since?: Date },
   prisma: PrismaClient = getPrisma(),
-): Promise<Signal[]> {
-  return prisma.signal.findMany({
+): Promise<PublishedSignalRow[]> {
+  const { before, since } = options;
+  const beforeClause: Prisma.SignalWhereInput | null = before
+    ? before.id
+      ? {
+          OR: [
+            { publishedAt: { lt: before.publishedAt } },
+            { publishedAt: before.publishedAt, id: { lt: before.id } },
+          ],
+        }
+      : { publishedAt: { lt: before.publishedAt } }
+    : null;
+  const rows = await prisma.signal.findMany({
     where: {
       published: true,
-      ...(options.before || options.since
-        ? {
-            publishedAt: {
-              ...(options.before ? { lt: options.before } : {}),
-              ...(options.since ? { gte: options.since } : {}),
-            },
-          }
-        : {}),
+      AND: [
+        ...(beforeClause ? [beforeClause] : []),
+        ...(since ? [{ publishedAt: { gte: since } }] : []),
+      ],
     },
     orderBy: [{ publishedAt: 'desc' }, { id: 'desc' }],
     take: options.limit,
+    select: PUBLISHED_SIGNAL_SELECT,
   });
+  return withEstimates(rows, prisma);
 }
 
 /** One published signal, or null — an unpublished id reads as absent on purpose. */
 export async function getPublishedSignal(
   signalId: string,
   prisma: PrismaClient = getPrisma(),
-): Promise<Signal | null> {
-  return prisma.signal.findFirst({ where: { id: signalId, published: true } });
+): Promise<PublishedSignalRow | null> {
+  const row = await prisma.signal.findFirst({
+    where: { id: signalId, published: true },
+    select: PUBLISHED_SIGNAL_SELECT,
+  });
+  if (!row) return null;
+  const [withEstimate] = await withEstimates([row], prisma);
+  return withEstimate ?? null;
 }
 
 export async function getSignal(

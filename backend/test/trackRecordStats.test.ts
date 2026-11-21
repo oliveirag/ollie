@@ -167,6 +167,18 @@ describe('the equity curve', () => {
   });
 });
 
+describe('money precision', () => {
+  it('sums realized pnl exactly, not as doubles', () => {
+    const stats = computeTrackRecord([
+      closed('a', '0.1', '2026-08-01T15:00:00Z'),
+      closed('b', '0.2', '2026-08-01T16:00:00Z'),
+    ]);
+    // 0.1 + 0.2 in doubles is 0.30000000000000004.
+    expect(stats.totalRealizedPnl.toString()).toBe('0.3');
+    expect(stats.curve[0]!.value).toBe(0.3);
+  });
+});
+
 describe('corrections', () => {
   it('takes the latest row per signal so a correction supersedes', () => {
     const stats = computeTrackRecord([
@@ -177,7 +189,7 @@ describe('corrections', () => {
 
     // Not two trades, and not the original number. One trade, latest row wins.
     expect(stats.closedTrades).toBe(1);
-    expect(stats.totalRealizedPnl).toBe(-3);
+    expect(stats.totalRealizedPnl.toFixed(2)).toBe('-3.00');
     expect(stats.wins).toBe(0);
   });
 

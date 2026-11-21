@@ -6,6 +6,7 @@ import { appendTrackRecord, closeLots } from '../src/db/trackRecord.js';
 import { DISCLAIMER_VERSION } from '../src/published/disclaimer.js';
 import { FORBIDDEN_FIELDS } from '../src/published/signal.js';
 import { hashSecret } from '../src/secrets.js';
+import { APP_TOKENS_KEPT } from '../src/db/subscriberTokens.js';
 import { authHeader, buildTestApp, TEST_OWNER_TOKEN } from './helpers/api.js';
 import { closeTestPrisma, resetDatabase, testPrisma, uniqueDedupeKey } from './helpers/db.js';
 import {
@@ -87,6 +88,26 @@ afterAll(async () => {
 });
 
 describe('POST /v1/session', () => {
+  it('survives two first sign-ins racing for the same subject', async () => {
+    const payload = { identity_token: fakeIdentityToken('racer'), invite_code: 'FRIENDS-1' };
+    const [a, b] = await Promise.all([
+      app.inject({ method: 'POST', url: '/v1/session', payload }),
+      app.inject({ method: 'POST', url: '/v1/session', payload }),
+    ]);
+    expect([a.statusCode, b.statusCode]).toEqual([200, 200]);
+    expect(a.json().subscriber.id).toBe(b.json().subscriber.id);
+  });
+
+  it('keeps only the newest few session tokens live', async () => {
+    const tokens: string[] = [];
+    for (let i = 0; i < APP_TOKENS_KEPT + 1; i += 1) tokens.push(await signIn(app, 'repeat'));
+    const statuses = [];
+    for (const token of tokens) {
+      statuses.push((await app.inject({ method: 'GET', url: '/v1/onboarding', headers: bearer(token) })).statusCode);
+    }
+    expect(statuses).toEqual([401, ...Array(APP_TOKENS_KEPT).fill(200)]);
+  });
+
   it('creates the subscriber on first sign-in with an invite code', async () => {
     const response = await app.inject({
       method: 'POST',
@@ -326,6 +347,32 @@ describe('GET /v1/feed', () => {
     expect(third.signals).toHaveLength(1);
     expect(third.next_before).toBeNull();
   });
+
+  it('does not skip signals one sweep published at the same instant', async () => {
+    const instant = new Date('2026-09-05T14:00:00Z');
+    const seeded = [];
+    for (let i = 0; i < 3; i += 1) seeded.push(await seedPublished(instant, { symbol: `S${i}` }));
+    const token = await onboard();
+
+    const seen: string[] = [];
+    let url = '/v1/feed?limit=2';
+    for (let page = 0; page < 3; page += 1) {
+      const body = (await app.inject({ method: 'GET', url, headers: bearer(token) })).json();
+      seen.push(...body.signals.map((s: { id: string }) => s.id));
+      if (!body.next_before) break;
+      url = `/v1/feed?limit=2&before=${body.next_before}&before_id=${body.next_before_id}`;
+    }
+
+    expect(seen.sort()).toEqual(seeded.map((s) => s.id).sort());
+  });
+
+  it('explains a bad query in the 400', async () => {
+    const token = await onboard();
+    const response = await app.inject({ method: 'GET', url: '/v1/feed?limit=0', headers: bearer(token) });
+    expect(response.statusCode).toBe(400);
+    expect(response.json().error).toBe('bad_request');
+    expect(response.json().detail).toMatch(/limit/);
+  });
 });
 
 describe('GET /v1/signals/:id', () => {
@@ -427,6 +474,19 @@ describe('GET /v1/track-record', () => {
     ]);
   });
 
+  it('leaves out a lot whose signal is filled but not yet published', async () => {
+    await seedPublished(new Date('2026-09-01T14:00:00Z'));
+    const unpublished = await seedSignal({ symbol: 'MSFT' });
+    await transitionSignal(unpublished.id, 'approved', 'approved', { prisma: db });
+    await appendTrackRecord({ signalId: unpublished.id, entryPrice: '50', status: 'open' }, db);
+    const token = await onboard();
+
+    const body = (await app.inject({ method: 'GET', url: '/v1/track-record', headers: bearer(token) })).json();
+
+    expect(body.positions.map((p: { symbol: string }) => p.symbol)).toEqual(['AAPL']);
+    expect(body.open_positions).toBe(1);
+  });
+
   it('reports a never-marked lot with a null mark rather than a guess', async () => {
     await seedPublished(new Date('2026-09-01T14:00:00Z'));
     const token = await onboard();
@@ -445,6 +505,22 @@ describe('rate limiting', () => {
       const statuses: number[] = [];
       for (let i = 0; i < 3; i += 1) {
         statuses.push((await tight.inject({ method: 'GET', url: '/v1/feed' })).statusCode);
+      }
+      expect(statuses).toEqual([401, 401, 429]);
+    } finally {
+      await tight.close();
+    }
+  });
+
+  it('keys on the address the edge appended, not a client-written X-Forwarded-For', async () => {
+    const tight = await buildTestSignalApp({ rateLimit: { max: 2, timeWindow: '1 minute' } });
+    try {
+      const statuses: number[] = [];
+      for (let i = 0; i < 3; i += 1) {
+        // What Railway forwards when a client sends its own header: the
+        // client's value first, then the address the edge saw.
+        const headers = { 'x-forwarded-for': `10.0.0.${i}, 203.0.113.9` };
+        statuses.push((await tight.inject({ method: 'GET', url: '/v1/feed', headers })).statusCode);
       }
       expect(statuses).toEqual([401, 401, 429]);
     } finally {

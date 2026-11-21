@@ -3,7 +3,7 @@ import pino from 'pino';
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildConfig } from '../src/config/index.js';
 import { listDevices, upsertDevice } from '../src/db/devices.js';
-import { insertSignal } from '../src/db/signals.js';
+import { insertSignal, type InsertSignalInput } from '../src/db/signals.js';
 import { runPipeline } from '../src/orchestrator/pipeline.js';
 import type { ApnsClient, ApnsResult } from '../src/orchestrator/push/apns.js';
 import {
@@ -13,70 +13,25 @@ import {
   buildPayload,
   buildReminderPayload,
 } from '../src/orchestrator/push/notify.js';
-import type { Candle } from '../src/orchestrator/robinhood/client.js';
 import { MockBrokerAdapter } from '../src/orchestrator/robinhood/mockClient.js';
 import { closeTestPrisma, resetDatabase, testPrisma, uniqueDedupeKey } from './helpers/db.js';
-import fixture from './fixtures/ohlcv/AAPL-daily-2026.json' with { type: 'json' };
+import { envConfig, signalInput, THROUGH_BULLISH_CROSS, validSnapshot } from './helpers/factories.js';
 
 const db = testPrisma();
 const silent = pino({ level: 'silent' });
 
-/**
- * The same real-data fixture the pipeline integration test uses: bars through
- * 2026-07-02, where MACD crosses bullish and the strategy actually fires.
- * Without it the pipeline produces nothing and the assertion below would pass
- * vacuously.
- */
-const ALL_BARS: Candle[] = fixture.results[0]!.bars.map((bar) => ({
-  t: bar.begins_at,
-  o: bar.open_price,
-  h: bar.high_price,
-  l: bar.low_price,
-  c: bar.close_price,
-  v: bar.volume,
-}));
-const THROUGH_BULLISH_CROSS = ALL_BARS.slice(
-  0,
-  ALL_BARS.findIndex((b) => b.t.startsWith('2026-07-02')) + 1,
-);
 const NOW = new Date('2026-07-02T13:35:00Z');
 
-function pipelineConfig() {
-  return buildConfig({
-    DATABASE_URL: process.env.DATABASE_URL,
-    SYMBOL_ALLOWLIST: 'AAPL',
-    ORDER_NOTIONAL_CENTS: '100000',
-    MAX_POSITION_CENTS: '200000',
-    LOG_LEVEL: 'silent',
-  } as NodeJS.ProcessEnv);
-}
+const pipelineConfig = () =>
+  envConfig({ ORDER_NOTIONAL_CENTS: '100000', MAX_POSITION_CENTS: '200000' });
 
-function validSnapshot() {
-  return {
-    schema_version: 1,
-    estimated_price: '182.50',
-    alerts: [],
-    requested: { symbol: 'AAPL', side: 'buy', quantity: '2', type: 'market' },
-    captured_at: '2026-08-09T12:00:00.000Z',
-    raw: {},
-  };
-}
-
-async function seedSignal(overrides: Partial<Parameters<typeof insertSignal>[0]> = {}) {
+async function seedSignal(overrides: Partial<InsertSignalInput> = {}) {
   return insertSignal(
-    {
-      symbol: 'AAPL',
-      side: 'buy',
-      signalType: 'technical',
-      quantity: '2',
+    signalInput({
       thesis: 'RSI crossed below 30.',
-      thesisSource: 'llm',
-      indicators: {},
-      reviewSnapshot: validSnapshot(),
-      executionMode: 'paper',
-      dedupeKey: uniqueDedupeKey(),
+      reviewSnapshot: validSnapshot({ captured_at: '2026-08-09T12:00:00.000Z' }),
       ...overrides,
-    },
+    }),
     db,
   );
 }
@@ -132,7 +87,7 @@ describe('buildPayload', () => {
   });
 
   it('says share, not shares, for a single share', async () => {
-    const signal = await seedSignal({ quantity: '1', dedupeKey: uniqueDedupeKey() });
+    const signal = await seedSignal({ quantity: '1' });
 
     expect(buildPayload(signal, CLOSE).body).toContain('1 share at');
   });
@@ -269,6 +224,9 @@ describe('push never blocks a signal', () => {
     };
 
     const result = await runPipeline({
+      // Bars through 2026-07-02, where MACD crosses bullish and the strategy
+      // actually fires. Without them the pipeline produces nothing and the
+      // assertion below would pass vacuously.
       broker: new MockBrokerAdapter({ candles: { AAPL: THROUGH_BULLISH_CROSS } }),
       config: pipelineConfig(),
       logger: silent,

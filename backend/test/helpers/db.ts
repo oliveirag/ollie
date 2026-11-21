@@ -38,21 +38,22 @@ export async function resetDatabase(): Promise<void> {
   // The record tables now refuse TRUNCATE (see the reject_truncate migration),
   // which is the point — but a test database has to be resettable. Replica mode
   // is the narrowest bypass available: triggers created in the default ORIGIN
-  // mode do not fire, it lasts only for this session, and it is restored below
-  // even if the truncate throws.
+  // mode do not fire, and SET LOCAL ends with the transaction.
+  //
+  // Both statements run in one transaction so they share a connection. Run
+  // separately, the pool can hand the TRUNCATE a connection that never saw the
+  // SET, and the guard fires mid-suite.
   //
   // This is why the guard is a trigger and not, say, a revoked privilege: the
   // bypass has to be deliberate and visible, and it lives in test-only code
   // that production never loads.
-  await db.$executeRawUnsafe("SET session_replication_role = 'replica'");
-  try {
-    await db.$executeRawUnsafe(
+  await db.$transaction([
+    db.$executeRawUnsafe("SET LOCAL session_replication_role = 'replica'"),
+    db.$executeRawUnsafe(
       'TRUNCATE TABLE "track_record", "executions", "signal_events", "signals", "devices", "oauth_state", ' +
         '"disclaimer_acceptances", "subscriber_tokens", "users" RESTART IDENTITY CASCADE',
-    );
-  } finally {
-    await db.$executeRawUnsafe("SET session_replication_role = 'origin'");
-  }
+    ),
+  ]);
   await db.appSettings.upsert({
     where: { id: 1 },
     update: { killSwitch: false, executionMode: 'paper', autonomy: false },

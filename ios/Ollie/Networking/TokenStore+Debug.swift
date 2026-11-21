@@ -38,10 +38,10 @@ extension TokenStore {
         save(token)
     }
 
-    /// Whether the Debug-only "test identity" sign-in is offered. Sign in with
-    /// Apple needs a paid Apple Developer team and per-app configuration the
-    /// simulator does not have (Phase 4, risk 3); the backend accepts the
-    /// stand-in only with `SIWA_STUB=true`, which it refuses in production.
+    /// Whether the Debug-only "test identity" sign-in is offered. The simulator
+    /// cannot complete Sign in with Apple (Phase 4, risk 3), and Developer Mode
+    /// is off on the owner's phone, so UI tests need a stand-in; the backend
+    /// accepts it only with `SIWA_STUB=true`, which it refuses in production.
     static var testIdentityEnabled: Bool {
         ProcessInfo.processInfo.environment["SUBSCRIBER_TEST_IDENTITY"] == "1"
     }

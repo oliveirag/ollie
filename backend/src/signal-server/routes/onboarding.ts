@@ -1,9 +1,17 @@
-import type { PrismaClient } from '@prisma/client';
+import { Prisma, type PrismaClient } from '@prisma/client';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import type { Config } from '../../config/index.js';
 import { hasAccepted, recordAcceptance } from '../../db/disclaimerAcceptances.js';
-import { hasLiveToken, listTokens, mintToken, revokeToken } from '../../db/subscriberTokens.js';
+import {
+  APP_TOKENS_KEPT,
+  hasLiveToken,
+  listTokens,
+  mintToken,
+  ownsToken,
+  revokeAllButNewest,
+  revokeToken,
+} from '../../db/subscriberTokens.js';
 import { createSubscriber, findUserByAppleId } from '../../db/users.js';
 import { currentDisclaimer } from '../../published/disclaimer.js';
 import { secretsMatch } from '../../secrets.js';
@@ -91,18 +99,30 @@ export const registerSessionRoute: FastifyPluginAsyncZod<OnboardingRouteOptions>
           request.log.warn('first sign-in refused: no valid invite code');
           return reply.code(403).send({ error: 'invite_required' });
         }
-        user = await createSubscriber(
-          {
-            appleUserId: identity.appleUserId,
-            email: identity.email,
-            inviteCode: request.body.invite_code ?? null,
-          },
-          prisma,
-        );
-        request.log.info({ user_id: user.id }, 'subscriber created');
+        try {
+          user = await createSubscriber(
+            {
+              appleUserId: identity.appleUserId,
+              email: identity.email,
+              inviteCode: request.body.invite_code ?? null,
+            },
+            prisma,
+          );
+          request.log.info({ user_id: user.id }, 'subscriber created');
+        } catch (error) {
+          // Two first sign-ins raced (a double tap, a retry): the other one
+          // created the row. That subscriber is this subscriber.
+          const raced =
+            error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002'
+              ? await findUserByAppleId(identity.appleUserId, prisma)
+              : null;
+          if (!raced) throw error;
+          user = raced;
+        }
       }
 
       const minted = await mintToken(user.id, 'app', prisma);
+      await revokeAllButNewest(user.id, 'app', APP_TOKENS_KEPT, { prisma });
       return reply.code(200).send({
         token: minted.plaintext,
         subscriber: {
@@ -279,9 +299,7 @@ export const registerOnboardingRoutes: FastifyPluginAsyncZod<OnboardingRouteOpti
     },
     async (request, reply) => {
       const user = request.subscriber!;
-      const owned = (await listTokens(user.id, 'mcp', prisma)).some(
-        (token) => token.id === request.params.id,
-      );
+      const owned = await ownsToken(request.params.id, user.id, 'mcp', prisma);
       if (!owned) return reply.code(404).send({ error: 'token_not_found' });
 
       if (await revokeToken(request.params.id, user.id, { prisma })) {

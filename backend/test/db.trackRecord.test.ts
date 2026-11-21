@@ -3,7 +3,7 @@ import { insertSignal } from '../src/db/signals.js';
 import {
   appendTrackRecord,
   closeLots,
-  hasMarkForDay,
+  lotsMarkedOnDay,
   listOpenLots,
   openLotsForSymbol,
 } from '../src/db/trackRecord.js';
@@ -167,13 +167,13 @@ describe('closeLots', () => {
   });
 });
 
-describe('hasMarkForDay', () => {
+describe('lotsMarkedOnDay', () => {
   it('is false before a mark and true after one on the same day', async () => {
     const signal = await seedSignal();
     const day = new Date('2026-08-13T20:15:00Z');
     await appendTrackRecord({ signalId: signal.id, entryPrice: '100.00', status: 'open' }, db);
 
-    expect(await hasMarkForDay(signal.id, day, db)).toBe(false);
+    expect((await lotsMarkedOnDay(day, db)).has(signal.id)).toBe(false);
 
     await appendTrackRecord(
       {
@@ -187,7 +187,7 @@ describe('hasMarkForDay', () => {
       db,
     );
 
-    expect(await hasMarkForDay(signal.id, day, db)).toBe(true);
+    expect((await lotsMarkedOnDay(day, db)).has(signal.id)).toBe(true);
   });
 
   it('does not count a mark from a different day', async () => {
@@ -204,7 +204,22 @@ describe('hasMarkForDay', () => {
       db,
     );
 
-    expect(await hasMarkForDay(signal.id, new Date('2026-08-13T20:15:00Z'), db)).toBe(false);
+    expect((await lotsMarkedOnDay(new Date('2026-08-13T20:15:00Z'), db)).has(signal.id)).toBe(false);
+  });
+
+  it('answers for every lot in one call', async () => {
+    const day = new Date('2026-08-13T20:15:00Z');
+    const marked = await seedSignal();
+    const unmarked = await seedSignal();
+    for (const s of [marked, unmarked]) {
+      await appendTrackRecord({ signalId: s.id, entryPrice: '100.00', status: 'open' }, db);
+    }
+    await appendTrackRecord(
+      { signalId: marked.id, entryPrice: '100.00', unrealizedPnl: '1.00', markPrice: '101.00', status: 'open', recordedAt: day },
+      db,
+    );
+
+    expect([...(await lotsMarkedOnDay(day, db))]).toEqual([marked.id]);
   });
 });
 

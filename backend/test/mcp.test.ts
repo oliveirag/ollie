@@ -228,6 +228,16 @@ describe('the tools', () => {
         await client.callTool({ name: 'list_signals', arguments: { since: '2026-09-02T00:00:00Z', limit: 10 } }),
       );
       expect((since.signals as { id: string }[]).map((s) => s.id)).toEqual([newer.id]);
+
+      const first = structured(await client.callTool({ name: 'list_signals', arguments: { limit: 1 } }));
+      expect((first.signals as { id: string }[]).map((s) => s.id)).toEqual([newer.id]);
+      const second = structured(
+        await client.callTool({
+          name: 'list_signals',
+          arguments: { limit: 1, before: first.next_before, before_id: first.next_before_id },
+        }),
+      );
+      expect((second.signals as { id: string }[]).map((s) => s.id)).toEqual([older.id]);
     } finally {
       await client.close();
     }

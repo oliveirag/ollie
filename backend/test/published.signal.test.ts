@@ -15,8 +15,12 @@ import {
  * subset. No grant, view, or query is trusted to do this.
  */
 
-/** Every column filled, and every forbidden one filled with a canary value. */
-function maximalSignal(): Signal {
+/**
+ * Every column filled, and every forbidden one filled with a canary value.
+ * More than the subscriber role can read, on purpose: the projection must drop
+ * whatever it is handed beyond its input type.
+ */
+function maximalSignal(): Signal & { estimatedPrice: string | null } {
   return {
     id: '11111111-1111-4111-8111-111111111111',
     createdAt: new Date('2026-09-01T13:35:00.000Z'),
@@ -44,6 +48,7 @@ function maximalSignal(): Signal {
     dedupeKey: 'CANARY_DEDUPE',
     refId: '22222222-2222-4222-8222-222222222222',
     autoDecideAt: new Date('2026-09-01T13:40:00.000Z'),
+    estimatedPrice: '182.50',
   };
 }
 
@@ -111,10 +116,13 @@ describe('toPublishedSignal', () => {
     });
   });
 
-  it('reads estimated_price from the snapshot and nothing else from it', () => {
-    const signal = maximalSignal();
-    signal.reviewSnapshot = { not: 'a snapshot' };
+  it('takes estimated_price from the estimate column, never from the snapshot', () => {
+    const signal = { ...maximalSignal(), estimatedPrice: null };
+    expect(toPublishedSignal(signal).estimated_price).toBeNull();
+  });
 
+  it('nulls an estimate that is not a decimal string', () => {
+    const signal = { ...maximalSignal(), estimatedPrice: 'CANARY_NOT_A_PRICE' };
     expect(toPublishedSignal(signal).estimated_price).toBeNull();
   });
 

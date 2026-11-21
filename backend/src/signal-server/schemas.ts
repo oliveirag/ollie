@@ -108,6 +108,14 @@ export const FeedQuerySchema = z.object({
     .datetime()
     .optional()
     .describe('Keyset cursor: return signals published strictly before this instant'),
+  before_id: z
+    .string()
+    .uuid()
+    .optional()
+    .describe(
+      'Tie-breaker for `before`: also return signals published exactly at `before` whose id ' +
+        'sorts below this one. Pass `next_before_id` from the previous page.',
+    ),
 });
 
 export const FeedSchema = z
@@ -118,6 +126,11 @@ export const FeedSchema = z
       .datetime()
       .nullable()
       .describe('Pass as `before` for the next page; null when this page was the last'),
+    next_before_id: z
+      .string()
+      .uuid()
+      .nullable()
+      .describe('Pass as `before_id` with `next_before`; null when this page was the last'),
   })
   .meta({ id: 'Feed' });
 

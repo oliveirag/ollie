@@ -1,16 +1,22 @@
 import pino from 'pino';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
-import { buildConfig, type Config } from '../src/config/index.js';
+import type { Config } from '../src/config/index.js';
 import { listExecutions } from '../src/db/executions.js';
-import { setAutonomy, setKillSwitch } from '../src/db/settings.js';
-import { getSignal, insertSignal, listSignalEvents, transitionSignal } from '../src/db/signals.js';
-import { appendTrackRecord, listOpenLots } from '../src/db/trackRecord.js';
+import { setAutonomy, setExecutionMode, setKillSwitch } from '../src/db/settings.js';
+import { getSignal, listSignalEvents, transitionSignal } from '../src/db/signals.js';
+import { listOpenLots } from '../src/db/trackRecord.js';
 import { AUTO_APPROVE_REASON, sweepAutonomy } from '../src/orchestrator/autonomy.js';
 import { runPipeline, sweepExpiredSignals } from '../src/orchestrator/pipeline.js';
-import type { Candle, Quote } from '../src/orchestrator/robinhood/client.js';
 import { MockBrokerAdapter } from '../src/orchestrator/robinhood/mockClient.js';
 import { closeTestPrisma, resetDatabase, testPrisma, uniqueDedupeKey } from './helpers/db.js';
-import fixture from './fixtures/ohlcv/AAPL-daily-2026.json' with { type: 'json' };
+import {
+  pipelineConfig,
+  quote,
+  seedOpenLot,
+  seedSignal,
+  THROUGH_BULLISH_CROSS,
+  validSnapshot,
+} from './helpers/factories.js';
 
 /**
  * Phase 5, milestone 5.4: autonomy within caps, in paper. The pipeline stamps
@@ -21,63 +27,23 @@ import fixture from './fixtures/ohlcv/AAPL-daily-2026.json' with { type: 'json' 
 const db = testPrisma();
 const logger = pino({ level: 'silent' });
 
-const ALL_BARS: Candle[] = fixture.results[0]!.bars.map((bar) => ({
-  t: bar.begins_at,
-  o: bar.open_price,
-  h: bar.high_price,
-  l: bar.low_price,
-  c: bar.close_price,
-  v: bar.volume,
-}));
-
-/** Through 2026-07-02, the bar where MACD crosses bullish on real data. */
-const THROUGH_BULLISH_CROSS = ALL_BARS.slice(
-  0,
-  ALL_BARS.findIndex((b) => b.t.startsWith('2026-07-02')) + 1,
-);
-
 const now = new Date('2026-07-02T13:35:00Z');
 const later = (minutes: number) => new Date(now.getTime() + minutes * 60_000);
 
 function config(overrides: Record<string, string> = {}): Config {
-  return buildConfig({
-    DATABASE_URL: process.env.DATABASE_URL,
-    SYMBOL_ALLOWLIST: 'AAPL',
-    ORDER_NOTIONAL_CENTS: '100000',
-    MAX_POSITION_CENTS: '200000',
-    MAX_DAILY_TRADES: '3',
-    MAX_TOTAL_EXPOSURE_CENTS: '500000',
-    SLIPPAGE_BPS: '10',
-    SIGNAL_EXPIRY_MINUTES: '15',
-    // created_at is stamped by the database with the real time, so a window
-    // that runs to the close would make these depend on when the suite runs.
-    SIGNAL_EXPIRES_AT_CLOSE: 'false',
+  return pipelineConfig({
     MAX_HOLDING_DAYS: '0',
-    LOG_LEVEL: 'silent',
     AUTONOMY_ENABLED: 'true',
     AUTONOMY_VETO_MINUTES: '5',
     ...overrides,
-  } as NodeJS.ProcessEnv);
-}
-
-function quote(price: string): Quote {
-  return {
-    symbol: 'AAPL',
-    lastTradePrice: price,
-    bidPrice: price,
-    askPrice: price,
-    previousClose: price,
-    officialClose: price,
-    hasTraded: true,
-    state: 'active',
-  };
+  });
 }
 
 function deps(cfg = config(), clock = () => now) {
   return {
     broker: new MockBrokerAdapter({
       candles: { AAPL: THROUGH_BULLISH_CROSS },
-      quotes: { AAPL: quote('308.630000') },
+      quotes: { AAPL: quote('AAPL', '308.630000') },
     }),
     config: cfg,
     logger,
@@ -221,38 +187,25 @@ describe('the autonomy sweep', () => {
 describe('an auto-decidable exit whose oldest lot is bigger than it', () => {
   it('is skipped and left pending, not approved into a fill that closes nothing', async () => {
     await setAutonomy(true, db);
-    const base = {
-      symbol: 'AAPL',
-      signalType: 'technical' as const,
-      thesis: null,
-      thesisSource: 'llm' as const,
-      indicators: {},
-      executionMode: 'paper' as const,
-    };
-    const snap = (side: 'buy' | 'sell', quantity: string) => ({
-      schema_version: 1,
-      estimated_price: '300.00',
-      alerts: [],
-      requested: { symbol: 'AAPL', side, quantity, type: 'market' },
-      captured_at: '2026-07-02T13:35:00.000Z',
-      raw: {},
+    const snap = (side: 'buy' | 'sell', quantity: string) =>
+      validSnapshot({
+        estimated_price: '300.00',
+        requested: { symbol: 'AAPL', side, quantity, type: 'market' },
+        captured_at: '2026-07-02T13:35:00.000Z',
+      });
+    const entry = await seedOpenLot({
+      quantity: '3',
+      entryPrice: '300.00',
+      recordedAt: later(-60),
+      reviewSnapshot: snap('buy', '3'),
+      dedupePrefix: 'entry',
     });
-    const entry = await insertSignal(
-      { ...base, side: 'buy', quantity: '3', reviewSnapshot: snap('buy', '3'), dedupeKey: uniqueDedupeKey('entry') },
-      db,
-    );
-    await appendTrackRecord({ signalId: entry.id, entryPrice: '300.00', status: 'open', recordedAt: later(-60) }, db);
-    const exit = await insertSignal(
-      {
-        ...base,
-        side: 'sell',
-        quantity: '2',
-        reviewSnapshot: snap('sell', '2'),
-        dedupeKey: uniqueDedupeKey('exit'),
-        autoDecideAt: later(5),
-      },
-      db,
-    );
+    const exit = await seedSignal({
+      side: 'sell',
+      reviewSnapshot: snap('sell', '2'),
+      dedupeKey: uniqueDedupeKey('exit'),
+      autoDecideAt: later(5),
+    });
 
     const result = await sweepAutonomy({ ...deps(), clock: () => later(6) });
 
@@ -262,5 +215,63 @@ describe('an auto-decidable exit whose oldest lot is bigger than it', () => {
     expect((await getSignal(exit.id, db))?.status).toBe('pending');
     expect(await listExecutions(exit.id, db)).toHaveLength(0);
     expect((await listOpenLots(db)).map((l) => l.signalId)).toEqual([entry.id]);
+  });
+});
+
+/**
+ * Autonomy is the one path to a live order without `confirm_live` (Phase 5,
+ * decision 6; README non-negotiable 4). These pin both halves of that: the
+ * sweep does place a live order once every other gate is open, and it places
+ * nothing while LIVE_TRADING_ENABLED is off.
+ */
+describe('autonomy with a live signal', () => {
+  async function seedLiveDue() {
+    return seedSignal({
+      thesis: 'live autonomy',
+      thesisSource: 'fallback_template',
+      reviewSnapshot: validSnapshot({
+        estimated_price: '308.63',
+        captured_at: '2026-07-02T13:35:00.000Z',
+      }),
+      executionMode: 'live',
+      dedupeKey: uniqueDedupeKey('live-auto'),
+      autoDecideAt: later(5),
+    });
+  }
+
+  it('places the live order with no confirm_live once every gate is open', async () => {
+    await setAutonomy(true, db);
+    await setExecutionMode('live', db);
+    const signal = await seedLiveDue();
+    const broker = new MockBrokerAdapter({ orderScripts: { AAPL: { states: [{ state: 'confirmed' }] } } });
+
+    const result = await sweepAutonomy({
+      ...deps(config({ LIVE_TRADING_ENABLED: 'true' })),
+      broker,
+      clock: () => later(6),
+    });
+
+    expect(result.approved.map((s) => s.id)).toEqual([signal.id]);
+    expect(broker.callsTo('placeEquityOrder')).toHaveLength(1);
+  });
+
+  it.each([
+    ['LIVE_TRADING_ENABLED is off', 'false', 'live'],
+    ['the runtime mode is paper', 'true', 'paper'],
+  ] as const)('places nothing and leaves the signal pending while %s', async (_label, env, mode) => {
+    await setAutonomy(true, db);
+    await setExecutionMode(mode, db);
+    const signal = await seedLiveDue();
+    const broker = new MockBrokerAdapter({ orderScripts: { AAPL: { states: [{ state: 'confirmed' }] } } });
+
+    const result = await sweepAutonomy({
+      ...deps(config({ LIVE_TRADING_ENABLED: env })),
+      broker,
+      clock: () => later(6),
+    });
+
+    expect(result).toMatchObject({ approved: [], skipped: 1 });
+    expect(broker.callsTo('placeEquityOrder')).toHaveLength(0);
+    expect((await getSignal(signal.id, db))?.status).toBe('pending');
   });
 });

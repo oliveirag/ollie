@@ -61,7 +61,7 @@ private struct AllClearCard: View {
             VStack(alignment: .leading, spacing: DS.Space.sm) {
                 HStack(spacing: DS.Space.sm) {
                     Image(systemName: store.killSwitch ? "octagon.fill" : "checkmark.circle")
-                        .font(.system(size: 17, weight: .semibold))
+                        .dsIcon(size: 17, relativeTo: .body)
                         .foregroundStyle(store.killSwitch ? DS.Icon.error : DS.Icon.primary)
                     Text(store.killSwitch ? "Halted" : "All clear")
                         .dsFont(.body, weight: .bold)
