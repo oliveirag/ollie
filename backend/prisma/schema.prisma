@@ -248,6 +248,10 @@ model User {
   /// Which invite code admitted them: the soft-launch audit trail.
   inviteCode  String?  @map("invite_code") @db.Text
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// Set when the subscriber deleted their account in the app. The row is a
+  /// tombstone from then on: apple_user_id is opaque, email and invite code
+  /// are gone, every token is revoked. See ollie_delete_subscriber().
+  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz(6)
 
   tokens      SubscriberToken[]
   acceptances DisclaimerAcceptance[]

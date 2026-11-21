@@ -20,6 +20,11 @@ settings:
   base:
     DEVELOPMENT_TEAM: NL5855QHYU
     CODE_SIGN_STYLE: Automatic
+    # One version for both apps. Bump MARKETING_VERSION per App Store release
+    # and CURRENT_PROJECT_VERSION per upload; App Store Connect rejects a
+    # build number it has already seen for that version.
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
 
 packages:
   # Apple's own OpenAPI toolchain. The Swift client is a build product
@@ -40,17 +45,20 @@ packages:
   SignalAPI:
     path: SignalAPI
 
-targets:
-  Ollie:
+# Two apps from one codebase (App Store prep, 2026-11-21):
+#
+# - Ollie: the App Store app. The subscriber feed and nothing else, so the
+#   owner's trade approval never ships to the public (guideline 3.2.1(viii):
+#   trading apps come from the financial institution). Keeps the original
+#   bundle id, which is also the Sign in with Apple audience the signal
+#   service checks.
+# - OllieOwner: the owner console, TestFlight internal testing only. Compiled
+#   with OWNER_CONSOLE, own bundle id, owns push. The backend's APNS_BUNDLE_ID
+#   must name this bundle id.
+targetTemplates:
+  OllieApp:
     type: application
     platform: iOS
-    sources:
-      # Ollie/Networking/openapi.yaml is a symlink to ../../../docs/openapi.yaml.
-      # The generator plugin requires the document inside the target's own
-      # source directory and explicitly supports a symlink, which is how the
-      # contract stays a single file: a copy under ios/ would be a second
-      # source of truth, and the backend's drift test only guards the one.
-      - path: Ollie
     dependencies:
       - package: swift-openapi-runtime
         product: OpenAPIRuntime
@@ -58,28 +66,12 @@ targets:
         product: OpenAPIURLSession
       - package: SignalAPI
         product: SignalAPI
-    buildToolPlugins:
-      - plugin: OpenAPIGenerator
-        package: swift-openapi-generator
-    # Without this XcodeGen writes no .xcscheme, and `xcodebuild -scheme Ollie`
-    # fails with "supported platforms ... is empty" — which reads like a missing
-    # SDK and is not one.
-    scheme:
-      testTargets:
-        - OllieUITests
-      gatherCoverageData: false
     settings:
       base:
         SWIFT_VERSION: "5.10"
         TARGETED_DEVICE_FAMILY: "1"
         ENABLE_USER_SCRIPT_SANDBOXING: NO
-        CODE_SIGN_ENTITLEMENTS: Ollie/Resources/Ollie.entitlements
-        # The asset catalog holds colours only; there is no app icon yet.
-        ASSETCATALOG_COMPILER_APPICON_NAME: ""
-        # Without this the AccentColor asset is never applied, and system
-        # chrome the SwiftUI .tint does not reach (alert and confirmation
-        # dialog buttons) falls back to system blue.
-        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
       configs:
         # `$()` splits the `//` so the build-settings parser does not read the
         # rest of the line as a comment. It expands to nothing.
@@ -89,13 +81,43 @@ targets:
         Release:
           OLLIE_BASE_URL: https:/$()/ollie-production.up.railway.app
           OLLIE_SIGNAL_BASE_URL: https:/$()/ollie-signal.up.railway.app
+
+targets:
+  Ollie:
+    templates: [OllieApp]
+    sources:
+      - path: Ollie
+        # The owner console stays out of the App Store binary entirely, and
+        # with it the owner API client and its generated code.
+        excludes:
+          - "Features/Owner/**"
+          - "App/PushRegistrar.swift"
+          - "Models/SignalStore.swift"
+          - "Networking/OllieAPI.swift"
+          - "Networking/openapi.yaml"
+          - "Networking/openapi-generator-config.yaml"
+    # Without this XcodeGen writes no .xcscheme, and `xcodebuild -scheme Ollie`
+    # fails with "supported platforms ... is empty", which reads like a missing
+    # SDK and is not one.
+    scheme:
+      testTargets:
+        - OllieUITests
+      gatherCoverageData: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.guilhermeoliveira.Ollie
+        CODE_SIGN_ENTITLEMENTS: Ollie/Resources/Ollie.entitlements
     info:
       path: Ollie/Resources/Info.plist
-      properties:
+      properties: &infoProperties
         CFBundleDisplayName: Ollie
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        # HTTPS only, through URLSession: exempt from export documentation,
+        # and saying so here skips the question on every upload.
+        ITSAppUsesNonExemptEncryption: false
         # JetBrains Mono, the design system's one typeface (OFL, license
-        # alongside in Resources/Fonts). Regular, Medium and Bold, the three
-        # weights the system allows, all from release 2.304.
+        # alongside in Resources/Fonts).
         UIAppFonts:
           - JetBrainsMono-Regular.ttf
           - JetBrainsMono-Medium.ttf
@@ -104,27 +126,61 @@ targets:
           UIColorName: LaunchBackground
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
-        # Resolved per build configuration (see settings below), never a
-        # literal: Debug points at the dev machine, Release at the TLS
-        # endpoint. Hardcoding localhost here would make it the shipped
-        # default, which is exactly the wrong direction for a build that
-        # carries a trade-approving credential.
-        OllieBaseURL: $(OLLIE_BASE_URL)
         # The subscriber-facing signal service: a separate host on purpose
-        # (Phase 4, decision 4). Same per-configuration resolution as above.
+        # (Phase 4, decision 4). Resolved per build configuration (see the
+        # template's settings), never a literal: Debug points at the dev
+        # machine, Release at the TLS endpoint.
         OllieSignalBaseURL: $(OLLIE_SIGNAL_BASE_URL)
         NSAppTransportSecurity:
           # NSAllowsLocalNetworking, deliberately, rather than
-          # NSAllowsArbitraryLoads. It permits cleartext only to local hosts —
-          # localhost, .local, link-local — and cannot enable cleartext to a
+          # NSAllowsArbitraryLoads. It permits cleartext only to local hosts:
+          # localhost, .local, link-local. It cannot enable cleartext to a
           # public host. The Release build talks HTTPS to Railway and is
           # unaffected by it; a Debug build talks HTTP to the dev machine and
           # needs it.
           NSAllowsLocalNetworking: true
 
-  # Drives the approval flow through the real UI. Not a unit-test target:
-  # what needs proving is that the decision surface works, and the backend
-  # already has 230 tests for what happens after the tap.
+  OllieOwner:
+    templates: [OllieApp]
+    sources:
+      # Ollie/Networking/openapi.yaml is a symlink to ../../../docs/openapi.yaml.
+      # The generator plugin requires the document inside the target's own
+      # source directory and explicitly supports a symlink, which is how the
+      # contract stays a single file: a copy under ios/ would be a second
+      # source of truth, and the backend's drift test only guards the one.
+      - path: Ollie
+        excludes:
+          # The App Store app's plist; this target generates its own below.
+          - "Resources/Info.plist"
+          - "Resources/Ollie.entitlements"
+      - path: Owner
+        excludes:
+          - "Info.plist"
+    buildToolPlugins:
+      - plugin: OpenAPIGenerator
+        package: swift-openapi-generator
+    scheme:
+      testTargets:
+        - OllieOwnerUITests
+      gatherCoverageData: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.guilhermeoliveira.OllieOwner
+        CODE_SIGN_ENTITLEMENTS: Owner/OllieOwner.entitlements
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) OWNER_CONSOLE
+    info:
+      path: Owner/Info.plist
+      properties:
+        <<: *infoProperties
+        CFBundleDisplayName: Ollie Owner
+        # The owner API. Owner-only, so the App Store app's plist does not even
+        # name it. Hardcoding localhost here would make it the shipped default,
+        # which is exactly the wrong direction for a build that carries a
+        # trade-approving credential.
+        OllieBaseURL: $(OLLIE_BASE_URL)
+
+  # The subscriber app through the real UI: onboarding, account deletion, and
+  # the App Store screenshots.
   OllieUITests:
     type: bundle.ui-testing
     platform: iOS
@@ -136,4 +192,20 @@ targets:
       base:
         SWIFT_VERSION: "5.10"
         TEST_TARGET_NAME: Ollie
+        GENERATE_INFOPLIST_FILE: YES
+
+  # Drives the owner's approval flow through the real UI. Not a unit-test
+  # target: what needs proving is that the decision surface works, and the
+  # backend already has its own tests for what happens after the tap.
+  OllieOwnerUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - OllieOwnerUITests
+    dependencies:
+      - target: OllieOwner
+    settings:
+      base:
+        SWIFT_VERSION: "5.10"
+        TEST_TARGET_NAME: OllieOwner
         GENERATE_INFOPLIST_FILE: YES

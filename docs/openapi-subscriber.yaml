@@ -38,6 +38,14 @@ components:
           maxLength: 64
       required:
         - identity_token
+    DeleteAccountRequestInput:
+      type: object
+      properties:
+        authorization_code:
+          description: "A fresh Sign in with Apple authorization code from signing in again just before deleting. The service exchanges it for a token and revokes it with Apple. Optional: the account is deleted either way."
+          type: string
+          minLength: 1
+          maxLength: 1024
     AcceptDisclaimerRequestInput:
       type: object
       properties:
@@ -761,6 +769,36 @@ paths:
                 $ref: "#/components/schemas/Error"
         "404":
           description: No such token belongs to this subscriber
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /v1/account/delete:
+    post:
+      operationId: deleteAccount
+      summary: Delete this subscriber's account
+      tags:
+        - onboarding
+      description: "App Store guideline 5.1.1(v). Revokes the subscriber's Sign in with Apple tokens when an authorization code is supplied, then tombstones the account: the Apple subject, email and invite code are removed and every app and MCP token is revoked, so the session token used for this call stops working with it. Disclaimer acceptances stay, attached to the anonymous row, because they are an append-only record. A failed revocation is logged and does not stop the deletion."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeleteAccountRequestInput"
+      security:
+        - subscriberToken: []
+      responses:
+        "204":
+          description: Deleted
+        "400":
+          description: The request failed schema validation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Missing or invalid app token
           content:
             application/json:
               schema:

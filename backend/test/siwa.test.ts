@@ -1,8 +1,21 @@
-import { SignJWT, createLocalJWKSet, exportJWK, generateKeyPair, type CryptoKey } from 'jose';
+import {
+  SignJWT,
+  createLocalJWKSet,
+  decodeProtectedHeader,
+  exportJWK,
+  exportPKCS8,
+  generateKeyPair,
+  jwtVerify,
+  type CryptoKey,
+} from 'jose';
 import { beforeAll, describe, expect, it } from 'vitest';
 import {
   APPLE_ISSUER,
+  APPLE_REVOKE_URL,
+  APPLE_TOKEN_URL,
   InvalidIdentityTokenError,
+  SiwaRevokeError,
+  buildSiwaRevoker,
   buildSiwaVerifier,
   type SiwaVerifier,
 } from '../src/signal-server/siwa.js';
@@ -112,3 +125,83 @@ describe('Sign in with Apple verification', () => {
     await expect(verifier.verify('')).rejects.toThrow(InvalidIdentityTokenError);
   });
 });
+
+describe('the Sign in with Apple revoker', () => {
+  interface Call {
+    url: string;
+    form: URLSearchParams;
+  }
+
+  async function setup(responses: Array<{ status: number; body: unknown }>) {
+    const { privateKey, publicKey } = await generateKeyPair('ES256', { extractable: true });
+    const pem = await exportPKCS8(privateKey);
+    const calls: Call[] = [];
+    const queue = [...responses];
+    const fakeFetch = (async (url: string | URL | Request, init?: RequestInit) => {
+      calls.push({ url: String(url), form: new URLSearchParams(String(init?.body ?? '')) });
+      const next = queue.shift() ?? { status: 500, body: {} };
+      return new Response(JSON.stringify(next.body), { status: next.status });
+    }) as typeof fetch;
+    const revoker = buildSiwaRevoker({
+      clientId: AUDIENCE,
+      teamId: 'TEAM123456',
+      keyId: 'KEY1234567',
+      // As it arrives from an env var with escaped newlines.
+      privateKey: pem.replace(/\n/g, '\\n'),
+      fetch: fakeFetch,
+      now,
+    });
+    return { revoker, calls, publicKey };
+  }
+
+  it('exchanges the code, then revokes the refresh token, with a valid client secret', async () => {
+    const { revoker, calls, publicKey } = await setup([
+      { status: 200, body: { access_token: 'at', refresh_token: 'rt', id_token: 'x' } },
+      { status: 200, body: {} },
+    ]);
+
+    await revoker.revokeAuthorizationCode('code-1');
+
+    expect(calls.map((c) => c.url)).toEqual([APPLE_TOKEN_URL, APPLE_REVOKE_URL]);
+    expect(Object.fromEntries(calls[0]!.form)).toMatchObject({
+      client_id: AUDIENCE,
+      code: 'code-1',
+      grant_type: 'authorization_code',
+    });
+    expect(Object.fromEntries(calls[1]!.form)).toMatchObject({
+      client_id: AUDIENCE,
+      token: 'rt',
+      token_type_hint: 'refresh_token',
+    });
+
+    const secret = calls[0]!.form.get('client_secret')!;
+    expect(decodeProtectedHeader(secret)).toMatchObject({ alg: 'ES256', kid: 'KEY1234567' });
+    const { payload } = await jwtVerify(secret, publicKey, {
+      issuer: 'TEAM123456',
+      audience: APPLE_ISSUER,
+      subject: AUDIENCE,
+      currentDate: now(),
+    });
+    expect(payload.exp! - payload.iat!).toBeLessThanOrEqual(300);
+  });
+
+  it('reports which stage failed and why', async () => {
+    const { revoker } = await setup([{ status: 400, body: { error: 'invalid_grant' } }]);
+    const failure = await revoker.revokeAuthorizationCode('stale').catch((e: unknown) => e);
+    expect(failure).toBeInstanceOf(SiwaRevokeError);
+    expect(failure).toMatchObject({ stage: 'token', status: 400 });
+    expect((failure as SiwaRevokeError).reason).toContain('invalid_grant');
+  });
+
+  it('fails the revoke stage when Apple refuses the revocation', async () => {
+    const { revoker } = await setup([
+      { status: 200, body: { refresh_token: 'rt' } },
+      { status: 503, body: {} },
+    ]);
+    await expect(revoker.revokeAuthorizationCode('code')).rejects.toMatchObject({
+      stage: 'revoke',
+      status: 503,
+    });
+  });
+});
+

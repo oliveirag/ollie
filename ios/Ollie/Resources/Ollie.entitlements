@@ -2,23 +2,12 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<!-- Sign in with Apple (Phase 4). The paid team (NL5855QHYU) registers the
-	     App ID with this capability through automatic signing. It has not run
-	     end to end on a device yet, and the simulator cannot complete it, so
-	     Debug builds also offer the stubbed test identity. -->
+	<!-- Sign in with Apple, the subscriber's only way in. The App Store app has
+	     no push: notifications belong to the owner app (Owner/), which has its
+	     own bundle id and entitlements. -->
 	<key>com.apple.developer.applesignin</key>
 	<array>
 		<string>Default</string>
 	</array>
-	<!-- Push Notifications. Xcode swaps "development" for "production" when
-	     the build is archived for distribution; a Debug device build gets
-	     sandbox tokens, which the backend must send to the sandbox host. -->
-	<key>aps-environment</key>
-	<string>development</string>
-	<!-- The backend sends signals as interruption-level time-sensitive, so they
-	     break through Focus. Without this entitlement iOS downgrades them to
-	     active and a 15-minute window can pass unseen. -->
-	<key>com.apple.developer.usernotifications.time-sensitive</key>
-	<true/>
 </dict>
 </plist>

@@ -31,7 +31,10 @@ Backend (from `backend/`, Postgres 16 on localhost:5432: Homebrew `postgresql@16
 iOS (from `ios/`):
 
 - `xcodegen` regenerates `Ollie.xcodeproj`. Edit `project.yml`, never the generated project.
-- Tests: `xcodebuild test -project Ollie.xcodeproj -scheme Ollie -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -skipPackagePluginValidation`
+- Two apps: scheme `Ollie` is the App Store app (subscriber only), scheme `OllieOwner` is the owner
+  console (TestFlight only, `OWNER_CONSOLE`). Owner code never goes in the `Ollie` target.
+- Tests: `ios/scripts/e2e.sh` (both apps, simulator, throwaway local stack). By hand:
+  `xcodebuild test -project Ollie.xcodeproj -scheme Ollie -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -skipPackagePluginValidation`
 
 ## Non-negotiables
 

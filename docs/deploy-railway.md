@@ -146,10 +146,19 @@ owner-only table, the service refuses to start.
    SIGNAL_PUBLIC_URL=https://<the service's public domain>
    SUBSCRIBER_INVITE_CODES=<comma-separated codes>
    APPLE_APP_BUNDLE_ID=com.guilhermeoliveira.Ollie
+   SIWA_TEAM_ID=NL5855QHYU
+   SIWA_KEY_ID=<the Sign in with Apple key's id>
+   SIWA_PRIVATE_KEY=<the .p8 file's contents, newlines as \n>
    NODE_ENV=production
    ```
 
    `SIWA_STUB` must stay unset; the service refuses it in production.
+
+   The three `SIWA_*` values are a Sign in with Apple key (developer account >
+   Certificates, Identifiers & Profiles > Keys, with Sign in with Apple enabled
+   and the app's App ID as its primary). Account deletion uses it to revoke the
+   subscriber's Apple tokens, which App Review requires. Without it the service
+   still deletes accounts and warns on boot that revocation is off.
 
 4. **Check the rate limiter's proxy hop.** The service trusts exactly one
    proxy hop (`trustProxy: 1`), Railway's edge, so the per-IP rate limit keys

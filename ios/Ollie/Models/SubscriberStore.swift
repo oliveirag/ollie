@@ -192,6 +192,27 @@ final class SubscriberStore {
         }
     }
 
+    /// Delete the account (App Store guideline 5.1.1(v)). The authorization
+    /// code comes from signing in with Apple again just before this call; the
+    /// service uses it to revoke the Apple tokens, and deletes the account
+    /// with or without it. Every token dies server-side, so the session is
+    /// over either way and the subscriber lands back on the welcome screen.
+    func deleteAccount(authorizationCode: String?) async throws {
+        let body = SignalAPI.Components.Schemas.DeleteAccountRequestInput(
+            authorization_code: authorizationCode
+        )
+        switch try await client().deleteAccount(.init(body: .json(body))) {
+        case .noContent, .unauthorized:
+            // A 401 means the session was already dead; there is nothing left
+            // on this device to keep either way.
+            signOut()
+        case .badRequest:
+            throw OllieError.server("The delete request failed validation.")
+        case .undocumented(let status, _):
+            throw OllieError.server("Delete returned \(status).")
+        }
+    }
+
     // MARK: Reads
 
     /// Joins a refresh already under way instead of starting a second one.

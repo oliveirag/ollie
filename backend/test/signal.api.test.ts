@@ -9,6 +9,8 @@ import { hashSecret } from '../src/secrets.js';
 import { APP_TOKENS_KEPT } from '../src/db/subscriberTokens.js';
 import { authHeader, buildTestApp, TEST_OWNER_TOKEN } from './helpers/api.js';
 import { closeTestPrisma, resetDatabase, testPrisma, uniqueDedupeKey } from './helpers/db.js';
+import type { SiwaRevoker } from '../src/signal-server/siwa.js';
+import { SiwaRevokeError } from '../src/signal-server/siwa.js';
 import {
   bearer,
   buildTestSignalApp,
@@ -528,3 +530,122 @@ describe('rate limiting', () => {
     }
   });
 });
+
+describe('POST /v1/account/delete', () => {
+  function recordingRevoker(fail = false): SiwaRevoker & { codes: string[] } {
+    const codes: string[] = [];
+    return {
+      codes,
+      async revokeAuthorizationCode(code) {
+        codes.push(code);
+        if (fail) throw new SiwaRevokeError('token', 400, '{"error":"invalid_grant"}');
+      },
+    };
+  }
+
+  it('revokes with Apple, deletes the account, and cuts off every token', async () => {
+    const revoker = recordingRevoker();
+    const scoped = await buildTestSignalApp({ siwaRevoker: revoker });
+    try {
+      const token = await signIn(scoped, 'leaver');
+      await scoped.inject({
+        method: 'POST',
+        url: '/v1/disclaimer/accept',
+        headers: bearer(token),
+        payload: { version: DISCLAIMER_VERSION },
+      });
+      const minted = (
+        await scoped.inject({ method: 'POST', url: '/v1/mcp-tokens', headers: bearer(token) })
+      ).json();
+
+      const response = await scoped.inject({
+        method: 'POST',
+        url: '/v1/account/delete',
+        headers: bearer(token),
+        payload: { authorization_code: 'fresh-code' },
+      });
+      expect(response.statusCode).toBe(204);
+      expect(revoker.codes).toEqual(['fresh-code']);
+
+      const feed = await scoped.inject({ method: 'GET', url: '/v1/feed', headers: bearer(token) });
+      expect(feed.statusCode).toBe(401);
+      const mcp = await scoped.inject({
+        method: 'POST',
+        url: '/mcp',
+        headers: { ...bearer(minted.token), accept: 'application/json, text/event-stream' },
+        payload: { jsonrpc: '2.0', id: 1, method: 'tools/list' },
+      });
+      expect(mcp.statusCode).toBe(401);
+
+      const user = await db.user.findFirst({ where: { appleUserId: { startsWith: 'deleted:' } } });
+      expect(user).toMatchObject({ email: null, inviteCode: null });
+      expect(await db.user.findUnique({ where: { appleUserId: 'leaver' } })).toBeNull();
+    } finally {
+      await scoped.close();
+    }
+  });
+
+  it('still deletes when Apple refuses the revocation', async () => {
+    const revoker = recordingRevoker(true);
+    const scoped = await buildTestSignalApp({ siwaRevoker: revoker });
+    try {
+      const token = await signIn(scoped, 'leaver');
+      const response = await scoped.inject({
+        method: 'POST',
+        url: '/v1/account/delete',
+        headers: bearer(token),
+        payload: { authorization_code: 'stale-code' },
+      });
+      expect(response.statusCode).toBe(204);
+      expect(revoker.codes).toEqual(['stale-code']);
+      expect(await db.user.findUnique({ where: { appleUserId: 'leaver' } })).toBeNull();
+    } finally {
+      await scoped.close();
+    }
+  });
+
+  it('deletes without a code or a configured key', async () => {
+    const token = await signIn(app, 'leaver');
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v1/account/delete',
+      headers: bearer(token),
+      payload: {},
+    });
+    expect(response.statusCode).toBe(204);
+    expect(await db.user.findUnique({ where: { appleUserId: 'leaver' } })).toBeNull();
+  });
+
+  it('treats a later sign-in with the same Apple ID as a new subscriber', async () => {
+    const first = await signIn(app, 'returner');
+    const before = await db.user.findUniqueOrThrow({ where: { appleUserId: 'returner' } });
+    await app.inject({ method: 'POST', url: '/v1/account/delete', headers: bearer(first), payload: {} });
+
+    const refused = await app.inject({
+      method: 'POST',
+      url: '/v1/session',
+      payload: { identity_token: fakeIdentityToken('returner') },
+    });
+    expect(refused.statusCode).toBe(403);
+
+    await signIn(app, 'returner');
+    const after = await db.user.findUniqueOrThrow({ where: { appleUserId: 'returner' } });
+    expect(after.id).not.toBe(before.id);
+  });
+
+  it('401s without a session token', async () => {
+    const response = await app.inject({ method: 'POST', url: '/v1/account/delete', payload: {} });
+    expect(response.statusCode).toBe(401);
+  });
+});
+
+describe('GET /privacy', () => {
+  it('serves the policy as HTML without a token', async () => {
+    const response = await app.inject({ method: 'GET', url: '/privacy' });
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['content-type']).toContain('text/html');
+    expect(response.body).toContain('<h1>Ollie privacy policy</h1>');
+    expect(response.body).toContain('Delete account');
+  });
+});
+
