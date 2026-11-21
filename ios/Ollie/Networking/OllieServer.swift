@@ -20,7 +20,7 @@ enum OllieError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .unauthorized:
-            "The owner token was rejected. Disconnect in Controls and paste the current one."
+            Self.unauthorizedMessage
         case .notPending(let status):
             "Already \(status)."
         case .notFound:
@@ -32,6 +32,15 @@ enum OllieError: LocalizedError, Equatable {
         case .offline(let message):
             "Can't reach Ollie. \(message)"
         }
+    }
+
+    /// Each app's own wording: the App Store app has no owner token to talk about.
+    private static var unauthorizedMessage: String {
+        #if OWNER_CONSOLE
+        return "The owner token was rejected. Disconnect in Controls and paste the current one."
+        #else
+        return "Your session ended. Sign in again."
+        #endif
     }
 
     /// Maps a transport failure to what the UI shows. The generated client

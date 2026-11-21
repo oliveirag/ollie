@@ -33,8 +33,8 @@ final class AppStoreScreenshotUITests: XCTestCase {
         capture("05-disclaimer")
         OnboardingDriver.acceptDisclaimer(app)
 
-        XCTAssertTrue(app.staticTexts["handoff.token"].waitForExistence(timeout: 20))
-        capture("06-connect-agent")
+        // No capture of the handoff: it shows a token's plaintext, which reads
+        // as a leaked secret in a store screenshot even when it is a local one.
         OnboardingDriver.finishHandoff(app)
 
         let row = app.buttons["feed.row"].firstMatch
@@ -50,6 +50,6 @@ final class AppStoreScreenshotUITests: XCTestCase {
         capture("04-record", settle: 2.5)
 
         app.tabBars.buttons["Agent"].tap()
-        capture("07-agent")
+        capture("06-agent")
     }
 }

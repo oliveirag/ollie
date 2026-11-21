@@ -48,6 +48,10 @@ SIGNAL_DB_URL="postgresql://ollie_signal:ollie_signal@localhost:$PG_PORT/ollie_e
 OWNER_TOKEN="$(openssl rand -hex 32)"
 INVITE_CODE="E2E-$(openssl rand -hex 4 | tr a-f A-F)"
 SIMULATOR="${SIMULATOR:-iPhone 17 Pro}"
+# What the service advertises as the MCP URL. The store screenshots show it, so
+# that suite advertises the production host instead of localhost.
+SIGNAL_PUBLIC_URL=http://localhost:3100
+[ "$SUITE" = screenshots ] && SIGNAL_PUBLIC_URL=https://ollie-signal.up.railway.app
 
 log() { printf '\n== %s\n' "$*"; }
 
@@ -93,7 +97,7 @@ backend_env() {
     LIVE_TRADING_ENABLED=true \
     SIWA_STUB=true \
     SUBSCRIBER_INVITE_CODES="$INVITE_CODE" \
-    SIGNAL_PUBLIC_URL=http://localhost:3100 \
+    SIGNAL_PUBLIC_URL="$SIGNAL_PUBLIC_URL" \
     PIPELINE_CRON='0 0 1 1 *' \
     MARK_CRON='0 0 1 1 *' \
     LOG_LEVEL=warn \
