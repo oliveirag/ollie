@@ -70,6 +70,14 @@ components:
             - production
       required:
         - apns_token
+    DeviceUnregistrationInput:
+      type: object
+      properties:
+        apns_token:
+          type: string
+          minLength: 1
+      required:
+        - apns_token
     SignalSide:
       type: string
       enum:
@@ -1024,6 +1032,36 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Device"
+        "400":
+          description: The request failed schema validation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Missing or invalid owner token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /v1/devices/unregister:
+    post:
+      operationId: unregisterDevice
+      summary: Stop sending push notifications to this device
+      tags:
+        - devices
+      description: Idempotent. Called when the app disconnects from the owner token; an unknown token is not an error, so a retry or a token the backend already pruned still succeeds.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeviceUnregistrationInput"
+      security:
+        - ownerToken: []
+      responses:
+        "204":
+          description: Unregistered, or already was
         "400":
           description: The request failed schema validation
           content:

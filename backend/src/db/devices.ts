@@ -22,7 +22,7 @@ export async function listDevices(prisma: PrismaClient = getPrisma()): Promise<D
   return prisma.device.findMany({ orderBy: { lastSeenAt: 'desc' } });
 }
 
-/** Called when APNs reports a token as gone. Idempotent. */
+/** Called when APNs reports a token as gone, or the app disconnects. Idempotent. */
 export async function deleteDevice(
   apnsToken: string,
   prisma: PrismaClient = getPrisma(),
