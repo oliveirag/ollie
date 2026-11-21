@@ -3,9 +3,8 @@ import { join } from 'node:path';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import type { Logger } from 'pino';
 import pino from 'pino';
-import { buildConfig, type Config } from '../src/config/index.js';
 import { listExecutions } from '../src/db/executions.js';
-import { getSignal, insertSignal, listSignalEvents, transitionSignal } from '../src/db/signals.js';
+import { getSignal, listSignalEvents, transitionSignal } from '../src/db/signals.js';
 import { setExecutionMode, setKillSwitch } from '../src/db/settings.js';
 import { appendTrackRecord, listTrackRecord } from '../src/db/trackRecord.js';
 import {
@@ -17,59 +16,21 @@ import {
 import { runPipeline, sweepExpiredSignals } from '../src/orchestrator/pipeline.js';
 import { parseReviewSnapshot } from '../src/orchestrator/reviewSnapshot.js';
 import { MockBrokerAdapter } from '../src/orchestrator/robinhood/mockClient.js';
-import type { Candle, Quote } from '../src/orchestrator/robinhood/client.js';
 import type { ThesisResult } from '../src/orchestrator/anthropic/thesis.js';
 import { closeTestPrisma, resetDatabase, testPrisma } from './helpers/db.js';
-import fixture from './fixtures/ohlcv/AAPL-daily-2026.json' with { type: 'json' };
+import {
+  barsThrough,
+  pipelineConfig as config,
+  quote,
+  seedSignal,
+  THROUGH_BULLISH_CROSS,
+} from './helpers/factories.js';
 
 const db = testPrisma();
 const logger: Logger = pino({ level: 'silent' });
 
-const ALL_BARS: Candle[] = fixture.results[0]!.bars.map((bar) => ({
-  t: bar.begins_at,
-  o: bar.open_price,
-  h: bar.high_price,
-  l: bar.low_price,
-  c: bar.close_price,
-  v: bar.volume,
-}));
-
-/** Bars through 2026-07-02, the bar where MACD crosses bullish on real data. */
-const THROUGH_BULLISH_CROSS = ALL_BARS.slice(
-  0,
-  ALL_BARS.findIndex((b) => b.t.startsWith('2026-07-02')) + 1,
-);
-
 const NOW = new Date('2026-07-02T13:35:00Z');
 const clock = () => NOW;
-
-function config(overrides: Record<string, string> = {}): Config {
-  return buildConfig({
-    DATABASE_URL: process.env.DATABASE_URL,
-    SYMBOL_ALLOWLIST: 'AAPL',
-    ORDER_NOTIONAL_CENTS: '100000',
-    MAX_POSITION_CENTS: '200000',
-    MAX_DAILY_TRADES: '3',
-    MAX_TOTAL_EXPOSURE_CENTS: '500000',
-    SLIPPAGE_BPS: '10',
-    SIGNAL_EXPIRY_MINUTES: '15',
-    LOG_LEVEL: 'silent',
-    ...overrides,
-  } as NodeJS.ProcessEnv);
-}
-
-function quote(symbol: string, price: string): Quote {
-  return {
-    symbol,
-    lastTradePrice: price,
-    bidPrice: price,
-    askPrice: price,
-    previousClose: price,
-    officialClose: price,
-    hasTraded: true,
-    state: 'active',
-  };
-}
 
 function broker(overrides: Partial<ConstructorParameters<typeof MockBrokerAdapter>[0]> = {}) {
   return new MockBrokerAdapter({
@@ -212,21 +173,11 @@ describe('risk caps reject before anything is persisted', () => {
     // paper, and in paper mode the gate reads the track record because that is
     // where paper fills live. A broker position here would be invisible — which
     // is the whole point of the paper position seam.
-    const held = await insertSignal(
-      {
-        symbol: 'AAPL',
-        side: 'buy',
-        signalType: 'technical',
-        quantity: '3',
-        thesis: null,
-        thesisSource: 'llm',
-        indicators: {},
-        reviewSnapshot: { estimated_price: '300.00' },
-        executionMode: 'paper',
-        dedupeKey: 'held-position-for-cap-test',
-      },
-      db,
-    );
+    const held = await seedSignal({
+      quantity: '3',
+      reviewSnapshot: { estimated_price: '300.00' },
+      dedupeKey: 'held-position-for-cap-test',
+    });
     await appendTrackRecord({ signalId: held.id, entryPrice: '300.00', status: 'open' }, db);
 
     const mock = broker();
@@ -536,10 +487,7 @@ describe('execution mode follows the signal, not the account', () => {
 
 describe('exits are proposed against a held paper position', () => {
   /** Bars through 2026-07-31, where the MACD histogram turns negative. */
-  const THROUGH_BEARISH_CROSS = ALL_BARS.slice(
-    0,
-    ALL_BARS.findIndex((b) => b.t.startsWith('2026-07-31')) + 1,
-  );
+  const THROUGH_BEARISH_CROSS = barsThrough('2026-07-31');
 
   const bearishBroker = () =>
     new MockBrokerAdapter({
@@ -548,21 +496,11 @@ describe('exits are proposed against a held paper position', () => {
     });
 
   async function seedPaperLot(quantity: string) {
-    const signal = await insertSignal(
-      {
-        symbol: 'AAPL',
-        side: 'buy',
-        signalType: 'technical',
-        quantity,
-        thesis: null,
-        thesisSource: 'llm',
-        indicators: {},
-        reviewSnapshot: { estimated_price: '300.00' },
-        executionMode: 'paper',
-        dedupeKey: `held-${quantity}`,
-      },
-      db,
-    );
+    const signal = await seedSignal({
+      quantity,
+      reviewSnapshot: { estimated_price: '300.00' },
+      dedupeKey: `held-${quantity}`,
+    });
     await appendTrackRecord({ signalId: signal.id, entryPrice: '300.00', status: 'open' }, db);
     return signal;
   }

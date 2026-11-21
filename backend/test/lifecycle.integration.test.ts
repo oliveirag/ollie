@@ -1,7 +1,6 @@
 import type { Logger } from 'pino';
 import pino from 'pino';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
-import { buildConfig, type Config } from '../src/config/index.js';
 import { getSignal, transitionSignal } from '../src/db/signals.js';
 import {
   listAllTrackRecordRows,
@@ -12,10 +11,9 @@ import { PaperExecutor } from '../src/orchestrator/executor.js';
 import { runMarkToMarket } from '../src/orchestrator/marks.js';
 import { runPipeline } from '../src/orchestrator/pipeline.js';
 import { MockBrokerAdapter } from '../src/orchestrator/robinhood/mockClient.js';
-import type { Candle, Quote } from '../src/orchestrator/robinhood/client.js';
 import { computeTrackRecord } from '../src/orchestrator/trackRecordStats.js';
 import { closeTestPrisma, resetDatabase, testPrisma } from './helpers/db.js';
-import fixture from './fixtures/ohlcv/AAPL-daily-2026.json' with { type: 'json' };
+import { barsThrough, pipelineConfig as config, quote } from './helpers/factories.js';
 
 /**
  * One trade, start to finish, through every seam Phase 3 added.
@@ -27,46 +25,6 @@ import fixture from './fixtures/ohlcv/AAPL-daily-2026.json' with { type: 'json' 
  */
 const db = testPrisma();
 const logger: Logger = pino({ level: 'silent' });
-
-const ALL_BARS: Candle[] = fixture.results[0]!.bars.map((bar) => ({
-  t: bar.begins_at,
-  o: bar.open_price,
-  h: bar.high_price,
-  l: bar.low_price,
-  c: bar.close_price,
-  v: bar.volume,
-}));
-
-const through = (iso: string) =>
-  ALL_BARS.slice(0, ALL_BARS.findIndex((b) => b.t.startsWith(iso)) + 1);
-
-function quote(price: string): Quote {
-  return {
-    symbol: 'AAPL',
-    lastTradePrice: price,
-    bidPrice: price,
-    askPrice: price,
-    previousClose: price,
-    officialClose: price,
-    hasTraded: true,
-    state: 'active',
-  };
-}
-
-function config(overrides: Record<string, string> = {}): Config {
-  return buildConfig({
-    DATABASE_URL: process.env.DATABASE_URL,
-    SYMBOL_ALLOWLIST: 'AAPL',
-    ORDER_NOTIONAL_CENTS: '100000',
-    MAX_POSITION_CENTS: '200000',
-    MAX_DAILY_TRADES: '3',
-    MAX_TOTAL_EXPOSURE_CENTS: '500000',
-    SLIPPAGE_BPS: '10',
-    SIGNAL_EXPIRY_MINUTES: '15',
-    LOG_LEVEL: 'silent',
-    ...overrides,
-  } as NodeJS.ProcessEnv);
-}
 
 const stubThesis = async () => ({
   text: 'Stubbed.',
@@ -90,8 +48,8 @@ describe('a trade from proposal to published statistics', () => {
     // --- Entry: the bullish MACD cross on 2026-07-02 ------------------------
     const entryRun = await runPipeline({
       broker: new MockBrokerAdapter({
-        candles: { AAPL: through('2026-07-02') },
-        quotes: { AAPL: quote('308.630000') },
+        candles: { AAPL: barsThrough('2026-07-02') },
+        quotes: { AAPL: quote('AAPL', '308.630000') },
       }),
       config: cfg,
       logger,
@@ -115,7 +73,7 @@ describe('a trade from proposal to published statistics', () => {
 
     // --- A day's mark -------------------------------------------------------
     await runMarkToMarket({
-      broker: new MockBrokerAdapter({ quotes: { AAPL: quote('320.000000') } }),
+      broker: new MockBrokerAdapter({ quotes: { AAPL: quote('AAPL', '320.000000') } }),
       config: cfg,
       logger,
       prisma: db,
@@ -132,8 +90,8 @@ describe('a trade from proposal to published statistics', () => {
     // --- Exit: the bearish MACD cross on 2026-07-31 -------------------------
     const exitRun = await runPipeline({
       broker: new MockBrokerAdapter({
-        candles: { AAPL: through('2026-07-31') },
-        quotes: { AAPL: quote('330.000000') },
+        candles: { AAPL: barsThrough('2026-07-31') },
+        quotes: { AAPL: quote('AAPL', '330.000000') },
       }),
       config: cfg,
       logger,
@@ -166,7 +124,7 @@ describe('a trade from proposal to published statistics', () => {
     expect(stats.openPositions).toBe(0);
     expect(stats.wins).toBe(1);
     expect(stats.winRate).toBe(1);
-    expect(stats.totalRealizedPnl).toBeCloseTo(62.19411, 5);
+    expect(stats.totalRealizedPnl.toNumber()).toBeCloseTo(62.19411, 5);
     // 62.19411 / (308.93863 x 3) = 6.71%.
     expect(stats.averageReturn).toBeCloseTo(0.0671, 4);
   });
@@ -181,8 +139,8 @@ describe('a trade from proposal to published statistics', () => {
 
     const entryRun = await runPipeline({
       broker: new MockBrokerAdapter({
-        candles: { AAPL: through('2026-07-02') },
-        quotes: { AAPL: quote('308.630000') },
+        candles: { AAPL: barsThrough('2026-07-02') },
+        quotes: { AAPL: quote('AAPL', '308.630000') },
       }),
       config: cfg,
       logger,
@@ -197,7 +155,7 @@ describe('a trade from proposal to published statistics', () => {
     // A daily mark in between. Each mark appends a newer open row for the lot,
     // so the holding period must count from the lot's first row, not its latest.
     await runMarkToMarket({
-      broker: new MockBrokerAdapter({ quotes: { AAPL: quote('312.000000') } }),
+      broker: new MockBrokerAdapter({ quotes: { AAPL: quote('AAPL', '312.000000') } }),
       config: cfg,
       logger,
       prisma: db,
@@ -208,8 +166,8 @@ describe('a trade from proposal to published statistics', () => {
     // fixture, so the time stop is the only thing that can propose this exit.
     const exitRun = await runPipeline({
       broker: new MockBrokerAdapter({
-        candles: { AAPL: through('2026-07-10') },
-        quotes: { AAPL: quote('315.000000') },
+        candles: { AAPL: barsThrough('2026-07-10') },
+        quotes: { AAPL: quote('AAPL', '315.000000') },
       }),
       config: cfg,
       logger,
