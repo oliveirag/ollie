@@ -30,6 +30,7 @@ function pendingSignal(overrides: Partial<Signal> = {}): Signal {
     published: false,
     publishedAt: null,
     autoDecideAt: null,
+    strategyVersion: null,
     dedupeKey: 'macd_bullish_cross:AAPL:buy:2026-08-01T13:30:00.000Z',
     refId: '22222222-2222-4222-8222-222222222222',
     ...overrides,

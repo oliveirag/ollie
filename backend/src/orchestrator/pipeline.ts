@@ -23,7 +23,14 @@ import { applyRiskCaps, type RiskRejection } from './risk.js';
 import type { Notifier } from './push/notify.js';
 import { buildReviewSnapshot } from './reviewSnapshot.js';
 import type { BrokerAdapter, Candle } from './robinhood/client.js';
-import { dedupeKeyFor, evaluateExit, evaluateTechnical, requiredBars } from './strategy/index.js';
+import {
+  dedupeKeyFor,
+  evaluateExit,
+  evaluateStopLoss,
+  evaluateTechnical,
+  requiredBars,
+} from './strategy/index.js';
+import { strategyVersion } from './strategyVersion.js';
 import type { CandidateSignal } from './strategy/index.js';
 
 /**
@@ -170,6 +177,28 @@ export async function runPipeline(deps: PipelineDeps): Promise<PipelineResult> {
     const dropped = bars.length - usable.length;
 
     const held = heldBySymbol.get(symbol);
+
+    // The stop loss outranks every crossing. A losing position should not be
+    // added to by a buy cross or held by a gated MACD exit once it is past
+    // the floor the owner set.
+    const averageEntry = averageEntryBySymbol.get(symbol);
+    if (held !== undefined && averageEntry !== undefined) {
+      const stop = evaluateStopLoss(
+        symbol,
+        usable,
+        { quantity: held, averageEntryPrice: averageEntry },
+        config.strategy.stopLossPct,
+      );
+      if (stop) {
+        log.info(
+          { symbol, bar_time: stop.barTime, rule: stop.rule, indicators: stop.indicators },
+          'stop loss proposes an exit',
+        );
+        candidates.push(stop);
+        continue;
+      }
+    }
+
     const result = evaluateTechnical(
       symbol,
       usable,
@@ -336,6 +365,7 @@ export async function runPipeline(deps: PipelineDeps): Promise<PipelineResult> {
           executionMode: settings.executionMode,
           dedupeKey: dedupeKeyFor(candidate),
           autoDecideAt,
+          strategyVersion: strategyVersion(config.strategy, config.symbolAllowlist),
         },
         prisma,
       );

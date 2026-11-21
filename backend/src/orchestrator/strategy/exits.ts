@@ -1,3 +1,4 @@
+import { dec } from '../../money.js';
 import type { Candle, CandidateSignal } from './types.js';
 
 /**
@@ -53,6 +54,65 @@ export function evaluateExit(
     quantity: lot.quantity,
     rule: 'max_holding_period',
     indicators: { barsHeld, maxHoldingDays },
+    barTime: latest.t,
+    referenceClose: latest.c,
+  };
+}
+
+/**
+ * The stop loss: close the whole position when a daily close lands a fixed
+ * fraction below its average cost.
+ *
+ * Without it a losing position has no floor. The MACD exit fires only above
+ * cost, so a position underwater waits for an RSI overbought cross or the
+ * time stop, and over 2019 to 2026 daily bars that let single trades fall
+ * 30 to 49% before the time stop closed them.
+ *
+ * Like the time stop it reads the append-only position record as well as the
+ * bars, so it is replayable the same way. It acts on the close, not intraday:
+ * the strategy only ever sees daily bars, and the exit fills at the next
+ * session's open, so a gap down fills below the stop price. That is the
+ * honest version; a resting broker stop order would be a different system.
+ *
+ * The condition stays true on every later bar while the position is under
+ * the stop, so an exit the owner never got to is proposed again tomorrow.
+ */
+export interface StopPosition {
+  /** The whole position, as a decimal string: exits are never partial. */
+  quantity: string;
+  /** Quantity-weighted entry price of the open lots, decimal string. */
+  averageEntryPrice: string;
+}
+
+export function evaluateStopLoss(
+  symbol: string,
+  candles: readonly Candle[],
+  position: StopPosition,
+  stopLossPct: number | undefined,
+): CandidateSignal | null {
+  if (!(stopLossPct !== undefined && stopLossPct > 0)) return null;
+
+  const latest = candles.filter((candle) => candle.interpolated !== true).at(-1);
+  if (!latest) return null;
+
+  const stopPrice = dec(position.averageEntryPrice).times(dec(1).minus(stopLossPct));
+  if (dec(latest.c).greaterThan(stopPrice)) return null;
+
+  return {
+    symbol,
+    side: 'sell',
+    // The API's signal_type has no stop-loss value, and adding one would
+    // break decoding in app builds already installed. The rule, the
+    // indicators and the thesis all say it is a stop.
+    signalType: 'technical',
+    quantity: position.quantity,
+    rule: 'stop_loss',
+    indicators: {
+      close: Number(latest.c),
+      averageEntryPrice: Number(position.averageEntryPrice),
+      stopLossPct,
+      stopPrice: stopPrice.toDecimalPlaces(6).toNumber(),
+    },
     barTime: latest.t,
     referenceClose: latest.c,
   };

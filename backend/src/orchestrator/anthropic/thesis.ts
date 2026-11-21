@@ -2,7 +2,14 @@ import Anthropic from '@anthropic-ai/sdk';
 import type { Logger } from 'pino';
 import { getConfig } from '../../config/index.js';
 import { logger as rootLogger } from '../../logger.js';
-import type { CandidateSignal, ExitIndicators, TechnicalIndicators } from '../strategy/index.js';
+import type {
+  CandidateSignal,
+  ExitIndicators,
+  StopLossIndicators,
+  TechnicalIndicators,
+} from '../strategy/index.js';
+
+type AnyIndicators = TechnicalIndicators | ExitIndicators | StopLossIndicators;
 
 /**
  * Thesis generation — the only place an LLM touches this system, and it touches
@@ -131,16 +138,24 @@ export async function generateThesis(
 }
 
 /** Narrows the union so each rule family cites only what it actually read. */
-function isExitIndicators(
-  indicators: TechnicalIndicators | ExitIndicators,
-): indicators is ExitIndicators {
+function isExitIndicators(indicators: AnyIndicators): indicators is ExitIndicators {
   return 'barsHeld' in indicators;
 }
 
 
-function exitPayload(
-  indicators: TechnicalIndicators | ExitIndicators,
-): Record<string, unknown> | null {
+function isStopLossIndicators(indicators: AnyIndicators): indicators is StopLossIndicators {
+  return 'stopPrice' in indicators;
+}
+
+function exitPayload(indicators: AnyIndicators): Record<string, unknown> | null {
+  if (isStopLossIndicators(indicators)) {
+    return {
+      close: round(indicators.close, 2),
+      average_entry_price: round(indicators.averageEntryPrice, 2),
+      stop_loss_fraction_below_cost: indicators.stopLossPct,
+      stop_price: round(indicators.stopPrice, 2),
+    };
+  }
   if (!isExitIndicators(indicators)) return null;
   return {
     bars_held: indicators.barsHeld,
@@ -148,7 +163,7 @@ function exitPayload(
   };
 }
 
-function technicalPayload(indicators: TechnicalIndicators | ExitIndicators): Record<string, unknown> {
+function technicalPayload(indicators: AnyIndicators): Record<string, unknown> {
   const i = indicators as TechnicalIndicators;
   return {
     rsi: round(i.rsi, 1),
@@ -174,7 +189,8 @@ function promptPayload(input: ThesisInput): Record<string, unknown> {
     quantity: candidate.quantity,
     rule: candidate.rule,
     estimated_price: input.estimatedPrice,
-    // A time stop consulted no indicators, so it is given none. Handing the
+    // A time stop consulted no indicators and a stop loss only the close and
+    // the cost, so each is given exactly that. Handing the
     // model zeroed-out RSI and MACD fields would invite a thesis citing a
     // crossing that never happened — the one thing the narration must never do.
     indicators: exitPayload(candidate.indicators) ?? technicalPayload(candidate.indicators),
@@ -203,7 +219,17 @@ export function templateThesis(input: ThesisInput): string {
     );
   }
 
-  const i = candidate.indicators;
+  if (isStopLossIndicators(candidate.indicators)) {
+    const { close, averageEntryPrice, stopLossPct, stopPrice } = candidate.indicators;
+    return (
+      `Sell ${candidate.quantity} ${candidate.symbol} at an estimated ${input.estimatedPrice}. ` +
+      `On the daily bar for ${candidate.barTime.slice(0, 10)}, the close of ${round(close, 2)} ` +
+      `was at or below the stop of ${round(stopPrice, 2)}, ${round(stopLossPct * 100, 2)}% under ` +
+      `the average entry price of ${round(averageEntryPrice, 2)}. This exit is the stop loss alone.`
+    );
+  }
+
+  const i = candidate.indicators as TechnicalIndicators;
   const rsi = round(i.rsi, 1);
   const rsiPrev = round(i.rsiPrev, 1);
   const hist = round(i.macdHistogram, 2);
