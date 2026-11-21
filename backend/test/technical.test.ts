@@ -332,3 +332,53 @@ describe('sell candidates are sized to the position', () => {
     expect(candidate!.quantity).toBe('3');
   });
 });
+
+describe('the MACD exit waits for the position to be above cost', () => {
+  // AAPL closed at 308.91 on 2026-07-31, the bar the bearish cross fires on.
+  it('exits on a bearish cross when the close is above the average entry', () => {
+    const { candidate } = evaluateTechnical('AAPL', through('2026-07-31'), config(), {
+      openQuantity: '3',
+      averageEntryPrice: '300.000000',
+    });
+
+    expect(candidate!.rule).toBe('macd_bearish_cross');
+    expect(candidate!.quantity).toBe('3');
+  });
+
+  it('holds through a bearish cross when the close is below the average entry', () => {
+    const result = evaluateTechnical('AAPL', through('2026-07-31'), config(), {
+      openQuantity: '3',
+      averageEntryPrice: '315.000000',
+    });
+
+    // No candidate, so the pipeline falls through to the time stop.
+    expect(result.candidate).toBeNull();
+    expect(result.skipReason).toBe('macd_exit_below_entry');
+    expect(result.indicators).not.toBeNull();
+  });
+
+  it('holds when the close equals the average entry, since slippage makes that a loss', () => {
+    const result = evaluateTechnical('AAPL', through('2026-07-31'), config(), {
+      openQuantity: '3',
+      averageEntryPrice: '308.910000',
+    });
+
+    expect(result.candidate).toBeNull();
+    expect(result.skipReason).toBe('macd_exit_below_entry');
+  });
+
+  it('leaves the RSI exit ungated', () => {
+    const { candidate } = evaluateTechnical('AAPL', through('2026-07-16'), config(), {
+      openQuantity: '3',
+      averageEntryPrice: '1000.000000',
+    });
+
+    expect(candidate!.rule).toBe('rsi_overbought');
+  });
+
+  it('fires as before when the entry price is unknown', () => {
+    const { candidate } = evaluateTechnical('AAPL', through('2026-07-31'), config(), HELD);
+
+    expect(candidate!.rule).toBe('macd_bearish_cross');
+  });
+});

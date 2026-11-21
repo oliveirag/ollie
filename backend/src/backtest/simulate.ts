@@ -192,7 +192,7 @@ export function simulate(input: BacktestInput): BacktestResult {
         symbol,
         through,
         input.strategy,
-        held === null ? undefined : { openQuantity: held },
+        held === null ? undefined : { openQuantity: held, averageEntryPrice: averageEntry(lots, symbol) },
       );
 
       if (candidate) {
@@ -331,6 +331,14 @@ function heldQuantity(lots: readonly Lot[], symbol: string): string | null {
     .filter((lot) => lot.symbol === symbol)
     .reduce((sum, lot) => sum.plus(lot.quantity), dec(0));
   return held.greaterThan(0) ? held.toString() : null;
+}
+
+/** Quantity-weighted entry price of a symbol's open lots, as the pipeline computes it. */
+function averageEntry(lots: readonly Lot[], symbol: string): string {
+  const own = lots.filter((lot) => lot.symbol === symbol);
+  const quantity = own.reduce((sum, lot) => sum.plus(lot.quantity), dec(0));
+  const cost = own.reduce((sum, lot) => sum.plus(dec(lot.entryPrice).times(lot.quantity)), dec(0));
+  return cost.dividedBy(quantity).toFixed(6);
 }
 
 function oldestLot(lots: readonly Lot[], symbol: string): Lot | undefined {

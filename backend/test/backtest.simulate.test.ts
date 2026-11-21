@@ -231,3 +231,37 @@ describe('closing more than one lot', () => {
     expect(trades[1]!.exitRule).toBe('macd_bearish_cross');
   });
 });
+
+describe('the MACD exit below cost', () => {
+  /**
+   * A slide that trips RSI oversold at 100, a short bounce, then a fade. The
+   * bearish cross lands the bar after the fill, with the close under entry.
+   */
+  function slideBounceFade(): Candle[] {
+    const closes: number[] = [];
+    for (let i = 0; i < 50; i += 1) closes.push(120 - i * 0.4);
+    for (let i = 1; i <= 4; i += 1) closes.push(100 + i * 1.5);
+    for (let i = 1; i <= 30; i += 1) closes.push(106 - i * 0.6);
+    const start = Date.UTC(2026, 0, 1);
+    return closes.map((close, i) => ({
+      t: new Date(start + i * 86_400_000).toISOString(),
+      o: String(close),
+      h: String(close),
+      l: String(close),
+      c: String(close),
+      v: 1000,
+    }));
+  }
+
+  it('holds through the cross and leaves the exit to the time stop', () => {
+    const { trades } = run({
+      bars: { AAPL: slideBounceFade() },
+      strategy: { ...STRATEGY, maxHoldingDays: 10 },
+      slippageBps: 0,
+    });
+
+    expect(trades).toHaveLength(1);
+    expect(trades[0]!.entryPrice).toBe('100.000000');
+    expect(trades[0]!.exitRule).toBe('max_holding_period');
+  });
+});

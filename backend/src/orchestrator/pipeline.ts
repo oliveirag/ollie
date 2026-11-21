@@ -2,6 +2,7 @@ import type { PrismaClient, Signal } from '@prisma/client';
 import type { Logger } from 'pino';
 import type { Config } from '../config/index.js';
 import { newRunLogger } from '../logger.js';
+import { dec, type Decimal } from '../money.js';
 import {
   DuplicateSignalError,
   SignalNotPendingError,
@@ -135,10 +136,23 @@ export async function runPipeline(deps: PipelineDeps): Promise<PipelineResult> {
   // same way a paper one does — so the time stop reads it in both. The
   // long-only check above still asks the broker in live mode, because a share
   // the owner sold by hand is not Ollie's to sell again.
+  //
+  // The same lots give each symbol's quantity-weighted entry price, which the
+  // MACD exit compares against the close.
   const openedBySymbol = new Map<string, Date>();
+  const costBySymbol = new Map<string, { cost: Decimal; quantity: Decimal }>();
   for (const lot of await listOpenLots(prisma)) {
     const existing = openedBySymbol.get(lot.symbol);
     if (!existing || lot.openedAt < existing) openedBySymbol.set(lot.symbol, lot.openedAt);
+    const sum = costBySymbol.get(lot.symbol) ?? { cost: dec(0), quantity: dec(0) };
+    costBySymbol.set(lot.symbol, {
+      cost: sum.cost.plus(dec(lot.entryPrice).times(lot.quantity)),
+      quantity: sum.quantity.plus(lot.quantity),
+    });
+  }
+  const averageEntryBySymbol = new Map<string, string>();
+  for (const [symbol, { cost, quantity }] of costBySymbol) {
+    if (quantity.greaterThan(0)) averageEntryBySymbol.set(symbol, cost.dividedBy(quantity).toFixed(6));
   }
 
   // Phase 5: a signal born under autonomy carries the instant the sweep may
@@ -160,7 +174,7 @@ export async function runPipeline(deps: PipelineDeps): Promise<PipelineResult> {
       symbol,
       usable,
       config.strategy,
-      held === undefined ? undefined : { openQuantity: held },
+      held === undefined ? undefined : withAverageEntry(held, averageEntryBySymbol.get(symbol)),
     );
 
     // PRD §11: log every strategy input and output, fired or not. A quiet run
@@ -460,4 +474,11 @@ function dropInterpolated(candles: readonly Candle[]): Candle[] {
 
 function startOfUtcDay(now: Date): Date {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+}
+
+function withAverageEntry(
+  openQuantity: string,
+  averageEntryPrice: string | undefined,
+): { openQuantity: string; averageEntryPrice?: string } {
+  return averageEntryPrice === undefined ? { openQuantity } : { openQuantity, averageEntryPrice };
 }
