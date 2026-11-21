@@ -36,15 +36,19 @@ function pendingSignal(overrides: Partial<Signal> = {}): Signal {
   };
 }
 
+// 2026-08-01, the fixture's created_at, is a Saturday: no session, so the
+// floor window applies.
+const EXPIRY = { signalExpiryMinutes: 15, signalExpiresAtClose: true };
+
 describe('toSignalSummary', () => {
   it('reports an unreadable review snapshot as a null estimated price', () => {
-    const summary = toSignalSummary(pendingSignal({ reviewSnapshot: { not: 'a snapshot' } }), 15);
+    const summary = toSignalSummary(pendingSignal({ reviewSnapshot: { not: 'a snapshot' } }), EXPIRY);
 
     expect(summary.estimated_price).toBeNull();
   });
 
   it('reads the estimated price out of a valid snapshot', () => {
-    const summary = toSignalSummary(pendingSignal(), 15);
+    const summary = toSignalSummary(pendingSignal(), EXPIRY);
 
     expect(summary.estimated_price).toBe('182.50');
   });
@@ -53,25 +57,35 @@ describe('toSignalSummary', () => {
     // thesis_source is a plain text column, not a database enum, so a hand
     // edit or a future source this build predates must not be rendered as
     // one of the two values the app knows how to show.
-    const summary = toSignalSummary(pendingSignal({ thesisSource: 'some_future_source' }), 15);
+    const summary = toSignalSummary(pendingSignal({ thesisSource: 'some_future_source' }), EXPIRY);
 
     expect(summary.thesis_source).toBeNull();
   });
 
   it('passes a known thesis_source straight through', () => {
-    expect(toSignalSummary(pendingSignal({ thesisSource: 'fallback_template' }), 15).thesis_source).toBe(
+    expect(toSignalSummary(pendingSignal({ thesisSource: 'fallback_template' }), EXPIRY).thesis_source).toBe(
       'fallback_template',
     );
   });
 
-  it('computes expires_at from created_at and the expiry minutes for a pending signal', () => {
-    const summary = toSignalSummary(pendingSignal(), 15);
+  it('computes expires_at from created_at and the expiry minutes outside a session', () => {
+    const summary = toSignalSummary(pendingSignal(), EXPIRY);
 
     expect(summary.expires_at).toBe('2026-08-01T13:45:00.000Z');
   });
 
+  it('runs expires_at to the 16:00 ET close for a signal proposed during a session', () => {
+    // Monday 2026-08-03, 09:35 EDT.
+    const summary = toSignalSummary(
+      pendingSignal({ createdAt: new Date('2026-08-03T13:35:00.000Z') }),
+      EXPIRY,
+    );
+
+    expect(summary.expires_at).toBe('2026-08-03T20:00:00.000Z');
+  });
+
   it('reports no expiry for a signal that has already been decided', () => {
-    const summary = toSignalSummary(pendingSignal({ status: 'approved' }), 15);
+    const summary = toSignalSummary(pendingSignal({ status: 'approved' }), EXPIRY);
 
     expect(summary.expires_at).toBeNull();
   });
@@ -156,7 +170,7 @@ describe('toSignalDetail', () => {
   ];
 
   it('parses the review snapshot into estimated price, capture time, and alerts', () => {
-    const detail = toSignalDetail(pendingSignal(), events, 15);
+    const detail = toSignalDetail(pendingSignal(), events, EXPIRY);
 
     expect(detail.review).toEqual({
       estimated_price: '182.50',
@@ -169,7 +183,7 @@ describe('toSignalDetail', () => {
     const detail = toSignalDetail(
       pendingSignal({ reviewSnapshot: { not: 'a snapshot' } }),
       events,
-      15,
+      EXPIRY,
     );
 
     expect(detail.review).toBeNull();
@@ -179,13 +193,13 @@ describe('toSignalDetail', () => {
 
   it('carries the raw indicators payload through untouched', () => {
     const indicators = { rsi: 45, macdHistogram: 0.5 };
-    const detail = toSignalDetail(pendingSignal({ indicators }), events, 15);
+    const detail = toSignalDetail(pendingSignal({ indicators }), events, EXPIRY);
 
     expect(detail.indicators).toEqual(indicators);
   });
 
   it('maps every event to its wire shape in order', () => {
-    const detail = toSignalDetail(pendingSignal(), events, 15);
+    const detail = toSignalDetail(pendingSignal(), events, EXPIRY);
 
     expect(detail.events).toEqual([
       {
@@ -198,7 +212,7 @@ describe('toSignalDetail', () => {
   });
 
   it('includes the live order view when one is passed', () => {
-    const detail = toSignalDetail(pendingSignal(), events, 15, liveOrder());
+    const detail = toSignalDetail(pendingSignal(), events, EXPIRY, liveOrder());
 
     expect(detail.order?.broker_order_id).toBe('broker-order-1');
   });

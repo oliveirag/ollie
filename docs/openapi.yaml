@@ -210,7 +210,7 @@ components:
           format: date-time
           pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z))$
           nullable: true
-          description: created_at + SIGNAL_EXPIRY_MINUTES, computed at read time, for pending signals only. The expiry sweep remains the authority; this is a countdown hint, not a promise.
+          description: "For pending signals only, computed at read time: the 16:00 ET close of the session the signal was proposed in, or created_at + SIGNAL_EXPIRY_MINUTES when that is later or the signal was created outside a session. The expiry sweep remains the authority; this is a countdown hint, not a promise."
         decided_at:
           type: string
           format: date-time
@@ -335,7 +335,7 @@ components:
           format: date-time
           pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z))$
           nullable: true
-          description: created_at + SIGNAL_EXPIRY_MINUTES, computed at read time, for pending signals only. The expiry sweep remains the authority; this is a countdown hint, not a promise.
+          description: "For pending signals only, computed at read time: the 16:00 ET close of the session the signal was proposed in, or created_at + SIGNAL_EXPIRY_MINUTES when that is later or the signal was created outside a session. The expiry sweep remains the authority; this is a countdown hint, not a promise."
         decided_at:
           type: string
           format: date-time
@@ -767,7 +767,7 @@ paths:
       summary: List pending or decided signals
       tags:
         - signals
-      description: Pending items carry `expires_at`, computed at read time from the current SIGNAL_EXPIRY_MINUTES. The expiry sweep remains the authority on what is actually expired; the timestamp drives the countdown UI and nothing else.
+      description: Pending items carry `expires_at`, computed at read time from the current expiry settings. The expiry sweep remains the authority on what is actually expired; the timestamp drives the countdown UI and nothing else.
       parameters:
         - schema:
             default: pending
@@ -903,7 +903,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
         "409":
-          description: Already decided or expired, the kill switch is engaged, live mode is not enabled, or a live approval lacks confirm_live
+          description: Already decided or expired, the kill switch is engaged, live mode is not enabled, a live approval lacks confirm_live, or a paper approval could not get a current price (`reprice_failed`, the signal stays pending)
           content:
             application/json:
               schema:

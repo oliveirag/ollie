@@ -35,6 +35,11 @@ export interface ApnsNotification {
   data?: Record<string, unknown>;
   /** Collapses to one visible notification per signal on retry. */
   collapseId?: string;
+  /**
+   * `aps.category`: which registered action set the app shows on the
+   * notification (approve and decline, for a signal).
+   */
+  category?: string;
 }
 
 export type ApnsResult =
@@ -133,8 +138,10 @@ export class ApnsClient {
       aps: {
         alert: { title: notification.title, body: notification.body },
         sound: 'default',
-        // A 15-minute expiry is what justifies interrupting a Focus mode.
+        // A signal that lapses unanswered is what justifies interrupting a
+        // Focus mode.
         'interruption-level': 'time-sensitive',
+        ...(notification.category ? { category: notification.category } : {}),
       },
       ...notification.data,
     });

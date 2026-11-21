@@ -6,6 +6,7 @@ import { setExecutionMode, setKillSwitch } from '../src/db/settings.js';
 import { getSignal, insertSignal, listSignalEvents } from '../src/db/signals.js';
 import { appendTrackRecord, latestTrackRecord } from '../src/db/trackRecord.js';
 import { sweepExpiredSignals } from '../src/orchestrator/pipeline.js';
+import { MockBrokerAdapter } from '../src/orchestrator/robinhood/mockClient.js';
 import { authHeader, buildTestApp, testConfig } from './helpers/api.js';
 import { closeTestPrisma, resetDatabase, testPrisma, uniqueDedupeKey } from './helpers/db.js';
 
@@ -80,14 +81,71 @@ describe('POST /v1/signals/:id/decision — approve', () => {
     expect(body.execution.mode).toBe('paper');
     expect(body.execution.broker_order_id).toBeNull();
 
-    // Slippage is applied against the trader: a buy fills above the estimate.
+    // Filled at the approval-time review (the mock's ask, 100.01), not the
+    // proposal's 100.00, moved against the trader by the slippage.
     const { slippageBps } = testConfig();
-    const expected = (100 * (1 + slippageBps / 10_000)).toFixed(2);
+    const expected = (100.01 * (1 + slippageBps / 10_000)).toFixed(2);
     expect(Number(body.execution.fill_price)).toBeCloseTo(Number(expected), 2);
 
     const track = await latestTrackRecord(signal.id, db);
     expect(track?.status).toBe('open');
     expect(track?.entryPrice.toString()).toBe(body.execution.fill_price);
+  });
+
+  it('fills at the price when the owner approves, not the price at proposal', async () => {
+    // Hours later the market is at 120; the snapshot still says 100.
+    const broker = new MockBrokerAdapter({
+      quotes: {
+        AAPL: {
+          symbol: 'AAPL',
+          lastTradePrice: '120.000000',
+          bidPrice: '119.990000',
+          askPrice: '120.000000',
+          previousClose: '119.000000',
+          officialClose: '119.000000',
+          hasTraded: true,
+          state: 'active',
+        },
+      },
+    });
+    const pricedApp = await buildTestApp({}, broker);
+    try {
+      const signal = await seedSignal();
+      const response = await pricedApp.inject({
+        method: 'POST',
+        url: `/v1/signals/${signal.id}/decision`,
+        headers: authHeader(),
+        payload: { action: 'approve' },
+      });
+
+      expect(response.statusCode).toBe(200);
+      // 120.00 * (1 + 10/10000)
+      expect(response.json().execution.fill_price).toBe('120.12');
+      expect(broker.callsTo('reviewEquityOrder')).toHaveLength(1);
+    } finally {
+      await pricedApp.close();
+    }
+  });
+
+  it('leaves the signal pending when the approval-time review fails', async () => {
+    const pricedApp = await buildTestApp({}, new MockBrokerAdapter({ failReviewFor: ['AAPL'] }));
+    try {
+      const signal = await seedSignal();
+      const response = await pricedApp.inject({
+        method: 'POST',
+        url: `/v1/signals/${signal.id}/decision`,
+        headers: authHeader(),
+        payload: { action: 'approve' },
+      });
+
+      expect(response.statusCode).toBe(409);
+      expect(response.json()).toMatchObject({ error: 'reprice_failed' });
+      // Still decidable: nothing burned the one transition.
+      expect((await getSignal(signal.id, db))?.status).toBe('pending');
+      expect(await listExecutions(signal.id, db)).toHaveLength(0);
+    } finally {
+      await pricedApp.close();
+    }
   });
 
   it('writes exactly one execution row', async () => {

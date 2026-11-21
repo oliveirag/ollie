@@ -51,8 +51,57 @@ export class NoOpenPositionError extends Error {
   }
 }
 
+export interface ExecuteOptions {
+  /**
+   * Paper only: the price to fill at, from a review taken at approval time
+   * (`paperFillPrice`). Ignored by LiveExecutor, which reviews for itself.
+   */
+  fillBasis?: string;
+}
+
 export interface Executor {
-  execute(signal: Signal): Promise<ExecutionOutcome>;
+  execute(signal: Signal, options?: ExecuteOptions): Promise<ExecutionOutcome>;
+}
+
+/**
+ * A paper approval arrived with no fresh price and the proposal-time estimate
+ * is too old to stand in for one. Thrown before any write.
+ */
+export class StaleFillPriceError extends Error {
+  constructor(signalId: string, capturedAt: string) {
+    super(
+      `signal ${signalId}: the review estimate from ${capturedAt} is too old to fill at ` +
+        'and no fresh price was supplied',
+    );
+    this.name = 'StaleFillPriceError';
+  }
+}
+
+/**
+ * The price a paper approval fills at: a fresh `review_equity_order` on the
+ * signal's own terms, taken now.
+ *
+ * A signal can wait hours for a decision now (it lives until the close, see
+ * expiry.ts), so the proposal's 09:35 estimate is no longer the price an
+ * approval at 14:00 would get. Filling at it would put fills in the paper
+ * record that the market never offered. The live path already reviews again
+ * before placing; this is the paper half of the same rule.
+ *
+ * Callers take it *before* transitioning the signal, so a broker that cannot
+ * price leaves the signal pending and still decidable instead of approved with
+ * no fill. A review is read-only; this cannot place anything.
+ */
+export async function paperFillPrice(
+  signal: Signal,
+  broker: Pick<BrokerAdapter, 'reviewEquityOrder'>,
+): Promise<string> {
+  const review = await broker.reviewEquityOrder({
+    symbol: signal.symbol,
+    side: signal.side,
+    quantity: signal.quantity.toString(),
+    type: 'market',
+  });
+  return review.estimatedPrice;
 }
 
 /** The kill switch was on at execution time. Nothing was sent anywhere. */
@@ -188,12 +237,13 @@ export async function recordFill(
 /**
  * Simulated fills. Never touches the broker — there is no adapter reference in
  * this class, so "approving a paper signal cannot place an order" is a
- * structural fact rather than a rule someone has to remember.
+ * structural fact rather than a rule someone has to remember. The fresh price
+ * it fills at arrives as a string (`fillBasis`), taken by the caller.
  */
 export class PaperExecutor implements Executor {
   constructor(private readonly deps: ExecutorDeps) {}
 
-  async execute(signal: Signal): Promise<ExecutionOutcome> {
+  async execute(signal: Signal, options: ExecuteOptions = {}): Promise<ExecutionOutcome> {
     await assertKillSwitchOff(this.deps);
 
     if (signal.executionMode !== 'paper') {
@@ -204,15 +254,25 @@ export class PaperExecutor implements Executor {
 
     const snapshot = parseReviewSnapshot(signal.reviewSnapshot);
     const quantity = signal.quantity.toString();
+    const filledAt = (this.deps.now ?? (() => new Date()))();
+
+    // The fill basis is the approval-time review when the caller took one
+    // (every production caller does). Without one, the proposal's estimate is
+    // accepted only while it is as young as the floor window, the age at which
+    // it always was the fill price; anything older is refused rather than
+    // filled at a price from hours ago.
+    let basis = options.fillBasis;
+    if (basis === undefined) {
+      const ageMs = filledAt.getTime() - new Date(snapshot.captured_at).getTime();
+      if (ageMs > this.deps.config.signalExpiryMinutes * 60_000) {
+        throw new StaleFillPriceError(signal.id, snapshot.captured_at);
+      }
+      basis = snapshot.estimated_price;
+    }
 
     // Slippage is applied against the trader in both directions, so paper
     // results never flatter the strategy (PRD §11).
-    const fillPrice = applySlippage(
-      snapshot.estimated_price,
-      signal.side,
-      this.deps.config.slippageBps,
-    );
-    const filledAt = (this.deps.now ?? (() => new Date()))();
+    const fillPrice = applySlippage(basis, signal.side, this.deps.config.slippageBps);
 
     // A sell is always a close, never a new position. The execution and its
     // lots commit together, so an exit with nothing to close rolls back and
@@ -232,6 +292,8 @@ export class PaperExecutor implements Executor {
         side: signal.side,
         quantity,
         estimated_price: snapshot.estimated_price,
+        fill_basis: basis,
+        fill_basis_source: options.fillBasis === undefined ? 'proposal_review' : 'approval_review',
         fill_price: fillPrice,
         slippage_bps: this.deps.config.slippageBps,
         lots_closed: settled.closedLots?.length ?? 0,

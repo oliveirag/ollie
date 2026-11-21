@@ -49,6 +49,9 @@ function config(overrides: Record<string, string> = {}): Config {
     MAX_TOTAL_EXPOSURE_CENTS: '500000',
     SLIPPAGE_BPS: '10',
     SIGNAL_EXPIRY_MINUTES: '15',
+    // created_at is stamped by the database with the real time, so a window
+    // that runs to the close would make these depend on when the suite runs.
+    SIGNAL_EXPIRES_AT_CLOSE: 'false',
     MAX_HOLDING_DAYS: '0',
     LOG_LEVEL: 'silent',
     AUTONOMY_ENABLED: 'true',

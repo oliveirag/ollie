@@ -8,10 +8,12 @@ import { pollOpenOrders } from './orders.js';
 import { runPipeline, sweepExpiredSignals } from './pipeline.js';
 import { sweepUnpublishedSignals } from './publish.js';
 import type { Notifier } from './push/notify.js';
+import { sweepReminders } from './reminders.js';
 import type { BrokerAdapter } from './robinhood/client.js';
 
 /**
- * The cron jobs: propose signals, expire undecided ones, mark open lots,
+ * The cron jobs: propose signals, expire undecided ones (and remind before
+ * they do), mark open lots,
  * publish filled signals, poll live orders, and run the autonomy sweep.
  *
  * Every job runs with `protect: true`, which skips a firing while the previous
@@ -63,6 +65,10 @@ export function startScheduler(deps: SchedulerDeps): RunningScheduler {
     },
   );
 
+  // Which signals this process has already reminded. See reminders.ts for why
+  // this is in memory.
+  const reminded = new Set<string>();
+
   const expiryJob = new Cron(
     config.expirySweepCron,
     { timezone: config.timezone, protect: true, name: 'expiry' },
@@ -74,6 +80,19 @@ export function startScheduler(deps: SchedulerDeps): RunningScheduler {
       }).catch((error: unknown) => {
         log.error({ err: error }, 'expiry sweep failed');
       });
+
+      // After expiring, so a signal at its deadline is closed, not reminded.
+      if (deps.notifier) {
+        await sweepReminders({
+          config,
+          logger,
+          notifier: deps.notifier,
+          sent: reminded,
+          ...(deps.prisma ? { prisma: deps.prisma } : {}),
+        }).catch((error: unknown) => {
+          log.error({ err: error }, 'reminder sweep failed');
+        });
+      }
     },
   );
 
