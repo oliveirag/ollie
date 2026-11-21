@@ -83,6 +83,27 @@ describe('GET /v1/dashboard', () => {
     });
   });
 
+  it('measures quote age from the venue last trade, null when the broker gives none', async () => {
+    await seedOpenLot({ symbol: 'AAPL', quantity: '2', entryPrice: '100.00' });
+    await seedOpenLot({ symbol: 'MSFT', quantity: '1', entryPrice: '400.00' });
+    const traded = new Date(Date.now() - 90_000).toISOString();
+    const broker = new MockBrokerAdapter({
+      quotes: {
+        AAPL: { ...quote('AAPL', '110.00'), lastTradeAt: traded },
+        MSFT: quote('MSFT', '410.00'),
+      },
+    });
+
+    const body = (await dashboard(broker)).json();
+    const bySymbol = Object.fromEntries(
+      body.lots.map((lot: { symbol: string; quote_age_seconds: number | null }) => [lot.symbol, lot.quote_age_seconds]),
+    );
+
+    expect(bySymbol.AAPL).toBeGreaterThanOrEqual(90);
+    expect(bySymbol.AAPL).toBeLessThan(120);
+    expect(bySymbol.MSFT).toBeNull();
+  });
+
   it('computes unrealized PnL for a buy lot from the current quote', async () => {
     await seedOpenLot({ symbol: 'AAPL', quantity: '2', entryPrice: '100.00' });
     const broker = new MockBrokerAdapter({ quotes: { AAPL: quote('AAPL', '110.00') } });

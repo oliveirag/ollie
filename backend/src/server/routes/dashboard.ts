@@ -58,13 +58,11 @@ export const registerDashboardRoutes: FastifyPluginAsyncZod<DashboardRouteOption
 
       let quotes: Record<string, Quote> = {};
       let quotesAvailable = true;
-      let quotedAt: Date | null = null;
 
       if (lots.length > 0) {
         const symbols = [...new Set(lots.map((lot) => lot.symbol))];
         try {
           quotes = await broker.getQuotes(symbols);
-          quotedAt = new Date();
         } catch (error) {
           // Logged, never thrown: the positions themselves are database truth
           // and the owner should still see them.
@@ -73,9 +71,14 @@ export const registerDashboardRoutes: FastifyPluginAsyncZod<DashboardRouteOption
         }
       }
 
-      const quoteAgeSeconds = quotedAt
-        ? Math.max(0, Math.round((Date.now() - quotedAt.getTime()) / 1000))
-        : null;
+      // Measured from the venue's last trade, not from when we asked: a quote
+      // fetched a second ago can describe a trade from yesterday's close.
+      const now = Date.now();
+      const quoteAgeSeconds = (symbol: string): number | null => {
+        const at = quotes[symbol]?.lastTradeAt;
+        const ms = at ? Date.parse(at) : Number.NaN;
+        return Number.isNaN(ms) ? null : Math.max(0, Math.round((now - ms) / 1000));
+      };
 
       const rendered = lots.map((lot) => {
         const price = quotes[lot.symbol]?.lastTradePrice ?? null;
@@ -87,7 +90,7 @@ export const registerDashboardRoutes: FastifyPluginAsyncZod<DashboardRouteOption
           entry_price: lot.entryPrice,
           opened_at: lot.openedAt.toISOString(),
           quote: price,
-          quote_age_seconds: price === null ? null : quoteAgeSeconds,
+          quote_age_seconds: price === null ? null : quoteAgeSeconds(lot.symbol),
           unrealized_pnl: price === null ? null : unrealizedPnl(lot, price),
         };
       });

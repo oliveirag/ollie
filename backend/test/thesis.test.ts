@@ -172,6 +172,13 @@ describe('template thesis', () => {
     expect(templateThesis(input())).toBe(templateThesis(input()));
   });
 
+  it('names the trading day of the bar rather than a closing time it does not carry', () => {
+    const text = templateThesis(input());
+    const day = candidate().barTime.slice(0, 10);
+    expect(text).toContain(`On the daily bar for ${day},`);
+    expect(text).not.toContain('closing');
+  });
+
   it('states the RSI oversold crossing with both bars', () => {
     const text = templateThesis(input());
     expect(text).toContain('Buy 3 AAPL at an estimated 275.20');

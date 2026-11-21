@@ -4,6 +4,7 @@ import {
   type PrismaClient,
   type TrackRecord,
 } from '@prisma/client';
+import type { TrackRecordRow } from '../orchestrator/trackRecordStats.js';
 import { getPrisma, isFullClient, type Db } from './client.js';
 
 export interface AppendTrackRecordInput {
@@ -311,15 +312,5 @@ export async function listAllTrackRecordRows(
   }));
 }
 
-export interface TrackRecordStatsRow {
-  signalId: string;
-  symbol: string;
-  status: PositionStatus;
-  entryPrice: string;
-  quantity: string;
-  exitPrice: string | null;
-  realizedPnl: string | null;
-  unrealizedPnl: string | null;
-  markPrice: string | null;
-  recordedAt: Date;
-}
+/** The stats input, plus the symbol the subscriber positions list needs. */
+export type TrackRecordStatsRow = TrackRecordRow & { symbol: string };

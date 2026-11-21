@@ -342,7 +342,9 @@ export const OpenLotSchema = z
       .number()
       .int()
       .nullable()
-      .describe('How stale the quote is. Render it — a stale price read as current is a lie.'),
+      .describe(
+        'Seconds since the venue last traded, null when the broker did not say. Render it — a stale price read as current is a lie.',
+      ),
     unrealized_pnl: decimalString
       .nullable()
       .describe('(quote - entry) * quantity for a buy. Null whenever quote is null.'),

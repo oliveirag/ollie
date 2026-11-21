@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import { z } from 'zod';
+import type { StrategyConfig } from '../orchestrator/strategy/types.js';
 
 /**
  * Every tunable lives here and is validated once at boot. A bad value should
@@ -141,18 +142,8 @@ const EnvSchema = z.object({
 
 export type Env = z.infer<typeof EnvSchema>;
 
-export interface StrategyConfig {
-  rsiPeriod: number;
-  rsiOversold: number;
-  rsiOverbought: number;
-  macdFast: number;
-  macdSlow: number;
-  macdSignal: number;
-  /** Target notional per order, in integer cents. Sizing floors to whole shares. */
-  orderNotionalCents: number;
-  /** 0 disables the time stop entirely. */
-  maxHoldingDays: number;
-}
+// One definition, owned by the strategy so it imports nothing from config.
+export type { StrategyConfig } from '../orchestrator/strategy/types.js';
 
 export interface RiskConfig {
   symbolAllowlist: readonly string[];
@@ -200,8 +191,11 @@ export interface Config {
   };
   signalService: {
     port: number;
-    /** null when unset; the signal service refuses to start. */
-    databaseUrl: string | null;
+    /**
+     * SIGNAL_DATABASE_URL is deliberately not here: the signal service reads
+     * it before building config and passes it in as DATABASE_URL, so no
+     * config object ever holds both connection strings.
+     */
     inviteCodes: readonly string[];
     appleAudience: string;
     /** null when unset; the mint response then omits the URL. */
@@ -320,7 +314,6 @@ export function buildConfig(source: NodeJS.ProcessEnv = process.env): Config {
     },
     signalService: {
       port: env.SIGNAL_SERVICE_PORT,
-      databaseUrl: env.SIGNAL_DATABASE_URL || null,
       inviteCodes: Object.freeze(
         env.SUBSCRIBER_INVITE_CODES.split(',')
           .map((code) => code.trim())

@@ -333,6 +333,7 @@ export class McpBrokerAdapter implements BrokerAdapter {
         officialClose: result.close?.price ?? null,
         hasTraded: result.quote.has_traded ?? true,
         state: result.quote.state ?? 'unknown',
+        lastTradeAt: result.quote.venue_last_trade_time ?? null,
       };
     }
     return bySymbol;

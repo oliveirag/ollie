@@ -85,6 +85,7 @@ export interface StrategyConfig {
   macdFast: number;
   macdSlow: number;
   macdSignal: number;
+  /** Target notional per order, in integer cents. Sizing floors to whole shares. */
   orderNotionalCents: number;
   /** Trading days a lot may stay open before the time stop proposes an exit. 0 disables it. */
   maxHoldingDays: number;

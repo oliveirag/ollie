@@ -226,7 +226,9 @@ export function templateThesis(input: ThesisInput): string {
 
   return (
     `${verb} ${candidate.quantity} ${candidate.symbol} at an estimated ${input.estimatedPrice}. ` +
-    `On the bar closing ${candidate.barTime}, ${trigger}. ` +
+    // barTime is the bar's start (a daily bar is stamped 00:00Z), so name the
+    // trading day, not a closing time it does not carry.
+    `On the daily bar for ${candidate.barTime.slice(0, 10)}, ${trigger}. ` +
     `RSI(${i.rsiPeriod}) is ${rsi} and the MACD histogram is ${hist}.`
   );
 }
