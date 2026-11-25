@@ -1,14 +1,19 @@
 {
   "fill" : {
-    "solid" : "srgb:0.09020,0.09020,0.09020,1.00000"
+    "solid" : "srgb:0.04314,0.23137,0.17255,1.00000"
   },
   "groups" : [
     {
       "layers" : [
         {
           "glass" : true,
-          "image-name" : "mark.svg",
-          "name" : "mark"
+          "image-name" : "right-half.svg",
+          "name" : "right-half"
+        },
+        {
+          "glass" : true,
+          "image-name" : "left-half.svg",
+          "name" : "left-half"
         }
       ],
       "shadow" : {

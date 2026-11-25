@@ -43,6 +43,9 @@ struct SubscriberEntryView: View {
 struct WelcomeView: View {
     let onSubscribe: () -> Void
 
+    /// Grows with Dynamic Type like the display title it replaced.
+    @ScaledMetric(relativeTo: .largeTitle) private var lockupHeight: CGFloat = 48
+
     var body: some View {
         // Scrolls once the largest text sizes push the buttons past the
         // screen; until then the spacers hold the hero centred and the
@@ -53,20 +56,14 @@ struct WelcomeView: View {
                     Spacer(minLength: 0)
 
                     VStack(alignment: .leading, spacing: DS.Space.lg) {
-                        Image(systemName: "waveform.path.ecg")
-                            .dsIcon(size: 28, relativeTo: .h2)
-                            .foregroundStyle(DS.Icon.primary)
-                            .frame(width: 56, height: 56)
-                            .background(DS.Surface.default, in: RoundedRectangle(cornerRadius: DS.Radius.lg, style: .continuous))
-                            .overlay {
-                                RoundedRectangle(cornerRadius: DS.Radius.lg, style: .continuous)
-                                    .strokeBorder(DS.Border.strong, lineWidth: DS.BorderWidth.sm)
-                            }
-                            .accessibilityHidden(true)
-
-                        Text("Ollie")
-                            .dsFont(.display)
-                            .foregroundStyle(DS.Text.primary)
+                        // The horizontal lockup, vector, with the reversed
+                        // colours in dark mode (asset catalog appearance).
+                        Image("OllieLockup")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(height: lockupHeight)
+                            .accessibilityLabel("Ollie")
+                            .accessibilityAddTraits(.isHeader)
 
                         Text("A public record of one rule-based strategy's signals, published only after they were acted on. Your agent decides what to do with them.")
                             .dsFont(.body)
