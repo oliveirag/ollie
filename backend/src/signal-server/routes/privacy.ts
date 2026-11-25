@@ -1,4 +1,11 @@
 import type { FastifyInstance } from 'fastify';
+import {
+  APPLE_TOUCH_ICON_DATA_URI,
+  BRAND_THEME_COLOR,
+  FAVICON_SVG_DATA_URI,
+  LOCKUP_SVG_DARK,
+  LOCKUP_SVG_LIGHT,
+} from '../../published/brand.js';
 import { PRIVACY_POLICY_TEXT } from '../../published/privacy.js';
 
 /**
@@ -40,13 +47,23 @@ export function renderPolicyHtml(markdown: string): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Ollie privacy policy</title>
+<link rel="icon" href="${FAVICON_SVG_DATA_URI}" type="image/svg+xml">
+<link rel="apple-touch-icon" href="${APPLE_TOUCH_ICON_DATA_URI}">
+<meta name="theme-color" content="${BRAND_THEME_COLOR}">
 <style>
   :root { color-scheme: light dark; }
   body { font: 16px/1.55 -apple-system, system-ui, sans-serif; max-width: 40rem; margin: 0 auto; padding: 24px 16px 48px; }
   h1 { font-size: 1.6rem; } h2 { font-size: 1.15rem; margin-top: 2rem; }
+  .logo { display: block; height: 40px; width: auto; margin-bottom: 8px; }
+  .logo-dark { display: none; }
+  @media (prefers-color-scheme: dark) { .logo-light { display: none; } .logo-dark { display: block; } }
 </style>
 </head>
 <body>
+<header>
+${LOCKUP_SVG_LIGHT}
+${LOCKUP_SVG_DARK}
+</header>
 ${body}
 </body>
 </html>

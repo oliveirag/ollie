@@ -647,5 +647,12 @@ describe('GET /privacy', () => {
     expect(response.body).toContain('<h1>Ollie privacy policy</h1>');
     expect(response.body).toContain('Delete account');
   });
+
+  it('carries the Ollie logo and favicon', async () => {
+    const response = await app.inject({ method: 'GET', url: '/privacy' });
+    expect(response.body).toContain('aria-label="Ollie logo"');
+    expect(response.body).toContain('rel="icon" href="data:image/svg+xml,');
+    expect(response.body).toContain('rel="apple-touch-icon" href="data:image/png;base64,');
+  });
 });
 

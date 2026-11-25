@@ -1,3 +1,8 @@
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/design/ollie-logo/svg/ollie-horizontal-reversed.svg">
+  <img src="docs/design/ollie-logo/svg/ollie-horizontal-color.svg" alt="Ollie" width="240">
+</picture>
+
 # Ollie
 
 Multi-user trading-signal product built on Robinhood Agentic Trading.
@@ -21,6 +26,7 @@ Running it: [sustained-run checklist](docs/sustained-run-checklist.md) ·
 [live-flip checklist](docs/live-flip-checklist.md).
 Design: the iOS app follows the owner's design system (`ios/Ollie/DesignSystem/`).
 [docs/design/owner-app-design.html](docs/design/owner-app-design.html) is the superseded first concept.
+Logo, lockups, app icon and web icons: [docs/design/ollie-logo](docs/design/ollie-logo/README.md).
 
 ## Status
 
